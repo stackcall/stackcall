@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { CATEGORIES, bundledChangelog, formatDate, loadChangelog, type Version } from '../lib/changelog';
 
-const GROUP: Record<(typeof CATEGORIES)[number], { title: string; label: string; dot: string; color: string }> = {
-  novidades: { title: 'NOVIDADES', label: 'novidades', dot: '#7c5cff', color: '#cbbdff' },
-  melhorias: { title: 'MELHORIAS', label: 'melhorias', dot: '#7fb8a4', color: '#a9d6c6' },
-  correcoes: { title: 'CORREÇÕES', label: 'correções', dot: '#d9a35b', color: '#e8c08c' },
-  ajustes: { title: 'AJUSTES', label: 'ajustes', dot: '#8a8e97', color: '#b4b8c0' },
+const GROUP: Record<(typeof CATEGORIES)[number], { title: string; label: string; one: string; dot: string; color: string }> = {
+  novidades: { title: 'NOVIDADES', label: 'novidades', one: 'novidade', dot: '#7c5cff', color: '#cbbdff' },
+  melhorias: { title: 'MELHORIAS', label: 'melhorias', one: 'melhoria', dot: '#7fb8a4', color: '#a9d6c6' },
+  correcoes: { title: 'CORREÇÕES', label: 'correções', one: 'correção', dot: '#d9a35b', color: '#e8c08c' },
+  ajustes: { title: 'AJUSTES', label: 'ajustes', one: 'ajuste', dot: '#8a8e97', color: '#b4b8c0' },
 };
 
 /** Notes for one version; `from` is the version before an update (shown once after updating). */
@@ -28,7 +28,7 @@ export function Novidades({ from, current, onClose, onHistory }: { from: string 
             {groups.map((g) => (
               <span key={g.c} className="flex h-[30px] items-center gap-2 rounded border border-line bg-panel px-3 text-[13px]">
                 <span className="size-2 rounded-[2px]" style={{ background: GROUP[g.c].dot }} />
-                {g.items.length} {GROUP[g.c].label}
+                {g.items.length} {g.items.length === 1 ? GROUP[g.c].one : GROUP[g.c].label}
               </span>
             ))}
           </div>
