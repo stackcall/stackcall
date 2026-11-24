@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     env,
     net::{IpAddr, SocketAddr},
     sync::{Arc, Mutex},
@@ -25,7 +25,8 @@ use tower_http::cors::CorsLayer;
 
 const WINDOW: Duration = Duration::from_secs(60);
 const TOKEN_TTL: Duration = Duration::from_secs(3600);
-const TOKEN_LIMIT: u8 = 10;
+const TOKEN_LIMIT: u8 = 30;
+const RATE_LIMIT_CAPACITY: usize = 4096;
 // The app's upload test sends a series of growing blocks for about 5 seconds.
 const UPLOAD_LIMIT: u8 = 60;
 const UPLOAD_MAX_BYTES: usize = 16 * 1024 * 1024;
@@ -36,7 +37,11 @@ const APP_ORIGINS: [&str; 3] = [
     "http://127.0.0.1:1420",
 ];
 
-type Attempts = Mutex<HashMap<IpAddr, (Instant, u8)>>;
+#[derive(Default)]
+struct Attempts {
+    counts: HashMap<IpAddr, u8>,
+    oldest_first: VecDeque<(IpAddr, Instant)>,
+}
 
 struct Config {
     key: String,
@@ -44,9 +49,9 @@ struct Config {
     url: String,
     invite_hash: [u8; 32],
     rooms: Vec<String>,
-    trusted_proxy: IpAddr,
-    attempts: Attempts,
-    uploads: Attempts,
+    trusted_proxy: Option<IpAddr>,
+    attempts: Mutex<Attempts>,
+    uploads: Mutex<Attempts>,
 }
 
 #[derive(Deserialize)]
@@ -89,7 +94,7 @@ fn new_identity(name: &str) -> String {
 
 fn client_ip(config: &Config, peer: SocketAddr, request: &Request) -> Result<IpAddr, StatusCode> {
     let mut ip = peer.ip();
-    if ip == config.trusted_proxy {
+    if Some(ip) == config.trusted_proxy {
         // O Caddy substitui o cabecalho pelo IP da conexao.
         if let Some(forwarded) = request.headers().get("x-forwarded-for") {
             ip = forwarded
@@ -102,19 +107,29 @@ fn client_ip(config: &Config, peer: SocketAddr, request: &Request) -> Result<IpA
     Ok(ip)
 }
 
-fn allow(attempts: &Attempts, ip: IpAddr, max: u8) -> Result<(), StatusCode> {
-    let now = Instant::now();
+fn allow(attempts: &Mutex<Attempts>, ip: IpAddr, max: u8) -> Result<(), StatusCode> {
+    let ip = match ip.to_canonical() {
+        IpAddr::V6(ip) => IpAddr::V6((ip.to_bits() & (u128::MAX << 64)).into()),
+        ip => ip,
+    };
     let mut attempts = attempts.lock().expect("rate limiter lock");
-    if attempts
-        .get(&ip)
-        .is_none_or(|(start, _)| now.duration_since(*start) >= WINDOW)
+    let now = Instant::now();
+    while attempts
+        .oldest_first
+        .front()
+        .is_some_and(|(_, start)| now.duration_since(*start) >= WINDOW)
     {
-        attempts.retain(|_, (start, _)| now.duration_since(*start) < WINDOW);
-        if attempts.len() >= 4096 {
-            return Err(StatusCode::TOO_MANY_REQUESTS);
-        }
+        let (expired, _) = attempts.oldest_first.pop_front().unwrap();
+        attempts.counts.remove(&expired);
     }
-    let (_, count) = attempts.entry(ip).or_insert((now, 0));
+    if !attempts.counts.contains_key(&ip) {
+        if attempts.counts.len() == RATE_LIMIT_CAPACITY {
+            let (oldest, _) = attempts.oldest_first.pop_front().unwrap();
+            attempts.counts.remove(&oldest);
+        }
+        attempts.oldest_first.push_back((ip, now));
+    }
+    let count = attempts.counts.entry(ip).or_default();
     if *count >= max {
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
@@ -284,12 +299,10 @@ async fn main() -> std::io::Result<()> {
         url: required("LIVEKIT_PUBLIC_URL"),
         invite_hash: invite_hash(&required("STACKCALL_CONVITE_DEV"))?,
         rooms,
-        // Gateway fixo da rede privada do Compose. Fora do Docker, o proxy usa loopback.
-        trusted_proxy: if address == "0.0.0.0:8100" {
-            "172.31.240.1".parse().unwrap()
-        } else {
-            IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)
-        },
+        trusted_proxy: env::var("PORTEIRO_TRUSTED_PROXY").ok().map(|ip| {
+            ip.parse()
+                .expect("configure PORTEIRO_TRUSTED_PROXY com um IP")
+        }),
         attempts: Mutex::default(),
         uploads: Mutex::default(),
     });
@@ -330,7 +343,7 @@ mod tests {
             url: "wss://example.test/rtc".into(),
             invite_hash: Sha256::digest(b"test_invite").into(),
             rooms: vec!["geral".into()],
-            trusted_proxy: "127.0.0.1".parse().unwrap(),
+            trusted_proxy: Some("127.0.0.1".parse().unwrap()),
             attempts: Mutex::default(),
             uploads: Mutex::default(),
         }))
@@ -523,7 +536,7 @@ mod tests {
     #[tokio::test]
     async fn only_the_proxy_can_supply_a_client_ip() {
         let app = router();
-        for index in 1..=11 {
+        for index in 1..=TOKEN_LIMIT + 1 {
             let response = request(
                 app.clone(),
                 "wrong",
@@ -532,7 +545,7 @@ mod tests {
                 &format!("192.0.2.{index}"),
             )
             .await;
-            let expected = if index <= 10 {
+            let expected = if index <= TOKEN_LIMIT {
                 StatusCode::UNAUTHORIZED
             } else {
                 StatusCode::TOO_MANY_REQUESTS
@@ -541,5 +554,34 @@ mod tests {
         }
         let response = request(app, "wrong", "valid", "127.0.0.1:1234", "192.0.2.20").await;
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn token_limit_groups_ipv6_addresses_in_the_same_prefix() {
+        let app = router();
+        let proxy = "127.0.0.1:1234";
+        for _ in 0..30 {
+            let result = request(app.clone(), "wrong", "Alice", proxy, "2001:db8:0:1::1").await;
+            assert_eq!(result.status(), StatusCode::UNAUTHORIZED);
+        }
+        let result = request(app.clone(), "wrong", "Alice", proxy, "2001:db8:0:1::2").await;
+        assert_eq!(result.status(), StatusCode::TOO_MANY_REQUESTS);
+        let result = request(app, "wrong", "Alice", proxy, "2001:db8:0:2::1").await;
+        assert_eq!(result.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn full_table_admits_new_ip_and_evicts_oldest() {
+        let attempts = Mutex::new(Attempts::default());
+        for index in 0..RATE_LIMIT_CAPACITY {
+            let ip = IpAddr::V4((index as u32).into());
+            assert_eq!(allow(&attempts, ip, 1), Ok(()));
+        }
+        let new_ip = IpAddr::V4((RATE_LIMIT_CAPACITY as u32).into());
+        assert_eq!(allow(&attempts, new_ip, 1), Ok(()));
+        let attempts = attempts.into_inner().unwrap();
+        assert_eq!(attempts.counts.len(), RATE_LIMIT_CAPACITY);
+        assert!(!attempts.counts.contains_key(&"0.0.0.0".parse().unwrap()));
+        assert!(attempts.counts.contains_key(&new_ip));
     }
 }
