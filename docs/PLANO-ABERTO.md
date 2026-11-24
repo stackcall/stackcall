@@ -73,12 +73,26 @@ Autenticação por `Authorization: Bearer <sessao>` (token aleatório; o servido
 | `/api/rtt`, `/api/upload-test`, `/api/versao-minima-app` | Continuam |
 | `GET /c/<codigo>` | Página do convite (HTML simples) |
 
+A prévia devolve `{servidor, convidado_por}`. Convites vencidos, revogados ou esgotados devolvem o mesmo 404. `POST /api/convites` aceita `dias` e `usos_max` opcionais e devolve `{id, codigo, url, expira_em, usos_max}`. A listagem administrativa retorna os metadados sem o código.
+
+`POST /api/aparelhos/link` retorna `{codigo, url, expira_em}`, com deep link `stackcall://aparelho?servidor=<url>&codigo=<codigo>`. `POST /api/aparelhos/entrar` recebe `{codigo, aparelho}` e devolve `{sessao, usuario}`. `GET /api/eu` devolve o perfil diretamente. Horários são segundos Unix.
+
+A origem dos links vem de `SERVIDOR_URL`. `SERVIDOR_NOME` e `MEMBROS_CONVIDAM` configuram o nome e a permissão de convite. `GET /api/servidor` devolve `{nome, versao, versao_minima_app, membros_convidam}`. No log, o link inicial aparece na linha `Convite do dono: <url>`.
+
+`GET /api/salas` retorna uma lista de `{id, nome, ordem}`. Envie `nome` e `ordem` opcional ao criar. Para editar ou excluir use `/api/salas/:id`. Os tokens voltam como `{url, token, screen_token}`.
+
+`GET /api/pessoas` retorna uma lista de perfis com `amigo` e `online` para quem consulta. Online significa estar conectado a uma sala do LiveKit. Adicionar ou remover um amigo retorna 204 e só afeta a própria lista.
+
+A remoção revoga sessões, códigos de aparelho e convites da pessoa e desconecta voz e tela. O dono não pode ser removido e administradores só gerenciam outros usuários com papel de membro. Ao revogar os próprios aparelhos, o dono ou admin mantém a sessão atual. Se o LiveKit estiver indisponível, a remoção devolve 502 após revogar o acesso. Repetir o DELETE tenta desconectar novamente. Em self-host, um JWT do LiveKit já emitido pode autenticar até expirar.
+
 Migração do nosso servidor: na primeira subida da v0.3, o `CONVITE` antigo sai e o porteiro imprime no log um convite de dono (uso único, 7 dias). O Filippe entra com ele e gera os convites dos amigos.
 
 ## Perfil personalizável (como no Fivestack)
 
 - Foto, banner, bio (160 caracteres), tema do perfil (**Papel**, **Noite**, **Lima**) e cor de destaque. O tema vale no cartão de perfil e no canal da pessoa na mesa.
 - O app recorta e reduz antes de enviar (foto 256×256, banner 1200×400, WebP). O porteiro aceita só PNG, JPEG ou WebP pelo conteúdo, recusa SVG, limita a 1 MB, regrava a imagem sem metadados e serve com cache longo e nome por hash. Cada pessoa só altera o próprio perfil.
+
+`PATCH /api/eu/perfil` aceita `bio`, `tema_perfil` (`papel`, `noite` ou `lima`) e `cor` (`#RRGGBB` ou `null` para limpar). Os uploads recebem a imagem no corpo. A API devolve o perfil atualizado com `avatar` e `banner` como caminhos relativos ao servidor. O porteiro aceita até 2048 pixels por lado e reduz a imagem para caber nas dimensões do perfil.
 
 ## Leve como regra (não pesar o jogo)
 
