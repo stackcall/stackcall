@@ -28,30 +28,6 @@ pub fn open(path: impl AsRef<Path>) -> rusqlite::Result<Connection> {
     Ok(db)
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn creates_the_schema_with_foreign_keys_enabled() {
-        let db = super::open(":memory:").unwrap();
-        assert_eq!(
-            db.query_row(
-                "SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name != 'midias'",
-                [],
-                |row| row.get::<_, u32>(0)
-            )
-            .unwrap(),
-            8
-        );
-        assert!(
-            db.execute(
-                "INSERT INTO sessoes VALUES ('s', 'missing', 'hash', 'PC', 0, 0)",
-                []
-            )
-            .is_err()
-        );
-    }
-}
-
 pub fn internal(_: impl std::fmt::Debug) -> StatusCode {
     StatusCode::INTERNAL_SERVER_ERROR
 }
@@ -92,4 +68,28 @@ pub fn settings(
     )?;
     tx.commit()?;
     Ok((name, members))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn creates_the_schema_with_foreign_keys_enabled() {
+        let db = super::open(":memory:").unwrap();
+        assert_eq!(
+            db.query_row(
+                "SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name != 'midias'",
+                [],
+                |row| row.get::<_, u32>(0)
+            )
+            .unwrap(),
+            8
+        );
+        assert!(
+            db.execute(
+                "INSERT INTO sessoes VALUES ('s', 'missing', 'hash', 'PC', 0, 0)",
+                []
+            )
+            .is_err()
+        );
+    }
 }

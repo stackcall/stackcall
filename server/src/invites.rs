@@ -173,18 +173,22 @@ fn inviter(conn: &Connection, code: &str, server_name: &str) -> Result<String, S
     ).optional().map_err(db::internal)?.ok_or(StatusCode::NOT_FOUND)
 }
 
-fn invite_error(status: StatusCode) -> Response {
-    if status == StatusCode::NOT_FOUND {
-        (status, Json(json!({"erro": "Convite indisponível"}))).into_response()
-    } else {
-        status.into_response()
+struct InviteError(StatusCode);
+
+impl IntoResponse for InviteError {
+    fn into_response(self) -> Response {
+        if self.0 == StatusCode::NOT_FOUND {
+            (self.0, Json(json!({"erro": "Convite indisponível"}))).into_response()
+        } else {
+            self.0.into_response()
+        }
     }
 }
 
 async fn preview(
     State(config): State<Arc<Config>>,
     Path(code): Path<String>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, InviteError> {
     let server_name = config.server_name.clone();
     db::run(config, move |conn| {
         let creator = inviter(conn, &code, &server_name)?;
@@ -193,7 +197,7 @@ async fn preview(
         ))
     })
     .await
-    .map_err(invite_error)
+    .map_err(InviteError)
 }
 
 #[derive(Deserialize)]
@@ -206,13 +210,13 @@ async fn accept(
     State(config): State<Arc<Config>>,
     Path(code): Path<String>,
     Json(input): Json<Join>,
-) -> Result<(StatusCode, Json<auth::Session>), Response> {
+) -> Result<(StatusCode, Json<auth::Session>), InviteError> {
     let name = input.nome.trim().to_owned();
     if !valid_name(&name) {
-        return Err(StatusCode::BAD_REQUEST.into_response());
+        return Err(InviteError(StatusCode::BAD_REQUEST));
     }
-    let device = auth::device(input.aparelho).map_err(IntoResponse::into_response)?;
-    let hash = invite_hash(&code).map_err(invite_error)?;
+    let device = auth::device(input.aparelho).map_err(InviteError)?;
+    let hash = invite_hash(&code).map_err(InviteError)?;
     db::run(config, move |conn| {
         let tx = conn
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -240,13 +244,13 @@ async fn accept(
         Ok((StatusCode::CREATED, Json(session)))
     })
     .await
-    .map_err(invite_error)
+    .map_err(InviteError)
 }
 
 async fn page(
     State(config): State<Arc<Config>>,
     Path(code): Path<String>,
-) -> Result<Response, Response> {
+) -> Result<Response, InviteError> {
     let server = config.public_url.origin().ascii_serialization();
     let mut link = Url::parse("stackcall://entrar").expect("valid deep link");
     link.query_pairs_mut()
@@ -255,7 +259,7 @@ async fn page(
     let name = config.server_name.clone();
     db::run(config, move |conn| inviter(conn, &code, &name))
         .await
-        .map_err(invite_error)?;
+        .map_err(InviteError)?;
     let link = link.as_str().replace('&', "&amp;");
     let nonce = auth::id();
     let html = format!(
