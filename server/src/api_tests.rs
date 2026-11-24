@@ -8,6 +8,7 @@ use tower::ServiceExt;
 
 pub(super) fn config(registration: auth::Registration) -> Arc<Config> {
     Arc::new(Config {
+        instance_name: "Stackcall teste".into(),
         public_url: "https://example.test/".parse().unwrap(),
         steam: None,
         key: "test_key".into(),
@@ -463,5 +464,19 @@ async fn stores_reencoded_webp_under_its_content_hash() {
     assert_eq!(
         url,
         format!("/media/{}.webp", auth::hex(&Sha256::digest(&webp)))
+    );
+}
+
+#[tokio::test]
+async fn instance_metadata_matches_the_registration_policy() {
+    let app = app(config(auth::Registration::Invite));
+    let (status, metadata) = send(app, Method::GET, "/api/instancia", None, Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        metadata,
+        json!({
+            "nome": "Stackcall teste", "versao": "0.3.0", "modo_cadastro": "convite",
+            "steam": false, "versao_minima_app": "0.3.0",
+        })
     );
 }

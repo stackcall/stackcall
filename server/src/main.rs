@@ -28,6 +28,7 @@ use std::{
 };
 use tower_http::cors::CorsLayer;
 
+const MIN_APP_VERSION: &str = "0.3.0";
 const WINDOW: Duration = Duration::from_secs(60);
 const TOKEN_TTL: Duration = Duration::from_secs(3600);
 const TOKEN_LIMIT: u8 = 30;
@@ -50,6 +51,7 @@ struct Attempts {
 }
 
 struct Config {
+    instance_name: String,
     public_url: url::Url,
     steam: Option<steam::Steam>,
     db: Mutex<rusqlite::Connection>,
@@ -221,6 +223,16 @@ async fn token(
     }))
 }
 
+async fn instance(State(config): State<Arc<Config>>) -> Json<serde_json::Value> {
+    Json(json!({
+        "nome": config.instance_name,
+        "versao": env!("CARGO_PKG_VERSION"),
+        "modo_cadastro": config.registration.as_str(),
+        "steam": config.steam.is_some(),
+        "versao_minima_app": MIN_APP_VERSION,
+    }))
+}
+
 fn app(config: Arc<Config>) -> Router {
     Router::new()
         .merge(auth::routes())
@@ -236,6 +248,7 @@ fn app(config: Arc<Config>) -> Router {
             post(upload_test)
                 .route_layer(middleware::from_fn_with_state(config.clone(), limit_upload)),
         )
+        .route("/api/instancia", get(instance))
         .route("/api/rtt", get(|| async { StatusCode::NO_CONTENT }))
         .route(
             "/api/health",
@@ -243,7 +256,7 @@ fn app(config: Arc<Config>) -> Router {
         )
         .route(
             "/api/versao-minima-app",
-            get(|| async { Json(json!({"versao_minima_app": "0.0.0"})) }),
+            get(|| async { Json(json!({"versao_minima_app": MIN_APP_VERSION})) }),
         )
         .layer(DefaultBodyLimit::max(4096))
         .layer(
@@ -297,7 +310,13 @@ async fn main() -> std::io::Result<()> {
         .map_err(std::io::Error::other)?;
     let db = db::open(env::var("PORTEIRO_DB").unwrap_or_else(|_| "stackcall.sqlite3".into()))
         .map_err(std::io::Error::other)?;
+    let instance_name = env::var("INSTANCIA_NOME").unwrap_or_else(|_| "Stackcall".into());
+    assert!(
+        valid_name(instance_name.trim()),
+        "configure INSTANCIA_NOME com até 32 caracteres"
+    );
     let mut config = Config {
+        instance_name: instance_name.trim().to_owned(),
         public_url,
         steam,
         db: Mutex::new(db),

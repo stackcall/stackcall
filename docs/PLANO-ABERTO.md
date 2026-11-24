@@ -63,6 +63,8 @@ Autenticação por `Authorization: Bearer <sessao>`. Sessão de 30 dias, renovad
 
 O login Steam está disponível em origens HTTPS. Antes de abrir `/api/auth/steam/iniciar`, o app gera e guarda um `verificador` de 32 bytes aleatórios em hexadecimal minúsculo. O URL inclui `retorno=stackcall`, `desafio` (SHA-256 em hexadecimal do texto do verificador) e `codigo` opcional para novos usuários. Em `POST /api/auth/troca`, o app envia `{sessao, verificador, nome_aparelho?}` para a instância em que iniciou o login e descarta o verificador. O código devolvido no deep link só pode ser trocado com esse verificador.
 
+`GET /api/instancia` retorna `{nome, versao, modo_cadastro, steam, versao_minima_app}`. A versão mínima é 0.3.0, que usa as sessões e os tokens por sala.
+
 Cadastro e entrada recebem JSON com `nome`, `senha` e `nome_aparelho` opcional. Cadastro também aceita `codigo`. O nome de login ignora maiúsculas e minúsculas, a senha tem de 8 a 256 bytes e a sessão volta como `{sessao, expira_em}`. `GET /api/eu` retorna `{usuario, grupos}`. Os horários da API são segundos Unix.
 
 Grupos e salas recebem `{nome}`. Salas também aceitam `ordem` e são editadas ou removidas em `/api/salas/:id`. A leitura do grupo retorna `salas`, `membros`, o `papel` de quem consulta e os metadados dos convites que pode revogar. Qualquer membro cria um convite em `/api/grupos/:id/convites` com `dias` e `usos_max` opcionais e recebe `{id, codigo, url, expira_em, usos_max}`. O autor, o dono e os admins do grupo podem revogar. A prévia retorna `{grupo, convidado_por}` e o aceite retorna `{grupo_id}`. Convites expirados, revogados ou esgotados retornam 404 com a mesma mensagem.

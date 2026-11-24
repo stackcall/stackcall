@@ -27,6 +27,14 @@ pub enum Registration {
 }
 
 impl Registration {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Open => "aberto",
+            Self::Invite => "convite",
+            Self::Closed => "fechado",
+        }
+    }
+
     pub fn parse(value: &str) -> Self {
         match value {
             "aberto" => Self::Open,
