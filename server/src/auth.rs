@@ -55,7 +55,7 @@ struct Credentials {
 
 #[derive(Serialize)]
 pub struct Session {
-    sessao: String,
+    pub(crate) sessao: String,
     expira_em: i64,
 }
 

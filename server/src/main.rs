@@ -2,6 +2,7 @@
 mod api_tests;
 mod auth;
 mod db;
+mod groups;
 mod steam;
 
 use axum::{
@@ -255,6 +256,7 @@ fn app(config: Arc<Config>) -> Router {
     Router::new()
         .merge(auth::routes())
         .merge(steam::routes())
+        .merge(groups::routes())
         .route(
             "/api/token",
             post(token).route_layer(middleware::from_fn_with_state(config.clone(), limit_token)),
@@ -277,7 +279,7 @@ fn app(config: Arc<Config>) -> Router {
         .layer(
             CorsLayer::new()
                 .allow_origin(APP_ORIGINS.map(HeaderValue::from_static))
-                .allow_methods([Method::GET, Method::POST])
+                .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
                 .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]),
         )
         .with_state(config)
