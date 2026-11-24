@@ -384,7 +384,7 @@ function Voce({ model, nome, sala, imLive, onGoLive, onSair, onFallback }: {
           <span aria-hidden="true" className={`size-[7px] ${model.state === 'connected' ? 'bg-lima' : 'bg-superficie-topo'}`} />{estado}
         </span>
       </div>
-      <div className="flex items-center gap-2 p-3">
+      <div className="flex flex-1 items-center gap-2 px-3 py-2">
         <button type="button" className={`btn btn-lg btn-icone ${model.micOn ? '' : 'btn-off'}`} aria-pressed={!model.micOn}
           aria-label={model.micOn ? 'Desligar microfone' : 'Ligar microfone'} title={model.micOn ? 'Microfone ligado' : 'Microfone desligado'} onClick={model.toggleMic}>
           <Icone nome={model.micOn ? 'mic' : 'mic-off'} tamanho={20} />
@@ -402,6 +402,9 @@ function Voce({ model, nome, sala, imLive, onGoLive, onSair, onFallback }: {
           <Icone nome="sair" tamanho={20} />
         </button>
       </div>
+      <p className="rotulo m-0 border-t border-borda px-3 py-2 text-[10px]">
+        mic {model.micOn ? 'ligado' : 'desligado'} · som {model.deafened ? 'desligado' : 'ligado'} · {imLive ? 'você está no ar' : 'fora do ar'}
+      </p>
       {(model.micError || model.streamError) && (
         <div role="alert" className="flex flex-col gap-2 border-t border-texto px-3 py-2 text-[13px] text-perigo">
           {model.micError && <span>{model.micError}</span>}
