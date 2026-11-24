@@ -61,9 +61,9 @@ curl -fsSL https://raw.githubusercontent.com/stackcall/stackcall/main/infra/inst
 
 Informe o domínio ou pressione Enter para usar `<ip-publico>.sslip.io`. Guarde em privado o convite do dono que aparece quando o servidor responde.
 
-- **Rede local:** no Linux, rode `bash infra/instalar.sh --local` a partir do checkout. No Windows com Docker Desktop em modo Linux, leia [instalar.ps1](infra/instalar.ps1) e rode `.\infra\instalar.ps1`. Ambos usam o IPv4 da rede, sem TLS, nas portas 8100/tcp, 7881/tcp e 7882/udp.
-- **Backup:** pare o porteiro e copie `stackcall.sqlite3` do volume `stackcall-selfhost_porteiro-data`, junto de `stackcall.sqlite3-wal` se existir. Guarde também o `.env` privado, por padrão em `~/.config/stackcall/` no Linux ou `%LOCALAPPDATA%\Stackcall\selfhost\` no Windows. Reinicie o porteiro após a cópia.
-- **Atualização:** use o mesmo comando com `bash -s -- --atualizar` no lugar de `bash`, ou rode `.\infra\instalar.ps1 -Atualizar` no Windows. Os contêineres são recriados com o mesmo banco e as mesmas credenciais.
+- Para hospedar em **rede local**, rode `bash infra/instalar.sh --local` no checkout do Linux. No Windows com Docker Desktop em modo Linux, leia [instalar.ps1](infra/instalar.ps1) e rode `.\infra\instalar.ps1`. Ambos servem HTTP no IPv4 da rede e usam as portas 8100/tcp, 7881/tcp e 7882/udp.
+- Para fazer **backup**, pare o porteiro e copie `stackcall.sqlite3` do volume `stackcall-selfhost_porteiro-data`, junto de `stackcall.sqlite3-wal` se existir. Guarde também o `.env` privado, por padrão em `~/.config/stackcall/` no Linux ou `%LOCALAPPDATA%\Stackcall\selfhost\` no Windows. Reinicie o porteiro após a cópia.
+- Para **atualizar**, acrescente `-s -- --atualizar` ao `bash` do comando acima ou rode `.\infra\instalar.ps1 -Atualizar` no Windows. Os contêineres são recriados com o mesmo banco e as mesmas credenciais.
 
 ## Soltar uma versão
 
