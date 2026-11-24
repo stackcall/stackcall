@@ -23,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost https: wss:; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost https://stackcall.80-190-79-129.sslip.io wss://stackcall.80-190-79-129.sslip.io; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
     }
   },
   "bundle": {

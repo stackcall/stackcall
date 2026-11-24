@@ -2051,6 +2051,7 @@ dependencies = [
  "axum",
  "futures-util",
  "livekit-api",
+ "rand 0.9.5",
  "serde",
  "serde_json",
  "sha2",

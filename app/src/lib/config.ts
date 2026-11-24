@@ -1,6 +1,6 @@
 export const DEFAULT_SERVER = 'https://stackcall.80-190-79-129.sslip.io';
 
-/** Fixed rooms. `id` is the LiveKit room name; the porteiro accepts [A-Za-z0-9_-]{1,32}. */
+/** Fixed room shortcuts. The porteiro controls which ones are open. */
 export const ROOMS = [
   { id: 'geral', label: 'Geral' },
   { id: 'cs', label: 'CS' },
@@ -9,8 +9,8 @@ export const ROOMS = [
 ] as const;
 export type RoomId = (typeof ROOMS)[number]['id'];
 
-/** Same rule as `valid_label` in the porteiro. */
-export const NAME_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
+/** Same rule as `valid_name` in the porteiro. */
+export const NAME_PATTERN = /^[^:\p{Cc}]{1,32}$/u;
 
 export const UPDATE_CHECK_MS = 6 * 60 * 60 * 1000;
 export const CHANGELOG_URL =

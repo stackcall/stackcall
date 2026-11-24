@@ -14,25 +14,26 @@ beforeEach(() => {
   globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as never;
 });
 
-test('login prefills the server, validates the name and posts the token request', async () => {
-  const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ url: 'wss://x/rtc', token: 't' })));
+test('login validates the name and sends the invite only to the configured server', async () => {
+  localStorage.setItem('stackcall.servidor', 'https://example.test');
+  const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ url: 'wss://x/rtc', token: 't', screen_token: 's' })));
   const onEnter = vi.fn();
   render(<Login onEnter={onEnter} onSettings={() => undefined} />);
-  expect(screen.getByLabelText('Servidor')).toHaveValue('https://stackcall.80-190-79-129.sslip.io');
+  expect(screen.queryByLabelText('Servidor')).not.toBeInTheDocument();
 
-  await userEvent.type(screen.getByLabelText('Nome'), 'João');
+  await userEvent.type(screen.getByLabelText('Nome'), 'João:tela');
   await userEvent.type(screen.getByLabelText('Convite'), 'segredo');
   await userEvent.click(screen.getByRole('button', { name: 'Entrar' }));
-  expect(screen.getByRole('alert')).toHaveTextContent('sem acento');
+  expect(screen.getByRole('alert')).toHaveTextContent('sem dois-pontos');
   expect(fetchMock).not.toHaveBeenCalled();
 
   await userEvent.clear(screen.getByLabelText('Nome'));
-  await userEvent.type(screen.getByLabelText('Nome'), 'Joao');
+  await userEvent.type(screen.getByLabelText('Nome'), 'João Silva');
   await userEvent.click(screen.getByRole('button', { name: 'Entrar' }));
-  expect(fetchMock).toHaveBeenCalledWith('https://stackcall.80-190-79-129.sslip.io/api/token', expect.objectContaining({ method: 'POST' }));
-  expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({ convite: 'segredo', nome: 'Joao', sala: 'geral' });
-  expect(onEnter).toHaveBeenCalledWith({ server: 'https://stackcall.80-190-79-129.sslip.io', name: 'Joao', invite: 'segredo' });
-  expect(localStorage.getItem('stackcall.nome')).toBe('Joao');
+  expect(fetchMock).toHaveBeenCalledWith('https://stackcall.80-190-79-129.sslip.io/api/token', expect.objectContaining({ method: 'POST', redirect: 'error' }));
+  expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({ convite: 'segredo', nome: 'João Silva', sala: 'geral' });
+  expect(onEnter).toHaveBeenCalledWith({ server: 'https://stackcall.80-190-79-129.sslip.io', name: 'João Silva', invite: 'segredo' });
+  expect(localStorage.getItem('stackcall.nome')).toBe('João Silva');
   expect(JSON.stringify(localStorage)).not.toContain('segredo');
 });
 
