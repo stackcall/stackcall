@@ -30,6 +30,7 @@ services:
       LIVEKIT_PUBLIC_URL: ${LIVEKIT_PUBLIC_URL:?configure LIVEKIT_PUBLIC_URL}
       STACKCALL_CONVITE_DEV: ${STACKCALL_CONVITE_DEV:?configure STACKCALL_CONVITE_DEV}
       SALAS_PERMITIDAS: ${SALAS_PERMITIDAS:-geral}
+      PORTEIRO_DB: /data/stackcall.sqlite3
       PORTEIRO_ADDR: ${PORTEIRO_ADDR:-0.0.0.0:8100}
       PORTEIRO_TRUSTED_PROXY: ${PORTEIRO_TRUSTED_PROXY:-172.31.240.1}
     ports:
@@ -40,6 +41,8 @@ services:
     security_opt: ["no-new-privileges:true"]
     read_only: true
     pids_limit: 64
+    volumes:
+      - porteiro-data:/data
     mem_limit: 64m
     restart: unless-stopped
 
@@ -49,3 +52,6 @@ networks:
       config:
         - subnet: 172.31.240.0/29
           gateway: 172.31.240.1
+
+volumes:
+  porteiro-data:

@@ -1,3 +1,5 @@
+mod db;
+
 use axum::{
     Json, Router,
     body::Body,
@@ -45,6 +47,7 @@ struct Attempts {
 }
 
 struct Config {
+    _db: Mutex<rusqlite::Connection>,
     key: String,
     secret: String,
     url: String,
@@ -300,6 +303,10 @@ async fn main() -> std::io::Result<()> {
         "configure SALAS_PERMITIDAS"
     );
     let config = Arc::new(Config {
+        _db: Mutex::new(
+            db::open(env::var("PORTEIRO_DB").unwrap_or_else(|_| "stackcall.sqlite3".into()))
+                .map_err(std::io::Error::other)?,
+        ),
         key: required("LIVEKIT_API_KEY"),
         secret: required("LIVEKIT_API_SECRET"),
         url: required("LIVEKIT_PUBLIC_URL"),
@@ -344,6 +351,7 @@ mod tests {
 
     fn router() -> Router {
         app(Arc::new(Config {
+            _db: Mutex::new(db::open(":memory:").unwrap()),
             key: "test_key".into(),
             secret: "test_secret".into(),
             url: "wss://example.test/rtc".into(),
