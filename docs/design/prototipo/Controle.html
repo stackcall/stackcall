@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Sala de Controle: sala CS</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&amp;family=Barlow+Condensed:wght@500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0a0b0c}
+a{color:#b9a8ff}a:hover{color:#d8ceff}
+button{font:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; flex-direction: column; background: #0f1012; color: #d9dbe0; font-family: 'Barlow', system-ui, sans-serif; font-size: 14px; overflow: hidden">
+
+  <header style="height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 20px; padding: 0 20px; border-bottom: 1px solid #30333a; background: #131417">
+    <span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 20px; letter-spacing: 0.04em">STACKCALL</span>
+    <nav aria-label="Salas" style="display: flex; gap: 4px">
+      <sc-for list="{{rooms}}" as="r" hint-placeholder-count="4">
+        <a href="#" style="height: 34px; padding: 0 14px; display: flex; align-items: center; gap: 8px; border-radius: 6px; text-decoration: none; color: {{r.color}}; background: {{r.bg}}; border: 1px solid {{r.border}}; font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 15px; letter-spacing: 0.03em">{{r.name}}<span style="font-family: 'Barlow', sans-serif; font-weight: 500; font-size: 12px; color: #9ea2ab">{{r.count}}</span></a>
+      </sc-for>
+    </nav>
+    <div style="margin-left: auto; display: flex; align-items: center; gap: 16px; font-family: 'Barlow Condensed', sans-serif; font-size: 14px; letter-spacing: 0.04em; color: #9ea2ab">
+      <span>PING <b style="color: #d9dbe0">142 MS</b></span>
+      <span>UPLOAD <b style="color: #d9dbe0">100 MBPS</b></span>
+      <span style="width: 32px; height: 32px; border-radius: 50%; background: #c9bcff; color: #0f1012; font-family: 'Barlow', sans-serif; font-weight: 600; display: flex; align-items: center; justify-content: center">VC</span>
+    </div>
+  </header>
+
+  <div style="flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 0">
+    <main style="min-width: 0; padding: 16px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr) 150px; gap: 10px">
+      <div style="grid-column: span 3; position: relative; border-radius: 6px; overflow: hidden; border: 2px solid #7c5cff; background: repeating-linear-gradient(135deg, #1a1d22 0 22px, #181b20 22px 44px)">
+        <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #5d6470; font-family: 'Barlow Condensed', sans-serif; font-size: 16px; letter-spacing: 0.06em">[ TELA DO JOGO · CS2 ]</div>
+        <div style="position: absolute; left: 0; top: 0; display: flex">
+          <span style="background: #7c5cff; color: #0f1012; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0.08em; padding: 6px 12px">NO AR</span>
+          <span style="background: rgba(15,16,18,0.85); font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 14px; letter-spacing: 0.04em; padding: 6px 12px">RAFA · CS2</span>
+        </div>
+        <div style="position: absolute; right: 12px; top: 10px; font-family: 'Barlow Condensed', sans-serif; font-size: 14px; letter-spacing: 0.04em; color: #c5c8ce; background: rgba(15,16,18,0.85); padding: 4px 10px; border-radius: 4px">1080P60 · AV1 · 4,2 MBPS · 3 ASSISTINDO</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px; min-height: 0">
+        <sc-for list="{{side}}" as="s" hint-placeholder-count="3">
+          <div style="flex: 1; min-height: 0; position: relative; border-radius: 6px; border: 2px solid {{s.border}}; background: #17191c; display: flex; align-items: center; justify-content: center">
+            <span style="width: 56px; height: 56px; border-radius: 50%; background: {{s.bg}}; color: #0f1012; font-weight: 600; font-size: 18px; display: flex; align-items: center; justify-content: center">{{s.ini}}</span>
+            <span style="position: absolute; left: 8px; top: 6px; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 13px; color: #7d818a">{{s.num}}</span>
+            <span style="position: absolute; left: 8px; bottom: 6px; font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 14px; letter-spacing: 0.03em">{{s.name}}</span>
+            <span style="position: absolute; right: 8px; bottom: 6px; font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: 0.06em; color: {{s.tagColor}}">{{s.tag}}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="grid-column: span 4; border-radius: 6px; border: 1px solid #30333a; background: #131417; display: flex; align-items: stretch; padding: 12px; gap: 10px">
+        <sc-for list="{{strips}}" as="c" hint-placeholder-count="5">
+          <div style="flex: 1; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; padding: 8px 10px; border-radius: 6px; background: #17191c; border: 1px solid {{c.border}}">
+            <div style="display: flex; flex-direction: column-reverse; gap: 3px" aria-label="Nível de áudio de {{c.name}}">
+              <span style="height: 8px; background: {{c.l1}}"></span><span style="height: 8px; background: {{c.l2}}"></span><span style="height: 8px; background: {{c.l3}}"></span><span style="height: 8px; background: {{c.l4}}"></span><span style="height: 8px; background: {{c.l5}}"></span><span style="height: 8px; background: {{c.l6}}"></span><span style="height: 8px; background: {{c.l7}}"></span><span style="height: 8px; background: {{c.l8}}"></span>
+            </div>
+            <div style="display: flex; flex-direction: column; justify-content: space-between; min-width: 0">
+              <div style="display: flex; align-items: center; gap: 6px"><span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: 0.03em">{{c.name}}</span><span style="margin-left: auto; font-family: 'Barlow Condensed', sans-serif; font-size: 12px; letter-spacing: 0.05em; color: {{c.tagColor}}">{{c.tag}}</span></div>
+              <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #9ea2ab">Volume {{c.vol}}%<input type="range" value="{{c.vol}}" min="0" max="200" aria-label="Volume de {{c.name}}" style="width: 100%; accent-color: #7c5cff"></label>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </main>
+
+    <aside aria-label="Chat da sala" style="border-left: 1px solid #30333a; display: flex; flex-direction: column; background: #131417">
+      <div style="height: 44px; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid #30333a; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 15px; letter-spacing: 0.06em">CHAT · CS</div>
+      <div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 14px; padding: 16px">
+        <sc-for list="{{chat}}" as="m" hint-placeholder-count="5">
+          <div style="line-height: 1.45"><b style="color: {{m.color}}; font-weight: 600">{{m.who}}</b> <span style="color: #8a8e97; font-size: 12px">{{m.at}}</span><br><span style="color: #c9ccd2">{{m.text}}</span></div>
+        </sc-for>
+      </div>
+      <div style="padding: 12px; border-top: 1px solid #30333a">
+        <label for="msg2" style="position: absolute; left: -9999px">Mensagem</label>
+        <input id="msg2" placeholder="Mensagem para a sala" style="width: 100%; box-sizing: border-box; height: 42px; border-radius: 6px; border: 1px solid #30333a; background: #17191c; color: #d9dbe0; padding: 0 12px; font: inherit">
+      </div>
+    </aside>
+  </div>
+
+  <footer style="height: 72px; flex-shrink: 0; border-top: 1px solid #30333a; background: #131417; display: flex; align-items: center; gap: 10px; padding: 0 20px">
+    <button style="height: 44px; padding: 0 16px; border-radius: 6px; border: 1px solid #30333a; background: #1b1d21; color: #d9dbe0; font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 15px; letter-spacing: 0.05em">MIC ABERTO</button>
+    <button style="height: 44px; padding: 0 16px; border-radius: 6px; border: 1px solid #30333a; background: #1b1d21; color: #d9dbe0; font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 15px; letter-spacing: 0.05em">FONE</button>
+    <button style="height: 44px; padding: 0 16px; border-radius: 6px; border: 1px solid #30333a; background: #1b1d21; color: #d9dbe0; font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 15px; letter-spacing: 0.05em">CÂMERA</button>
+    <button style="margin-left: auto; height: 44px; padding: 0 22px; border-radius: 6px; border: 1px solid #7c5cff; background: #221b3d; color: #e2dbff; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: 0.08em">ENTRAR NO AR</button>
+    <button style="height: 44px; padding: 0 16px; border-radius: 6px; border: 1px solid #5a2a33; background: #24151a; color: #ffb3bd; font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 15px; letter-spacing: 0.05em">SAIR</button>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const lv = (n) => { const o = {}; for (let i = 1; i <= 8; i++) o['l' + i] = i <= n ? (i > 6 ? '#b9a8ff' : '#7c5cff') : '#2a2d33'; return o; };
+    const active = { color: '#e2dbff', bg: '#221b3d', border: '#7c5cff' };
+    const idle = { color: '#c5c8ce', bg: 'transparent', border: 'transparent' };
+    return {
+      rooms: [
+        { name: 'GERAL', count: '2', ...idle },
+        { name: 'CS', count: '5', ...active },
+        { name: 'FILME', count: '0', ...idle },
+        { name: 'MADRUGADA', count: '0', ...idle }
+      ],
+      side: [
+        { num: '02', ini: 'DU', name: 'DUDA', bg: '#b9e3d4', border: '#7c5cff', tag: 'FALANDO', tagColor: '#b9a8ff' },
+        { num: '03', ini: 'LE', name: 'LÉO', bg: '#f2d3a8', border: '#30333a', tag: '', tagColor: '#9ea2ab' },
+        { num: '04', ini: 'NA', name: 'NANDA', bg: '#c4d4f5', border: '#30333a', tag: 'MUDO', tagColor: '#9ea2ab' }
+      ],
+      strips: [
+        { name: 'RAFA', tag: 'NO AR', tagColor: '#b9a8ff', vol: 100, border: '#30333a', ...lv(5) },
+        { name: 'DUDA', tag: 'FALANDO', tagColor: '#b9a8ff', vol: 120, border: '#7c5cff', ...lv(7) },
+        { name: 'LÉO', tag: '', tagColor: '#9ea2ab', vol: 100, border: '#30333a', ...lv(0) },
+        { name: 'NANDA', tag: 'MUDO', tagColor: '#9ea2ab', vol: 80, border: '#30333a', ...lv(0) },
+        { name: 'JOGO (RAFA)', tag: 'SOM', tagColor: '#9ea2ab', vol: 80, border: '#30333a', ...lv(4) }
+      ],
+      chat: [
+        { who: 'Léo', at: '21:40', text: 'bora mais uma?', color: '#f2d3a8' },
+        { who: 'Duda', at: '21:41', text: 'rafa abre a tela aí pra gente ver o clutch', color: '#b9e3d4' },
+        { who: 'Rafa', at: '21:41', text: 'abri, tá em 1080p60', color: '#c9bcff' },
+        { who: 'Nanda', at: '21:43', text: 'tô sem mic, só ouvindo', color: '#c4d4f5' },
+        { who: 'Léo', at: '21:44', text: 'que round foi esse', color: '#f2d3a8' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
