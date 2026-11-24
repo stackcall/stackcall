@@ -5,11 +5,11 @@ import {
   Participant, RemoteParticipant, RemoteTrackPublication, Room, RoomEvent, Track,
   type DisconnectReason,
 } from 'livekit-client';
-import { interfaceAtiva } from '../lib/leveza';
+import { interfaceAtiva, useInterfaceAtiva } from '../lib/leveza';
 import type { Servidor } from '../lib/servidor';
 import { resolutionOf, type Codec, type Preset } from '../lib/presets';
 import { stopTransmission, type StreamEvent } from '../lib/sidecar';
-import type { ChatMessage, Person, RoomActions, RoomModel, Stream, StreamStats } from './model';
+import { horaDe, type ChatMessage, type Person, type RoomActions, type RoomModel, type Stream, type StreamStats } from './model';
 
 export type Session = { servidor: Servidor };
 
@@ -34,6 +34,7 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
   const [micError, setMicError] = useState<string>();
   const [streamError, setStreamError] = useState<string>();
   const [chat, setChat] = useState<ChatMessage[]>([]);
+  useInterfaceAtiva();
   const [ping, setPing] = useState<number | null>(null);
   const [stageStats, setStageStats] = useState<StreamStats | null>(null);
   const [deafened, setDeafened] = useState(false);
@@ -153,14 +154,15 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
         if (topic === 'chat' && typeof msg.text === 'string' && msg.text.trim()) {
           const text = msg.text.slice(0, 2000);
           const who = participant.name || participant.identity;
-          setChat((c) => [...c.slice(-MAX_CHAT + 1), { id: crypto.randomUUID(), who, at: new Date(), text, mine: false }]);
+          setChat((c) => [...c.slice(-MAX_CHAT + 1), { id: crypto.randomUUID(), who, hora: horaDe(new Date()), text, mine: false }]);
         } else if (topic === 'watch') {
           if (typeof msg.target === 'string') watchMap.current.set(participant.identity, msg.target);
           else watchMap.current.delete(participant.identity);
           rerender();
         }
       })
-      .on(RoomEvent.ActiveSpeakersChanged, rerender)
+      // Voice levels: nothing to draw while hidden; showing the window re-renders once (useInterfaceAtiva below).
+      .on(RoomEvent.ActiveSpeakersChanged, () => { if (interfaceAtiva()) rerender(); })
       .on(RoomEvent.TrackMuted, rerender)
       .on(RoomEvent.TrackUnmuted, rerender)
       .on(RoomEvent.LocalTrackPublished, rerender)
@@ -339,7 +341,7 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       if (!text || !lp) return;
       void lp.publishData(encoder.encode(JSON.stringify({ text })), { reliable: true, topic: 'chat' });
       const who = lp.name || lp.identity;
-      setChat((c) => [...c.slice(-MAX_CHAT + 1), { id: crypto.randomUUID(), who, at: new Date(), text, mine: true }]);
+      setChat((c) => [...c.slice(-MAX_CHAT + 1), { id: crypto.randomUUID(), who, hora: horaDe(new Date()), text, mine: true }]);
     },
     goLive: async (track: MediaStreamTrack, preset: Preset, codec: Codec) => {
       if (!lp) throw new Error('Sem conexão com a sala.');

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import * as Slider from '@radix-ui/react-slider';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { isTauri } from '@tauri-apps/api/core';
@@ -430,7 +430,17 @@ function Medidor({ level, ativo }: { level: number; ativo: boolean }) {
 
 const TEMA_CLASSE = { papel: '', noite: 'tema-noite', lima: 'tema-lima' } as const;
 
-function Canal({ person, perfil, onVolume, onCartao }: { person: Person; perfil?: Pessoa; onVolume(v: number): void; onCartao(): void }) {
+type CanalProps = { person: Person; perfil?: Pessoa; onVolume(v: number): void; onCartao(): void };
+const mesmaPessoa = (a: Person, b: Person) =>
+  a.id === b.id && a.name === b.name && a.level === b.level && a.speaking === b.speaking
+  && a.muted === b.muted && a.live === b.live && a.volume === b.volume;
+/**
+ * Memoized: a speaker event re-renders only the channels whose voice data changed.
+ * The callbacks are skipped on purpose; they only forward the person's id to stable actions.
+ */
+const Canal = memo(CanalView, (a: CanalProps, b: CanalProps) => mesmaPessoa(a.person, b.person) && a.perfil === b.perfil);
+
+function CanalView({ person, perfil, onVolume, onCartao }: CanalProps) {
   const ativa = useInterfaceAtiva();
   const pct = Math.round(person.volume * 100);
   const status = person.speaking ? 'falando' : person.muted ? 'mic desligado' : 'ouvindo';
@@ -479,7 +489,18 @@ function Lateral({ sala, model, pessoas, eu, onCartao, onAmigo }: {
   );
 }
 
-const hhmm = (d: Date) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+/** Memoized: a new message or a voice event does not redraw the messages already on screen. */
+const Mensagem = memo(function Mensagem({ m }: { m: ChatMessage }) {
+  return (
+    <>
+      <Avatar pessoa={{ nome: m.who, avatar: null }} tamanho={30} />
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="flex items-baseline gap-2"><b className="text-[14px]">{m.who}</b><span className="rotulo text-[10px]">{m.hora}</span></span>
+        <span className="text-[14px] leading-[1.45] break-words">{m.text}</span>
+      </div>
+    </>
+  );
+});
 
 function Conversa({ sala, chat, onSend }: { sala: string; chat: ChatMessage[]; onSend(text: string): void }) {
   const [text, setText] = useState('');
@@ -506,11 +527,8 @@ function Conversa({ sala, chat, onSend }: { sala: string; chat: ChatMessage[]; o
               return (
                 <div key={m.id} data-index={item.index} ref={v.measureElement} className="absolute left-0 grid w-full grid-cols-[30px_minmax(0,1fr)] gap-2.5 pb-3.5"
                   style={{ transform: `translateY(${item.start}px)` }}>
-                  <Avatar pessoa={{ nome: m.who, avatar: null }} tamanho={30} />
-                  <div className="flex min-w-0 flex-col gap-0.5">
-                    <span className="flex items-baseline gap-2"><b className="text-[14px]">{m.who}</b><span className="rotulo text-[10px]">{hhmm(m.at)}</span></span>
-                    <span className="text-[14px] leading-[1.45] break-words">{m.text}</span>
-                  </div>
+                  <Mensagem m={m} />
+
                 </div>
               );
             })}

@@ -34,7 +34,9 @@ export type Stream = {
 /** Real numbers of the watched screen, from WebRTC stats. */
 export type StreamStats = { height: number; fps: number; codec: string; mbps: number | null };
 
-export type ChatMessage = { id: string; who: string; at: Date; text: string; mine: boolean };
+/** `hora` is formatted once when the message arrives, never per render. */
+export type ChatMessage = { id: string; who: string; hora: string; text: string; mine: boolean };
+export const horaDe = (d: Date) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
 export type RoomModel = {
   room: string;

@@ -1,10 +1,9 @@
 import { useState } from 'react';
-import type { ChatMessage, Person, RoomActions, RoomModel } from './model';
+import { horaDe, type ChatMessage, type Person, type RoomActions, type RoomModel } from './model';
 
 const person = (id: string, name: string, p: Partial<Person>): Person => ({
   id, name, isLocal: false, speaking: false, muted: false, level: 0, volume: 1, live: false, ...p,
 });
-const at = (h: number, m: number) => new Date(2026, 10, 24, h, m);
 
 /** Fake room shaped like the approved "Console" prototype, for the fake server (dev and tests). */
 export function useDemoRoom(room: string, me: { id: string; name: string }): RoomModel & RoomActions {
@@ -13,11 +12,11 @@ export function useDemoRoom(room: string, me: { id: string; name: string }): Roo
   const [watching, setWatching] = useState(true);
   const [volumes, setVolumes] = useState<Record<string, number>>({ rafa: 0.8, duda: 0.72, leo: 0.64, nanda: 0.9 });
   const [chat, setChat] = useState<ChatMessage[]>([
-    { id: '1', who: 'Léo', at: at(21, 38), text: 'alguém viu meu headset no sofá?', mine: false },
-    { id: '2', who: 'Rafa', at: at(21, 40), text: 'liguei 1080p60, tá liso aí?', mine: false },
-    { id: '3', who: 'Nanda', at: at(21, 40), text: 'lisinho. dá pra ler o placar', mine: false },
-    { id: '4', who: 'Duda', at: at(21, 41), text: 'bora mais uma depois dessa?', mine: false },
-    { id: '5', who: me.name, at: at(21, 41), text: 'bora, entro de awp', mine: true },
+    { id: '1', who: 'Léo', hora: '21:38', text: 'alguém viu meu headset no sofá?', mine: false },
+    { id: '2', who: 'Rafa', hora: '21:40', text: 'liguei 1080p60, tá liso aí?', mine: false },
+    { id: '3', who: 'Nanda', hora: '21:40', text: 'lisinho. dá pra ler o placar', mine: false },
+    { id: '4', who: 'Duda', hora: '21:41', text: 'bora mais uma depois dessa?', mine: false },
+    { id: '5', who: me.name, hora: '21:41', text: 'bora, entro de awp', mine: true },
   ]);
   const empty = room !== 'cs';
   const people = [
@@ -39,7 +38,7 @@ export function useDemoRoom(room: string, me: { id: string; name: string }): Roo
     setVolume: (id, v) => setVolumes((s) => ({ ...s, [id]: v })),
     watch: () => setWatching(true),
     unwatch: () => setWatching(false),
-    sendChat: (text) => setChat((c) => [...c, { id: String(c.length + 1), who: me.name, at: new Date(), text, mine: true }]),
+    sendChat: (text) => setChat((c) => [...c, { id: String(c.length + 1), who: me.name, hora: horaDe(new Date()), text, mine: true }]),
     goLive: async () => undefined,
     stopLive: () => undefined,
   };
