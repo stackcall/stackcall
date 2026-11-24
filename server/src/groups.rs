@@ -140,13 +140,15 @@ async fn group(
             .and_then(|mut query| query.query_map([&id], Room::from_row)?.collect::<rusqlite::Result<Vec<_>>>())
             .map_err(db::internal)?;
         let members = conn.prepare(
-            "SELECT u.id, u.nome_exibicao, u.avatar_url, m.papel, m.entrou_em
+            "SELECT u.id, u.nome_exibicao, COALESCE('/media/' || u.avatar_hash || '.webp', u.avatar_url),
+                    m.papel, m.entrou_em, '/media/' || u.banner_hash || '.webp', u.bio, u.tema, u.cor_destaque
              FROM membros m JOIN usuarios u ON u.id = m.usuario_id
              WHERE m.grupo_id = ?1 ORDER BY m.entrou_em, u.id",
         ).and_then(|mut query| query.query_map([&id], |row| Ok(json!({
             "id": row.get::<_, String>(0)?, "nome_exibicao": row.get::<_, String>(1)?,
             "avatar_url": row.get::<_, Option<String>>(2)?, "papel": row.get::<_, String>(3)?,
-            "entrou_em": row.get::<_, i64>(4)?,
+            "entrou_em": row.get::<_, i64>(4)?, "banner_url": row.get::<_, Option<String>>(5)?,
+            "bio": row.get::<_, String>(6)?, "tema": row.get::<_, String>(7)?, "cor_destaque": row.get::<_, Option<String>>(8)?,
         })))?.collect::<rusqlite::Result<Vec<_>>>()).map_err(db::internal)?;
         let invites = conn.prepare(
             "SELECT id, criado_por, expira_em, usos_max, usos, revogado FROM convites

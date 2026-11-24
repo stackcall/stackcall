@@ -3,6 +3,7 @@ mod api_tests;
 mod auth;
 mod db;
 mod groups;
+mod profile;
 mod steam;
 
 use axum::{
@@ -54,6 +55,7 @@ struct Config {
     db: Mutex<rusqlite::Connection>,
     registration: auth::Registration,
     password_jobs: Arc<tokio::sync::Semaphore>,
+    image_jobs: Arc<tokio::sync::Semaphore>,
     key: String,
     secret: String,
     url: String,
@@ -224,6 +226,7 @@ fn app(config: Arc<Config>) -> Router {
         .merge(auth::routes())
         .merge(steam::routes())
         .merge(groups::routes())
+        .merge(profile::routes())
         .route(
             "/api/salas/{id}/token",
             post(token).route_layer(middleware::from_fn_with_state(config.clone(), limit_token)),
@@ -246,7 +249,13 @@ fn app(config: Arc<Config>) -> Router {
         .layer(
             CorsLayer::new()
                 .allow_origin(APP_ORIGINS.map(HeaderValue::from_static))
-                .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
+                .allow_methods([
+                    Method::GET,
+                    Method::POST,
+                    Method::PATCH,
+                    Method::PUT,
+                    Method::DELETE,
+                ])
                 .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]),
         )
         .with_state(config)
@@ -295,6 +304,7 @@ async fn main() -> std::io::Result<()> {
         registration: auth::Registration::parse(
             &env::var("MODO_CADASTRO").unwrap_or_else(|_| "convite".into()),
         ),
+        image_jobs: Arc::new(tokio::sync::Semaphore::new(1)),
         password_jobs: Arc::new(tokio::sync::Semaphore::new(2)),
         key: required("LIVEKIT_API_KEY"),
         secret: required("LIVEKIT_API_SECRET"),

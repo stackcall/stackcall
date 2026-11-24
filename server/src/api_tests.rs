@@ -18,6 +18,7 @@ pub(super) fn config(registration: auth::Registration) -> Arc<Config> {
         uploads: Mutex::default(),
         db: Mutex::new(db::open(":memory:").unwrap()),
         registration,
+        image_jobs: Arc::new(tokio::sync::Semaphore::new(1)),
         password_jobs: Arc::new(tokio::sync::Semaphore::new(2)),
     })
 }
@@ -400,4 +401,67 @@ async fn livekit_tokens_use_the_authenticated_user_and_room_ids() {
     );
     assert_eq!(screen.video.can_subscribe, Some(false));
     assert_eq!(screen.video.can_publish_data, Some(false));
+}
+
+#[tokio::test]
+async fn rejects_svg_disguised_as_png_and_oversized_images() {
+    let app = app(config(auth::Registration::Open));
+    let token = register(app.clone(), "Pessoa").await;
+    for (payload, expected) in [
+        (
+            b"<svg xmlns='http://www.w3.org/2000/svg'/>".to_vec(),
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+        ),
+        (vec![0; 1024 * 1024 + 1], StatusCode::PAYLOAD_TOO_LARGE),
+    ] {
+        let request = Request::put("/api/eu/avatar")
+            .header(header::CONTENT_TYPE, "image/png")
+            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .body(Body::from(payload))
+            .unwrap();
+        assert_eq!(
+            app.clone().oneshot(request).await.unwrap().status(),
+            expected
+        );
+    }
+}
+
+#[tokio::test]
+async fn stores_reencoded_webp_under_its_content_hash() {
+    let app = app(config(auth::Registration::Open));
+    let token = register(app.clone(), "Pessoa").await;
+    let mut source = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::new_rgba8(16, 16)
+        .write_to(&mut source, image::ImageFormat::Png)
+        .unwrap();
+    let request = Request::put("/api/eu/banner")
+        .header(header::CONTENT_TYPE, "application/octet-stream")
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .body(Body::from(source.into_inner()))
+        .unwrap();
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let profile: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+    let url = profile["banner_url"].as_str().unwrap();
+    let response = app
+        .oneshot(Request::get(url).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()[header::CONTENT_TYPE], "image/webp");
+    assert_eq!(
+        response.headers()[header::CACHE_CONTROL],
+        "public, max-age=31536000, immutable"
+    );
+    let webp = to_bytes(response.into_body(), 8192).await.unwrap();
+    assert_eq!(
+        image::guess_format(&webp).unwrap(),
+        image::ImageFormat::WebP
+    );
+    use sha2::{Digest, Sha256};
+    assert_eq!(
+        url,
+        format!("/media/{}.webp", auth::hex(&Sha256::digest(&webp)))
+    );
 }

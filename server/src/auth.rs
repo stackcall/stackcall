@@ -298,12 +298,16 @@ async fn me(State(config): State<Arc<Config>>, user: User) -> Result<Json<Value>
 
 pub fn user_json(conn: &Connection, id: &str) -> rusqlite::Result<Value> {
     conn.query_row(
-        "SELECT nome_exibicao, avatar_url, papel_instancia, steam_id, criado_em FROM usuarios WHERE id = ?1",
+        "SELECT nome_exibicao, COALESCE('/media/' || avatar_hash || '.webp', avatar_url),
+                papel_instancia, steam_id, criado_em, '/media/' || banner_hash || '.webp',
+                bio, tema, cor_destaque FROM usuarios WHERE id = ?1",
         [id],
         |row| Ok(json!({
             "id": id, "nome_exibicao": row.get::<_, String>(0)?,
             "avatar_url": row.get::<_, Option<String>>(1)?, "papel_instancia": row.get::<_, String>(2)?,
             "steam_id": row.get::<_, Option<String>>(3)?, "criado_em": row.get::<_, i64>(4)?,
+            "banner_url": row.get::<_, Option<String>>(5)?, "bio": row.get::<_, String>(6)?,
+            "tema": row.get::<_, String>(7)?, "cor_destaque": row.get::<_, Option<String>>(8)?,
         })),
     )
 }

@@ -8,6 +8,7 @@ use std::{path::Path, time::Duration};
 const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/001.sql"),
     include_str!("../migrations/002.sql"),
+    include_str!("../migrations/003.sql"),
 ];
 
 pub fn open(path: impl AsRef<Path>) -> rusqlite::Result<Connection> {
@@ -35,7 +36,7 @@ mod tests {
         let db = super::open(":memory:").unwrap();
         assert_eq!(
             db.query_row(
-                "SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'steam_%'",
+                "SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'steam_%' AND name != 'midias'",
                 [],
                 |row| row.get::<_, u32>(0)
             )

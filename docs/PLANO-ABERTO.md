@@ -79,6 +79,8 @@ Na primeira subida da v0.3 com SQLite vazio, o porteiro cria o grupo Galera com 
 - Rotas: `PATCH /api/eu/perfil`, `PUT /api/eu/avatar`, `PUT /api/eu/banner`, `GET /media/<hash>.webp`. Usuário só altera o próprio perfil.
 - Avatar com Steam: usa o da Steam até a pessoa enviar outro.
 
+`PATCH /api/eu/perfil` aceita `bio`, `tema` (`papel`, `noite` ou `lima`) e `cor_destaque` (`#RRGGBB` ou `null` para limpar). Os dois uploads recebem os bytes da imagem diretamente no corpo. As rotas de edição devolvem o perfil atualizado. Resolva os caminhos `/media/…` contra a origem da instância. O porteiro limita a entrada a 2048 pixels por lado e reduz a mídia para caber nas dimensões do perfil.
+
 ## Leve como regra (não pesar o jogo)
 
 O app compete com o CS pela máquina. Ele usa Tauri: interface no WebView2 que o Windows já tem (o Discord carrega um Chromium inteiro via Electron) e backend em Rust. Metas medidas em cada release:
