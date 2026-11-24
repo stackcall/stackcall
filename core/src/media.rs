@@ -38,7 +38,12 @@ macro_rules! dll {
                         let symbol = PCSTR(concat!(stringify!($name), "\0").as_ptr());
                         let address = unsafe { GetProcAddress(library, symbol) }
                             .ok_or_else(|| anyhow::anyhow!("{} has no {}", $dll, stringify!($name)))?;
-                        unsafe { std::mem::transmute::<_, unsafe extern "C" fn($($ty),*) $(-> $ret)?>(address) }
+                        unsafe {
+                            std::mem::transmute::<
+                                unsafe extern "system" fn() -> isize,
+                                unsafe extern "C" fn($($ty),*) $(-> $ret)?,
+                            >(address)
+                        }
                     },)*
                 };
                 // Keep each DLL loaded for the lifetime of its function table.
@@ -46,7 +51,8 @@ macro_rules! dll {
                 Ok(())
             }
 
-            $(pub unsafe fn $name($($arg: $ty),*) $(-> $ret)? {
+            $(#[allow(clippy::too_many_arguments)] // Match the FFmpeg function signature.
+            pub unsafe fn $name($($arg: $ty),*) $(-> $ret)? {
                 unsafe { (API.get().expect("FFmpeg DLL initialized").$name)($($arg),*) }
             })*
         }
