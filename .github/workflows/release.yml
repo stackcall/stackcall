@@ -1,0 +1,193 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      versao:
+        description: Versão do app (X.Y.Z ou X.Y.Z-teste.1) para testar a build
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Conferir segredos de release
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          $missing = @('TAURI_SIGNING_PRIVATE_KEY', 'TAURI_SIGNING_PRIVATE_KEY_PASSWORD', 'RELEASES_TOKEN') |
+            Where-Object { [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_)) }
+          if ($missing) {
+            throw "Cadastre os segredos do Stackcall no GitHub Actions: $($missing -join ', ')."
+          }
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: ${{ hashFiles('app/package-lock.json') != '' && 'npm' || '' }}
+          cache-dependency-path: app/package-lock.json
+
+      - name: Conferir versão do app
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.versao }}
+        run: |
+          $version = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
+            $env:INPUT_VERSION
+          } else {
+            $env:GITHUB_REF_NAME.Substring(1)
+          }
+          if (!$version) { throw 'Informe uma versão no formato X.Y.Z.' }
+          node scripts/versao.mjs --check $version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "tag=v$version" >> $env:GITHUB_OUTPUT
+
+      - name: Instalar git-cliff
+        env:
+          CLIFF_VERSION: '2.14.2'
+        run: |
+          $archive = "$env:RUNNER_TEMP/git-cliff.zip"
+          $url = "https://github.com/orhun/git-cliff/releases/download/v$env:CLIFF_VERSION/git-cliff-$env:CLIFF_VERSION-x86_64-pc-windows-msvc.zip"
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          Expand-Archive -LiteralPath $archive -DestinationPath $env:RUNNER_TEMP
+          "$env:RUNNER_TEMP/git-cliff-$env:CLIFF_VERSION" >> $env:GITHUB_PATH
+
+      - name: Gerar notas da versão
+        id: notes
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          $manualNotes = "docs/release-notes/$env:RELEASE_TAG.md"
+          if (Test-Path -LiteralPath $manualNotes -PathType Leaf) {
+            Copy-Item -LiteralPath $manualNotes -Destination release-notes.md
+          } else {
+            $range = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
+              @('--unreleased', '--tag', $env:RELEASE_TAG)
+            } else {
+              @('--current')
+            }
+            git-cliff --offline --use-branch-tags @range --strip header --output release-notes.md
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            if ([string]::IsNullOrWhiteSpace((Get-Content -LiteralPath release-notes.md -Raw))) {
+              'Sem mudanças listadas nesta versão.' | Set-Content -LiteralPath release-notes.md
+            }
+          }
+          $delimiter = [guid]::NewGuid().ToString()
+          "body<<$delimiter" >> $env:GITHUB_OUTPUT
+          Get-Content -LiteralPath release-notes.md -Raw >> $env:GITHUB_OUTPUT
+          $delimiter >> $env:GITHUB_OUTPUT
+
+      - name: Gerar histórico para o app
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          $tag = @()
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
+            $tag = @('--tag', $env:RELEASE_TAG)
+          }
+          git-cliff --offline --use-branch-tags @tag --context --output cliff-context.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/changelog-json.mjs cliff-context.json $env:RELEASE_TAG
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+
+      - run: npm ci
+        working-directory: app
+
+      - name: Compilar NSIS e preparar a release
+        id: tauri
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ github.event_name == 'push' && secrets.RELEASES_TOKEN || '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: app
+          args: --bundles nsis
+          owner: stackcall
+          repo: releases
+          releaseCommitish: main
+          tagName: ${{ github.event_name == 'push' && steps.version.outputs.tag || '' }}
+          releaseName: Stackcall ${{ steps.version.outputs.tag }}
+          releaseBody: ${{ steps.notes.outputs.body }}
+          releaseDraft: true
+          prerelease: ${{ contains(steps.version.outputs.tag, '-') }}
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
+          uploadWorkflowArtifacts: ${{ github.event_name == 'workflow_dispatch' }}
+
+      - name: Conferir instalador e assinatura
+        env:
+          ARTIFACT_PATHS: ${{ steps.tauri.outputs.artifactPaths }}
+        run: |
+          $paths = $env:ARTIFACT_PATHS | ConvertFrom-Json
+          $installer = @($paths | Where-Object { $_ -like '*_x64-setup.exe' })
+          if ($installer.Count -ne 1 -or "$($installer[0]).sig" -notin $paths) {
+            throw 'A build precisa gerar o instalador NSIS x64 com a assinatura do updater.'
+          }
+
+      - name: Validar manifesto e anexar changelog ao rascunho
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          RELEASE_ID: ${{ steps.tauri.outputs.releaseId }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          $release = gh api "repos/stackcall/releases/releases/$env:RELEASE_ID" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!$release.draft -or $release.tag_name -cne $env:RELEASE_TAG) {
+            throw 'O rascunho retornado pelo Tauri não corresponde à tag.'
+          }
+          $assets = @($release.assets | Where-Object state -EQ uploaded)
+          if ('latest.json' -notin $assets.name) {
+            throw 'O manifesto latest.json não foi anexado ao rascunho.'
+          }
+          $manifest = Get-Content -LiteralPath latest.json -Raw | ConvertFrom-Json
+          $platform = $manifest.platforms.'windows-x86_64'
+          $installer = @($assets | Where-Object name -Like '*_x64-setup.exe')
+          if ($manifest.version -cne $env:RELEASE_TAG.Substring(1) -or
+              !$platform.signature -or $installer.Count -ne 1 -or
+              $platform.url -notin @($installer[0].url, $installer[0].browser_download_url)) {
+            throw 'O manifesto precisa apontar para o instalador x64 assinado desta versão.'
+          }
+          $existing = $release.assets | Where-Object name -CEQ 'changelog.json'
+          if ($existing) {
+            gh api "repos/stackcall/releases/releases/assets/$($existing.id)" --method DELETE --silent
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          $uploadUrl = "https://uploads.github.com/repos/stackcall/releases/releases/$env:RELEASE_ID/assets?name=changelog.json"
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json' }
+          $asset = Invoke-RestMethod -Uri $uploadUrl -Method Post -Headers $headers `
+            -ContentType 'application/json' -InFile changelog.json
+          if ($asset.state -ne 'uploaded') { throw 'O changelog.json não foi anexado ao rascunho.' }
+
+      - name: Publicar o rascunho com as notas
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          RELEASE_ID: ${{ steps.tauri.outputs.releaseId }}
+          PRERELEASE: ${{ contains(steps.version.outputs.tag, '-') }}
+        run: |
+          $latest = if ($env:PRERELEASE -eq 'true') { 'false' } else { 'legacy' }
+          gh api "repos/stackcall/releases/releases/$env:RELEASE_ID" --method PATCH --silent `
+            -F draft=false -F "prerelease=$env:PRERELEASE" -f "make_latest=$latest" -F 'body=@release-notes.md'
