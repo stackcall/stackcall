@@ -1,20 +1,20 @@
 import { useEffect, useState } from 'react';
-import { CATEGORIES, formatDate, loadChangelog, type Version } from '../lib/changelog';
+import { CATEGORIES, countOf, formatDate, loadChangelog, type Version } from '../lib/changelog';
 import type { useUpdater } from '../lib/updater';
 import { updateButtonLabel } from '../components/UpdateBanner';
 
 type Updater = ReturnType<typeof useUpdater>;
 
 const CATEGORY_LABEL: Record<(typeof CATEGORIES)[number], [string, string]> = {
-  novidades: ['novidade', 'novidades'],
-  melhorias: ['melhoria', 'melhorias'],
-  correcoes: ['correção', 'correções'],
-  ajustes: ['ajuste', 'ajustes'],
+  Novidades: ['novidade', 'novidades'],
+  Melhorias: ['melhoria', 'melhorias'],
+  Correções: ['correção', 'correções'],
+  Ajustes: ['ajuste', 'ajustes'],
 };
 
 export function summarize(v: Version) {
   return CATEGORIES.flatMap((c) => {
-    const n = v.items.filter((i) => i.category === c).length;
+    const n = countOf(v, c);
     return n ? [`${n} ${CATEGORY_LABEL[c][n === 1 ? 0 : 1]}`] : [];
   }).join(', ');
 }

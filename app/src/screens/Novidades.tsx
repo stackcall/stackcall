@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { CATEGORIES, bundledChangelog, formatDate, loadChangelog, type Version } from '../lib/changelog';
+import { CATEGORIES, bundledChangelog, formatDate, loadChangelog, upperFirst, type Version } from '../lib/changelog';
 
 const GROUP: Record<(typeof CATEGORIES)[number], { title: string; label: string; one: string; dot: string; color: string }> = {
-  novidades: { title: 'NOVIDADES', label: 'novidades', one: 'novidade', dot: '#7c5cff', color: '#cbbdff' },
-  melhorias: { title: 'MELHORIAS', label: 'melhorias', one: 'melhoria', dot: '#7fb8a4', color: '#a9d6c6' },
-  correcoes: { title: 'CORREÇÕES', label: 'correções', one: 'correção', dot: '#d9a35b', color: '#e8c08c' },
-  ajustes: { title: 'AJUSTES', label: 'ajustes', one: 'ajuste', dot: '#8a8e97', color: '#b4b8c0' },
+  Novidades: { title: 'NOVIDADES', label: 'novidades', one: 'novidade', dot: '#7c5cff', color: '#cbbdff' },
+  Melhorias: { title: 'MELHORIAS', label: 'melhorias', one: 'melhoria', dot: '#7fb8a4', color: '#a9d6c6' },
+  Correções: { title: 'CORREÇÕES', label: 'correções', one: 'correção', dot: '#d9a35b', color: '#e8c08c' },
+  Ajustes: { title: 'AJUSTES', label: 'ajustes', one: 'ajuste', dot: '#8a8e97', color: '#b4b8c0' },
 };
 
 /** Notes for one version; `from` is the version before an update (shown once after updating). */
@@ -13,7 +13,7 @@ export function Novidades({ from, current, onClose, onHistory }: { from: string 
   const [versions, setVersions] = useState<Version[]>(bundledChangelog);
   useEffect(() => void loadChangelog().then(setVersions), []);
   const v = versions.find((x) => x.version === current) ?? versions[0];
-  const groups = v ? CATEGORIES.map((c) => ({ c, items: v.items.filter((i) => i.category === c) })).filter((g) => g.items.length) : [];
+  const groups = v ? CATEGORIES.flatMap((c) => v.categories.filter((g) => g.name === c).map((g) => ({ c, items: g.items }))) : [];
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Novidades" className="absolute inset-0 z-30 flex justify-center overflow-y-auto bg-bg text-[15px]">
@@ -40,10 +40,10 @@ export function Novidades({ from, current, onClose, onHistory }: { from: string 
               <span className="size-2.5 rounded-[2px]" style={{ background: GROUP[g.c].dot }} />
               {GROUP[g.c].title}
             </h2>
-            {g.items.map((i) => (
-              <div key={i.title} className="flex flex-col gap-1 rounded-[6px] border border-line bg-panel px-[18px] py-3.5">
-                <b className="font-semibold">{i.title}</b>
-                <span className="leading-normal text-[#b4b8c0]">{i.text}</span>
+            {g.items.map((i, n) => (
+              <div key={n} className="flex items-center gap-3 rounded-[6px] border border-line bg-panel px-[18px] py-3.5">
+                <span className="leading-normal">{upperFirst(i.message)}</span>
+                {i.breaking && <span className="label-caps ml-auto rounded bg-danger-bg px-2 py-0.5 text-[12px] text-danger-text">Exige atualizar</span>}
               </div>
             ))}
           </section>
