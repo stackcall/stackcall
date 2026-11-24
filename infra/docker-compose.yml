@@ -1,0 +1,41 @@
+services:
+  livekit:
+    # LiveKit Server v1.13.11
+    image: livekit/livekit-server@sha256:25cd902de7cacbd5f1f779f6a6ac1eae20ba8f56b0935934ce6b0ab80d1e3d20
+    command: ["--config", "/etc/livekit.yaml"]
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?configure LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET:?configure LIVEKIT_API_SECRET}"
+    volumes:
+      - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "127.0.0.1:7880:7880"
+      - "7881:7881/tcp"
+      - "7882:7882/udp"
+      - "3478:3478/udp"
+    mem_limit: 512m
+    restart: unless-stopped
+
+  porteiro:
+    # Imagem local, com bases fixadas por digest no Dockerfile.
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    environment:
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?configure LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?configure LIVEKIT_API_SECRET}
+      LIVEKIT_PUBLIC_URL: ${LIVEKIT_PUBLIC_URL:?configure LIVEKIT_PUBLIC_URL}
+      STACKCALL_CONVITE_DEV: ${STACKCALL_CONVITE_DEV:?configure STACKCALL_CONVITE_DEV}
+      PORTEIRO_ADDR: ${PORTEIRO_ADDR:-0.0.0.0:8100}
+    ports:
+      - "127.0.0.1:8100:8100"
+    networks:
+      - porteiro
+    mem_limit: 64m
+    restart: unless-stopped
+
+networks:
+  porteiro:
+    ipam:
+      config:
+        - subnet: 172.31.240.0/29
+          gateway: 172.31.240.1

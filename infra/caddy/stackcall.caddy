@@ -1,0 +1,36 @@
+stackcall.80-190-79-129.sslip.io {
+	tls {
+		issuer acme {
+			disable_http_challenge
+		}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+	}
+
+	handle /rtc* {
+		# O SDK acrescenta /rtc (ou /rtc/v1) a URL retornada pelo porteiro.
+		@sdk path /rtc/rtc /rtc/rtc/*
+		uri @sdk strip_prefix /rtc
+		reverse_proxy 127.0.0.1:7880
+	}
+
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8100 {
+			header_up X-Forwarded-For {http.request.remote.host}
+		}
+	}
+
+	handle_path /updates/* {
+		root * /srv/stackcall/updates
+		file_server
+	}
+
+	handle {
+		respond 404
+	}
+}
