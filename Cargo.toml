@@ -1,3 +1,5 @@
 [workspace]
 members = ["server"]
+# The Tauri app and the spikes keep their own Cargo.lock and stay out of the porteiro image.
+exclude = ["app/src-tauri", "spikes"]
 resolver = "2"

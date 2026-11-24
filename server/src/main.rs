@@ -1,7 +1,8 @@
 use axum::{
     Json, Router,
+    body::Body,
     extract::{ConnectInfo, DefaultBodyLimit, Request, State},
-    http::StatusCode,
+    http::{HeaderValue, Method, StatusCode, header},
     middleware::{self, Next},
     response::Response,
     routing::{get, post},
@@ -17,10 +18,20 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
+use futures_util::StreamExt;
 use subtle::ConstantTimeEq;
+use tower_http::cors::CorsLayer;
 
 const WINDOW: Duration = Duration::from_secs(60);
 const TOKEN_TTL: Duration = Duration::from_secs(3600);
+const TOKEN_LIMIT: u8 = 10;
+// The app's upload test sends a series of growing blocks for about 5 seconds.
+const UPLOAD_LIMIT: u8 = 60;
+const UPLOAD_MAX_BYTES: usize = 16 * 1024 * 1024;
+// Origins of the Tauri app on Windows (release and `tauri dev`).
+const APP_ORIGINS: [&str; 3] = ["http://tauri.localhost", "tauri://localhost", "http://127.0.0.1:1420"];
+
+type Attempts = Mutex<HashMap<IpAddr, (Instant, u8)>>;
 
 struct Config {
     key: String,
@@ -28,7 +39,8 @@ struct Config {
     url: String,
     invite_hash: [u8; 32],
     trusted_proxy: IpAddr,
-    attempts: Mutex<HashMap<IpAddr, (Instant, u8)>>,
+    attempts: Attempts,
+    uploads: Attempts,
 }
 
 #[derive(Deserialize)]
@@ -51,12 +63,7 @@ fn valid_label(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
-async fn limit_token(
-    State(config): State<Arc<Config>>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    request: Request,
-    next: Next,
-) -> Result<Response, StatusCode> {
+fn client_ip(config: &Config, peer: SocketAddr, request: &Request) -> Result<IpAddr, StatusCode> {
     let mut ip = peer.ip();
     if ip == config.trusted_proxy {
         // O Caddy substitui o cabecalho pelo IP da conexao.
@@ -68,27 +75,62 @@ async fn limit_token(
                 .ok_or(StatusCode::BAD_REQUEST)?;
         }
     }
+    Ok(ip)
+}
 
+fn allow(attempts: &Attempts, ip: IpAddr, max: u8) -> Result<(), StatusCode> {
+    let now = Instant::now();
+    let mut attempts = attempts.lock().expect("rate limiter lock");
+    if attempts
+        .get(&ip)
+        .is_none_or(|(start, _)| now.duration_since(*start) >= WINDOW)
     {
-        let now = Instant::now();
-        let mut attempts = config.attempts.lock().expect("rate limiter lock");
-        if attempts
-            .get(&ip)
-            .is_none_or(|(start, _)| now.duration_since(*start) >= WINDOW)
-        {
-            attempts.retain(|_, (start, _)| now.duration_since(*start) < WINDOW);
-            if attempts.len() >= 4096 {
-                return Err(StatusCode::TOO_MANY_REQUESTS);
-            }
-        }
-        let (_, count) = attempts.entry(ip).or_insert((now, 0));
-        if *count >= 10 {
+        attempts.retain(|_, (start, _)| now.duration_since(*start) < WINDOW);
+        if attempts.len() >= 4096 {
             return Err(StatusCode::TOO_MANY_REQUESTS);
         }
-        *count += 1;
     }
+    let (_, count) = attempts.entry(ip).or_insert((now, 0));
+    if *count >= max {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
+    }
+    *count += 1;
+    Ok(())
+}
 
+async fn limit_token(
+    State(config): State<Arc<Config>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    allow(&config.attempts, client_ip(&config, peer, &request)?, TOKEN_LIMIT)?;
     Ok(next.run(request).await)
+}
+
+async fn limit_upload(
+    State(config): State<Arc<Config>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    allow(&config.uploads, client_ip(&config, peer, &request)?, UPLOAD_LIMIT)?;
+    Ok(next.run(request).await)
+}
+
+/// Reads and discards the body, so the app can measure its upload speed.
+/// Streams instead of buffering: the container has 64 MB of memory.
+async fn upload_test(body: Body) -> Result<Json<serde_json::Value>, StatusCode> {
+    let start = Instant::now();
+    let mut bytes = 0usize;
+    let mut stream = body.into_data_stream();
+    while let Some(chunk) = stream.next().await {
+        bytes += chunk.map_err(|_| StatusCode::BAD_REQUEST)?.len();
+        if bytes > UPLOAD_MAX_BYTES {
+            return Err(StatusCode::PAYLOAD_TOO_LARGE);
+        }
+    }
+    Ok(Json(json!({"bytes": bytes, "ms": start.elapsed().as_millis() as u64})))
 }
 
 async fn token(
@@ -132,6 +174,10 @@ fn app(config: Arc<Config>) -> Router {
             "/api/token",
             post(token).route_layer(middleware::from_fn_with_state(config.clone(), limit_token)),
         )
+        .route(
+            "/api/upload-test",
+            post(upload_test).route_layer(middleware::from_fn_with_state(config.clone(), limit_upload)),
+        )
         .route("/api/rtt", get(|| async { StatusCode::NO_CONTENT }))
         .route(
             "/api/health",
@@ -142,6 +188,12 @@ fn app(config: Arc<Config>) -> Router {
             get(|| async { Json(json!({"versao_minima_app": "0.0.0"})) }),
         )
         .layer(DefaultBodyLimit::max(4096))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(APP_ORIGINS.map(HeaderValue::from_static))
+                .allow_methods([Method::GET, Method::POST])
+                .allow_headers([header::CONTENT_TYPE]),
+        )
         .with_state(config)
 }
 
@@ -167,6 +219,7 @@ async fn main() -> std::io::Result<()> {
             IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)
         },
         attempts: Mutex::default(),
+        uploads: Mutex::default(),
     });
     let listener = tokio::net::TcpListener::bind(address).await?;
     eprintln!("Porteiro ouvindo em {}", listener.local_addr()?);
@@ -195,6 +248,7 @@ mod tests {
             invite_hash: Sha256::digest(b"test_invite").into(),
             trusted_proxy: "127.0.0.1".parse().unwrap(),
             attempts: Mutex::default(),
+            uploads: Mutex::default(),
         }))
     }
 
@@ -251,6 +305,43 @@ mod tests {
         ] {
             let response = request(app.clone(), invite, name, "127.0.0.1:1234", "192.0.2.1").await;
             assert_eq!(response.status(), expected);
+        }
+    }
+
+    #[tokio::test]
+    async fn upload_test_discards_body_and_caps_size() {
+        for (size, expected) in [
+            (1024 * 1024, StatusCode::OK),
+            (UPLOAD_MAX_BYTES + 1, StatusCode::PAYLOAD_TOO_LARGE),
+        ] {
+            let mut request = Request::post("/api/upload-test")
+                .body(Body::from(vec![0u8; size]))
+                .unwrap();
+            request
+                .extensions_mut()
+                .insert(ConnectInfo("192.0.2.30:1234".parse::<SocketAddr>().unwrap()));
+            let response = router().oneshot(request).await.unwrap();
+            assert_eq!(response.status(), expected);
+            if expected == StatusCode::OK {
+                let body = to_bytes(response.into_body(), 4096).await.unwrap();
+                let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                assert_eq!(body["bytes"], size);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn answers_cors_preflight_for_the_app_only() {
+        for (origin, allowed) in [("http://tauri.localhost", true), ("https://evil.example", false)] {
+            let request = Request::options("/api/token")
+                .header("origin", origin)
+                .header("access-control-request-method", "POST")
+                .header("access-control-request-headers", "content-type")
+                .body(Body::empty())
+                .unwrap();
+            let response = router().oneshot(request).await.unwrap();
+            let header = response.headers().get("access-control-allow-origin");
+            assert_eq!(header.map(|h| h.to_str().unwrap()), allowed.then_some(origin));
         }
     }
 
