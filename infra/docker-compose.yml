@@ -12,6 +12,10 @@ services:
       - "7881:7881/tcp"
       - "7882:7882/udp"
       - "3478:3478/udp"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    pids_limit: 256
     mem_limit: 512m
     restart: unless-stopped
 
@@ -32,6 +36,10 @@ services:
       - "127.0.0.1:8100:8100"
     networks:
       - porteiro
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    pids_limit: 64
     mem_limit: 64m
     restart: unless-stopped
 
