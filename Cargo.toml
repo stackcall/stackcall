@@ -1,3 +1,5 @@
 [workspace]
 members = ["server", "core"]
+# The Tauri app and the spikes keep their own Cargo.lock (release.yml caches app/src-tauri on its own).
+exclude = ["app/src-tauri", "spikes"]
 resolver = "2"

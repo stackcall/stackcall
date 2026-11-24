@@ -2028,6 +2028,7 @@ name = "porteiro"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "futures-util",
  "livekit-api",
  "serde",
  "serde_json",
@@ -2035,6 +2036,7 @@ dependencies = [
  "subtle",
  "tokio",
  "tower",
+ "tower-http",
 ]
 
 [[package]]

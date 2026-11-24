@@ -1,0 +1,22 @@
+[
+  {
+    "version": "0.1.0",
+    "date": "2026-11-24",
+    "categories": [
+      {
+        "name": "Novidades",
+        "items": [
+          { "message": "salas de voz fixas: Geral, CS, Filme e Madrugada", "breaking": false },
+          { "message": "mesa de som com mudo, fone, indicador de quem fala e volume de 0 a 200% por pessoa", "breaking": false },
+          { "message": "entrar no ar com tela ou janela até 1080p 60; quem assiste clica em Assistir", "breaking": false },
+          { "message": "chat da sala, sem histórico", "breaking": false },
+          { "message": "atualização dentro do app, na hora ou ao sair da sala", "breaking": false }
+        ]
+      },
+      {
+        "name": "Ajustes",
+        "items": [{ "message": "som do jogo e 4K ficam para a v0.2, com o núcleo próprio", "breaking": false }]
+      }
+    ]
+  }
+]
