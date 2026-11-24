@@ -1,0 +1,113 @@
+# Núcleo Go Live
+
+Prova técnica Windows x64 para P2 (H.264), P3 (AV1) e P4 (áudio do jogo).
+O token da sala deve permitir publicação e trazer a identidade `<usuário>:tela`.
+
+## Compilar
+
+Instale Rust para `x86_64-pc-windows-msvc`, Visual Studio 2022 Build Tools com
+C++ e Windows SDK, e LLVM x64 com `libclang.dll`. O SDK LiveKit baixa o
+WebRTC pré-compilado durante o build. Use Windows 11 para as provas com áudio.
+O loopback por processo requer build 20348 ou posterior.
+
+Baixe o ZIP `ffmpeg-n9.0-latest-win64-lgpl-shared-9.0.zip` dos
+[releases do BtbN](https://github.com/BtbN/FFmpeg-Builds/releases/tag/latest).
+Extraia fora do repositório. O diretório indicado em `FFMPEG_DIR` deve
+conter `include`, `lib` e `bin`. A compilação usa as bibliotecas de importação
+MSVC. O WebRTC pré-compilado usa o runtime C++ estático. O FFmpeg
+continua vinculado por DLL. As chamadas importam explicitamente
+`avcodec-63.dll`, `avutil-61.dll` e `swscale-10.dll` para separar o FFmpeg
+LGPL dos símbolos internos do WebRTC. A pilha de 16 MiB evita o estouro observado ao gerar as bindings
+do FFmpeg com bindgen. Use um diretório de build curto para que o MSVC
+encontre os cabeçalhos aninhados do WebRTC. Para executar, mantenha o diretório `bin` no PATH ou coloque as DLLs
+dele ao lado de `stackcall-core.exe`.
+
+```powershell
+$env:FFMPEG_DIR = 'C:\deps\ffmpeg-n9.0-latest-win64-lgpl-shared-9.0'
+$env:LIBCLANG_PATH = 'C:\Program Files\LLVM\bin'
+$env:Path = "$env:FFMPEG_DIR\bin;$env:Path"
+$env:CARGO_TARGET_DIR = Join-Path $env:TEMP 'sc-target'
+$env:RUSTFLAGS = '-C target-feature=+crt-static -C link-arg=/STACK:16777216'
+cargo test --locked
+cargo build --locked --release
+$exe = Join-Path $env:CARGO_TARGET_DIR 'release\stackcall-core.exe'
+& $exe probe
+& $exe clock
+```
+
+Use os drivers atuais do fabricante. A opção `--cpu-path` faz a leitura da
+textura e a conversão BGRA → NV12 na CPU, mantendo a codificação no
+hardware. O caminho padrão usa o processador de vídeo D3D11 para converter e
+redimensionar a textura na GPU. Quick Sync tenta mapear as superfícies D3D11 para QSV.
+
+## Executar as provas
+
+Defina `$url` e `$token` na sessão com os dados da sala de teste. Use
+um JWT de curta duração. A passagem como argumento deixa o token visível
+a ferramentas locais que leem a linha de comando do processo.
+
+```powershell
+# P2
+& $exe publish --url $url --token $token --codec h264 --res 1080p --fps 60 --bitrate 6000 --source 'window:CS2'
+
+# P3
+& $exe publish --url $url --token $token --codec av1 --res 4k --fps 60 --bitrate 18000 --source monitor:0 --duration 600
+
+# P4
+& $exe publish --url $url --token $token --codec h264 --res 1080p --fps 60 --bitrate 6000 --source 'window:CS2' --audio-pid $gamePid
+```
+
+O índice de monitor começa em zero, `window:` usa o título exato e
+`pid:` seleciona a primeira janela capturável com esse PID.
+`--encoder auto` tenta NVENC, AMF e QSV em ordem. Use Ctrl+C para parar.
+
+Para medir atraso, abra `clock` e repita P2 com `--source 'window:Stackcall Clock'`.
+Abra a transmissão no LiveKit Meet e tire uma captura com os dois relógios
+lado a lado. Subtraia o horário da transmissão do horário da janela original.
+A prova P2 pede menos de 400 ms e CPU abaixo de 15% na RTX 5060. P3 pede
+10 minutos com até 1% de quadros perdidos. Em P4, confira a sincronia e
+mantenha a chamada em outro processo para verificar o isolamento.
+
+## JSON no stdout
+
+`probe` imprime um objeto com `adapters` e `trials`. Cada adaptador
+inclui `name`, `vendor_id` (decimal), `vendor`, `dedicated_bytes` e
+`shared_bytes`. Cada ensaio inclui `encoder`, `resolution`, `target_fps`
+e `ok`. O ensaio usa três segundos de quadros sintéticos NV12,
+processados sem espera entre quadros. Assim, `fps` mede a capacidade,
+inclusive acima da taxa nominal.
+
+```json
+{"encoder":"av1_qsv","resolution":"4k","target_fps":60,"ok":false,"error":"opening av1_qsv"}
+```
+
+Um ensaio bem-sucedido inclui `fps`, `encoded_frames`, `encode_ms_p50`
+e `encode_ms_p95`. Os percentis medem da submissão até a saída do pacote.
+
+`publish` imprime uma linha a cada cinco segundos.
+
+```json
+{"captured_fps":60.0,"encoded_fps":59.8,"dropped_frames":1,"encode_ms_p50":2.2,"encode_ms_p95":4.1,"bitrate_kbps":5800.0,"cpu_percent":11.0,"gpu_encoder_percent":34}
+```
+
+`captured_fps` conta callbacks WGC. `dropped_frames` conta intervalos
+da taxa solicitada sem quadro entre callbacks aceitos. A captura pode
+reduzir a cadência em conteúdo estático. `bitrate_kbps` mede o payload
+codificado, sem cabeçalhos de transporte. CPU é normalizada pelo número de núcleos lógicos disponíveis. A leitura NVML, quando disponível, mede o primeiro dispositivo
+NVIDIA e inclui outras sessões de codificação. Leituras indisponíveis
+e percentis sem amostras saem como `null`.
+
+## Pontos para validar em hardware
+
+O código-fonte do LiveKit 0.12.0 com libwebrtc 0.4.2 expõe
+`EncodedVideoCodec::H264` e `AV1` e aceita a publicação pelo backend
+`PreEncoded`. O áudio usa `NativeAudioSource` com PCM estéreo i16 a 48 kHz
+em blocos de 10 ms. A entrega, a latência, os formatos dos access units e a
+sincronia precisam das provas na sala. Uma mudança relevante de bitrate
+solicitada pelo SDK reabre o encoder e inicia com um keyframe. Meça o
+custo dessa transição junto com as perdas em P3.
+
+Em máquinas híbridas, o caminho na GPU exige que o dispositivo D3D11 da
+captura seja compatível com o encoder escolhido. Se necessário, selecione
+a GPU de alto desempenho nas configurações gráficas do Windows para o
+executável de teste.
