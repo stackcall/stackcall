@@ -5,7 +5,10 @@ use std::sync::Arc;
 use rusqlite::{Connection, TransactionBehavior};
 use std::{path::Path, time::Duration};
 
-const MIGRATIONS: &[&str] = &[include_str!("../migrations/001.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("../migrations/001.sql"),
+    include_str!("../migrations/002.sql"),
+];
 
 pub fn open(path: impl AsRef<Path>) -> rusqlite::Result<Connection> {
     let mut db = Connection::open(path)?;
@@ -32,7 +35,7 @@ mod tests {
         let db = super::open(":memory:").unwrap();
         assert_eq!(
             db.query_row(
-                "SELECT count(*) FROM sqlite_schema WHERE type = 'table'",
+                "SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'steam_%'",
                 [],
                 |row| row.get::<_, u32>(0)
             )

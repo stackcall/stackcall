@@ -8,6 +8,8 @@ use tower::ServiceExt;
 
 pub(super) fn config(registration: auth::Registration) -> Arc<Config> {
     Arc::new(Config {
+        public_url: "https://example.test/".parse().unwrap(),
+        steam: None,
         key: "test_key".into(),
         secret: "test_secret".into(),
         url: "wss://example.test/rtc".into(),

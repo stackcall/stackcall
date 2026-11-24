@@ -36,10 +36,10 @@ impl Registration {
         }
     }
 
-    pub fn ensure_allowed(self, code: Option<&str>) -> Result<(), StatusCode> {
+    pub fn ensure_allowed(self, has_code: bool) -> Result<(), StatusCode> {
         match self {
             Self::Closed => Err(StatusCode::FORBIDDEN),
-            Self::Invite if code.is_none() => Err(StatusCode::FORBIDDEN),
+            Self::Invite if !has_code => Err(StatusCode::FORBIDDEN),
             _ => Ok(()),
         }
     }
@@ -54,7 +54,7 @@ struct Credentials {
 }
 
 #[derive(Serialize)]
-struct Session {
+pub struct Session {
     sessao: String,
     expira_em: i64,
 }
@@ -138,7 +138,7 @@ pub fn first_user(conn: &Connection) -> rusqlite::Result<bool> {
     })
 }
 
-fn device(value: Option<String>) -> Result<Option<String>, StatusCode> {
+pub fn device(value: Option<String>) -> Result<Option<String>, StatusCode> {
     value
         .map(|name| {
             let name = name.trim();
@@ -150,7 +150,7 @@ fn device(value: Option<String>) -> Result<Option<String>, StatusCode> {
         .transpose()
 }
 
-fn issue_session(
+pub fn issue_session(
     tx: &Transaction<'_>,
     user_id: &str,
     device: Option<String>,
@@ -191,9 +191,7 @@ async fn register(
     if !valid_name(&name) || !(8..=256).contains(&input.senha.len()) {
         return Err(StatusCode::BAD_REQUEST);
     }
-    config
-        .registration
-        .ensure_allowed(input.codigo.as_deref())?;
+    config.registration.ensure_allowed(input.codigo.is_some())?;
     let device = device(input.nome_aparelho)?;
     let password = password_job(&config, move || {
         let salt = SaltString::encode_b64(&rand::random::<[u8; 16]>()).map_err(db::internal)?;
@@ -219,7 +217,8 @@ async fn register(
             params![user_id, name, login, password, role],
         ).map_err(db::internal)?;
         if let Some(code) = input.codigo {
-            let group = consume_invite(&tx, &code)?;
+            if !is_hex(&code, 32) { return Err(StatusCode::NOT_FOUND); }
+            let group = consume_invite(&tx, &hash(&code))?;
             add_member(&tx, &group, &user_id, "membro").map_err(db::internal)?;
         }
         let session = issue_session(&tx, &user_id, device).map_err(db::internal)?;
@@ -304,15 +303,12 @@ pub fn user_json(conn: &Connection, id: &str) -> rusqlite::Result<Value> {
     )
 }
 
-pub fn consume_invite(tx: &Transaction<'_>, code: &str) -> Result<String, StatusCode> {
-    if !is_hex(code, 32) {
-        return Err(StatusCode::NOT_FOUND);
-    }
+pub fn consume_invite(tx: &Transaction<'_>, code_hash: &[u8]) -> Result<String, StatusCode> {
     tx.query_row(
         "UPDATE convites SET usos = usos + 1
          WHERE codigo_hash = ?1 AND NOT revogado AND usos < usos_max AND expira_em > unixepoch()
          RETURNING grupo_id",
-        [hash(code)],
+        [code_hash],
         |row| row.get(0),
     )
     .optional()

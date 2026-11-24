@@ -2,6 +2,7 @@
 mod api_tests;
 mod auth;
 mod db;
+mod steam;
 
 use axum::{
     Json, Router,
@@ -50,6 +51,8 @@ struct Attempts {
 }
 
 struct Config {
+    public_url: url::Url,
+    steam: Option<steam::Steam>,
     db: Mutex<rusqlite::Connection>,
     registration: auth::Registration,
     password_jobs: Arc<tokio::sync::Semaphore>,
@@ -251,6 +254,7 @@ async fn token(
 fn app(config: Arc<Config>) -> Router {
     Router::new()
         .merge(auth::routes())
+        .merge(steam::routes())
         .route(
             "/api/token",
             post(token).route_layer(middleware::from_fn_with_state(config.clone(), limit_token)),
@@ -308,7 +312,33 @@ async fn main() -> std::io::Result<()> {
         rooms.iter().all(|room| valid_label(room)),
         "configure SALAS_PERMITIDAS"
     );
+    let public_url = url::Url::parse(
+        &env::var("INSTANCIA_URL").unwrap_or_else(|_| "http://localhost:8100".into()),
+    )
+    .map_err(std::io::Error::other)?;
+    assert!(
+        matches!(public_url.scheme(), "http" | "https")
+            && public_url.host().is_some()
+            && public_url.username().is_empty()
+            && public_url.password().is_none()
+            && public_url.path() == "/"
+            && public_url.query().is_none()
+            && public_url.fragment().is_none(),
+        "configure INSTANCIA_URL com a origem pública da instância"
+    );
+    let steam = (public_url.scheme() == "https")
+        .then(|| {
+            steam::Steam::new(
+                env::var("STEAM_API_KEY")
+                    .ok()
+                    .filter(|key| !key.trim().is_empty()),
+            )
+        })
+        .transpose()
+        .map_err(std::io::Error::other)?;
     let config = Arc::new(Config {
+        public_url,
+        steam,
         db: Mutex::new(
             db::open(env::var("PORTEIRO_DB").unwrap_or_else(|_| "stackcall.sqlite3".into()))
                 .map_err(std::io::Error::other)?,
