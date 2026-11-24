@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Stackcall",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "io.github.stackcall",
   "build": {
     "beforeDevCommand": "set \"PSModulePath=\" & powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/preparar-ffmpeg.ps1 && npm run dev",
@@ -28,9 +28,13 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "createUpdaterArtifacts": true,
-    "externalBin": ["sidecar/stackcall-core"],
+    "externalBin": [
+      "sidecar/stackcall-core"
+    ],
     "resources": {
       "sidecar/avcodec-63.dll": "avcodec-63.dll",
       "sidecar/avutil-61.dll": "avutil-61.dll",
@@ -47,14 +51,23 @@
       "icons/icon.ico"
     ],
     "windows": {
-      "nsis": { "installMode": "currentUser", "languages": ["PortugueseBR"] }
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "PortugueseBR"
+        ]
+      }
     }
   },
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVCRkQzRUM5MDc2MEZCNDIKUldSQysyQUh5VDc5VzIzeVN6Qm9CczlUUTQ5YThGU241bnBHNGVKekQ2ZDBmVmZ2K3IwN09HRFgK",
-      "endpoints": ["https://github.com/stackcall/releases/releases/latest/download/latest.json"],
-      "windows": { "installMode": "passive" }
+      "endpoints": [
+        "https://github.com/stackcall/releases/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }
