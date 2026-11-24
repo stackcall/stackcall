@@ -92,6 +92,8 @@ Migração do nosso servidor: na primeira subida da v0.3, o `CONVITE` antigo sai
 - Foto, banner, bio (160 caracteres), tema do perfil (**Papel**, **Noite**, **Lima**) e cor de destaque. O tema vale no cartão de perfil e no canal da pessoa na mesa.
 - O app recorta e reduz antes de enviar (foto 256×256, banner 1200×400, WebP). O porteiro aceita só PNG, JPEG ou WebP pelo conteúdo, recusa SVG, limita a 1 MB, regrava a imagem sem metadados e serve com cache longo e nome por hash. Cada pessoa só altera o próprio perfil.
 
+`PATCH /api/eu/perfil` aceita `bio`, `tema_perfil` (`papel`, `noite` ou `lima`) e `cor` (`#RRGGBB` ou `null` para limpar). Os uploads recebem a imagem no corpo. A API devolve o perfil atualizado com `avatar` e `banner` como caminhos relativos ao servidor. O porteiro aceita até 2048 pixels por lado e reduz a imagem para caber nas dimensões do perfil.
+
 ## Leve como regra (não pesar o jogo)
 
 O app compete com o CS pela máquina. Ele usa Tauri: interface no WebView2 que o Windows já tem (o Discord carrega um Chromium inteiro via Electron) e backend em Rust. Metas medidas em cada release:

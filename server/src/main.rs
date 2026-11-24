@@ -1,8 +1,11 @@
+#[cfg(test)]
+mod api_tests;
 mod auth;
 mod db;
 mod invites;
 mod livekit;
 mod people;
+mod profile;
 mod rooms;
 
 use axum::{
@@ -54,6 +57,7 @@ struct Config {
     invite_attempts: Mutex<Attempts>,
     api_attempts: Mutex<Attempts>,
     uploads: Mutex<Attempts>,
+    image_jobs: Arc<tokio::sync::Semaphore>,
 }
 
 fn valid_name(value: &str) -> bool {
@@ -198,6 +202,7 @@ fn app(config: Arc<Config>) -> Router {
         .merge(invites::routes())
         .merge(rooms::routes())
         .merge(people::routes())
+        .merge(profile::routes())
         .route(
             "/api/upload-test",
             post(upload_test)
@@ -311,6 +316,7 @@ async fn main() -> std::io::Result<()> {
         invite_attempts: Mutex::default(),
         api_attempts: Mutex::default(),
         uploads: Mutex::default(),
+        image_jobs: Arc::new(tokio::sync::Semaphore::new(1)),
     });
     eprintln!("Porteiro ouvindo em {}", listener.local_addr()?);
     axum::serve(

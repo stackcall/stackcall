@@ -48,7 +48,7 @@ services:
     pids_limit: 64
     volumes:
       - porteiro-data:/data
-    mem_limit: 64m
+    mem_limit: 96m
     restart: unless-stopped
 
 networks:

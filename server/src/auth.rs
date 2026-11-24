@@ -135,7 +135,8 @@ pub fn device(value: String) -> Result<String, StatusCode> {
     Ok(name.to_owned())
 }
 
-pub const PROFILE_FIELDS: &str = "id, nome, papel, criado_em";
+pub const PROFILE_FIELDS: &str = "id, nome, papel, criado_em,
+    '/media/' || avatar || '.webp', '/media/' || banner || '.webp', bio, tema_perfil, cor";
 
 #[derive(Serialize)]
 pub struct Profile {
@@ -143,6 +144,11 @@ pub struct Profile {
     nome: String,
     papel: String,
     criado_em: i64,
+    avatar: Option<String>,
+    banner: Option<String>,
+    bio: String,
+    tema_perfil: String,
+    cor: Option<String>,
 }
 
 impl Profile {
@@ -152,6 +158,11 @@ impl Profile {
             nome: row.get(1)?,
             papel: row.get(2)?,
             criado_em: row.get(3)?,
+            avatar: row.get(4)?,
+            banner: row.get(5)?,
+            bio: row.get(6)?,
+            tema_perfil: row.get(7)?,
+            cor: row.get(8)?,
         })
     }
 }
