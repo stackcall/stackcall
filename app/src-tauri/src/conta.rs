@@ -16,9 +16,9 @@ pub fn limpar_convite_antigo() {
     }
 }
 
-/// Origin of an instance (`https://host[:port]`). Plain http only on the local network (self-host `--local`).
-fn origem(instancia: &str) -> Result<String, String> {
-    let url = Url::parse(instancia.trim()).map_err(|_| "Endereço de servidor inválido.")?;
+/// Origin of a server (`https://host[:port]`). Plain http only on the local network (self-host `--local`).
+fn origem(servidor: &str) -> Result<String, String> {
+    let url = Url::parse(servidor.trim()).map_err(|_| "Endereço de servidor inválido.")?;
     if !url.username().is_empty() || url.password().is_some() {
         return Err("Endereço de servidor inválido.".into());
     }
@@ -62,13 +62,13 @@ fn apagar_sessao(origem: &str) {
 }
 
 #[tauri::command]
-pub fn sessao_existe(instancia: String) -> bool {
-    origem(&instancia).ok().and_then(|o| sessao(&o)).is_some()
+pub fn sessao_existe(servidor: String) -> bool {
+    origem(&servidor).ok().and_then(|o| sessao(&o)).is_some()
 }
 
 #[derive(Deserialize)]
 pub struct Chamada {
-    instancia: String,
+    servidor: String,
     metodo: String,
     rota: String,
     corpo: Option<Value>,
@@ -85,7 +85,7 @@ pub struct Resposta {
 
 #[tauri::command]
 pub async fn api(chamada: Chamada) -> Result<Resposta, String> {
-    let origem = origem(&chamada.instancia)?;
+    let origem = origem(&chamada.servidor)?;
     if !rota_valida(&chamada.rota) {
         return Err("Rota inválida.".into());
     }
@@ -127,13 +127,13 @@ pub async fn api(chamada: Chamada) -> Result<Resposta, String> {
     let bytes = response.bytes().await.map_err(|e| e.to_string())?;
     let mut corpo: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
 
-    // Login, signup and the Steam exchange return `sessao`: keep it in the vault, hide it from the WebView.
+    // Accepting an invite or a device link returns `sessao`: keep it in the vault, hide it from the WebView.
     if let Some(nova) = corpo.as_object_mut().and_then(|o| o.remove("sessao")) {
         if let (Some(nova), true) = (nova.as_str(), (200..300).contains(&status)) {
             entrada(&origem)?.set_password(nova).map_err(|e| e.to_string())?;
         }
     }
-    if chamada.rota == "/api/auth/sair" || (status == 401 && token.is_some()) {
+    if chamada.rota == "/api/sair" || (status == 401 && token.is_some()) {
         apagar_sessao(&origem);
     }
     Ok(Resposta { status, corpo })

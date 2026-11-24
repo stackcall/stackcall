@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
-import { measureUpload } from '../lib/api';
+import { medirUpload } from '../lib/servidor';
 import { store } from '../lib/config';
 import { checkPresets, pickCodec } from '../lib/encoder';
 import { evaluatePresets, gbPerHour, presetLabel, type Codec, type Encoding, type Preset, type PresetCard } from '../lib/presets';
@@ -17,7 +17,7 @@ type Props = {
   fallback?: boolean;
 };
 
-const fmt = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+const fmt = (n: number, d = 1) => n.toLocaleString('pt-BR', { maximumFractionDigits: d });
 const SURFACE: Record<string, string> = { monitor: 'tela inteira', window: 'janela', browser: 'aba' };
 
 export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart, onNativeStart, fallback }: Props) {
@@ -39,7 +39,7 @@ export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart, on
 
   const runUploadTest = async () => {
     setUpload('testing');
-    const mbps = demo ? 100 : await measureUpload(server);
+    const mbps = demo ? 100 : await medirUpload(server);
     if (mbps !== null) store.set('uploadMbps', String(Math.round(mbps)));
     setUpload(mbps);
   };
@@ -161,132 +161,147 @@ export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart, on
     }
   }
 
-  const hatch = 'repeating-linear-gradient(135deg, #1a1d22 0 22px, #181b20 22px 44px)';
+  const gpuLoad = chosen?.trial?.encoder_load_percent ?? null;
+  const fmtRes = (p: Preset) => (p.height === 2160 ? '4K' : `${p.height}p`);
   return (
-    <div role="dialog" aria-modal="true" aria-label="Entrar no ar" className="absolute inset-0 z-20 flex flex-col bg-bg">
-      <header className="flex h-14 shrink-0 items-center gap-4 border-b border-line bg-panel px-6">
-        <span className="font-cond text-[20px] font-bold tracking-[0.04em]">ENTRAR NO AR</span>
-        <span className="text-muted">sala {roomLabel} · {viewers} {viewers === 1 ? 'pessoa pode' : 'pessoas podem'} assistir</span>
-        <button type="button" disabled={busy} onClick={onCancel} className="ml-auto h-9 rounded-[6px] border border-line bg-transparent px-3.5 text-[#c5c8ce]">Cancelar</button>
-      </header>
-
-      <div className="grid min-h-0 flex-1 grid-cols-[420px_minmax(0,1fr)]">
-        <section aria-label="O que transmitir" className="flex flex-col gap-3.5 border-r border-line px-6 py-5">
-          <h2 className="label-caps m-0 text-[15px] text-muted">1 · O que transmitir</h2>
-          {native ? (
-            <div aria-label="Telas e janelas" className="grid max-h-[230px] grid-cols-2 gap-2 overflow-y-auto" aria-busy={!sources}>
-              {!sources && <span className="text-muted">Buscando telas e janelas…</span>}
-              {sources?.map((candidate) => (
-                <button key={candidate.id} type="button" disabled={busy} aria-pressed={source?.id === candidate.id}
-                  onClick={() => { setSource(candidate); setAudio(!!candidate.pid); }}
-                  className={`min-w-0 rounded-[6px] border-2 bg-surface p-2 text-left ${source?.id === candidate.id ? 'border-live' : 'border-line'}`}>
-                  {candidate.thumbnail && <img alt="" className="h-16 w-full object-contain"
-                    src={`data:image/png;base64,${candidate.thumbnail}`} />}
-                  <b title={candidate.title} className="block truncate text-text">{candidate.title}</b>
-                  <span className="block truncate text-[12px] text-muted">
-                    {candidate.process_name ?? `${candidate.width} × ${candidate.height}`}
-                  </span>
-                </button>
-              ))}
-            </div>
-          ) : <button type="button" onClick={pickSource} className={`flex flex-col items-start gap-0.5 rounded-[6px] border-2 bg-surface px-3 py-3 text-left text-text ${sourceName ? 'border-live' : 'border-line'}`}>
-            <b className="font-semibold">{sourceName ?? 'Escolher tela ou janela'}</b>
-            <span className="text-[12px] text-muted">{sourceName ? `${surface} · clique para trocar` : 'Abre o seletor do Windows'}</span>
-          </button>}
-          <label className="flex h-11 items-center gap-2.5 rounded-[6px] border border-line bg-panel px-3 text-muted">
-            <input type="checkbox" disabled={!native || !source?.pid || busy} checked={withAudio}
-              onChange={(event) => setAudio(event.currentTarget.checked)} className="size-[18px] accent-live" />
-            <span>Transmitir o som deste app</span>
-          </label>
-          {!demo && !native && <span className="text-[13px] text-muted">Modo de reserva WebView2. Escolha a tela ou janela para continuar.</span>}
-          <div className="relative mt-auto h-[200px] overflow-hidden rounded-[6px] border border-line" style={{ background: hatch }}>
-            <span className="label-caps absolute top-2 left-2.5 z-10 text-[13px] text-muted">Prévia</span>
-            {native && source?.thumbnail ? (
-              <img alt={source.title} className="size-full object-contain" src={`data:image/png;base64,${source.thumbnail}`} />
-            ) : stream ? (
-              <video ref={video} autoPlay muted playsInline className="size-full object-contain" />
-            ) : (
-              <span className="absolute inset-0 flex items-center justify-center font-cond tracking-[0.05em] text-[#5d6470]">
-                {sourceName ?? '[ nada escolhido ]'}
-              </span>
-            )}
-          </div>
-        </section>
-
-        <section aria-label="Qualidade" className="flex min-w-0 flex-col gap-3.5 overflow-y-auto px-6 py-5">
-          <div className="flex items-center gap-3">
-            <h2 className="label-caps m-0 text-[15px] text-muted">2 · Qualidade</h2>
-            <span className="ml-auto text-[13px] text-muted">
-              Teste da máquina:{' '}
-              <b className="font-semibold text-text">
-                {native && testing ? 'medindo GPU…' : `${codecLabel}${codec.hardware ? ' por hardware' : ''}`} · upload{' '}
-                {upload === 'testing' ? 'medindo…' : upload === null ? 'não medido' : `${fmt(upload)} Mbps`}
-              </b>
-            </span>
-            <button type="button" disabled={upload === 'testing' || testing || busy}
-              onClick={() => { void runUploadTest(); if (native) void runMachineTest(true); }}
-              className="h-8 rounded-[6px] border border-line bg-raised px-3 text-text">
-              Refazer teste
-            </button>
-          </div>
-          {upload === null && (
-            <p className="m-0 text-[13px] text-danger-text">O teste de upload não respondeu. {native && 'Refaça o teste para liberar os presets.'}</p>
-          )}
-
-          <div className="grid grid-cols-3 gap-3">
-            {cards.map((p) => {
-              const selected = p.id === chosen?.id;
-              const badge = p.locked ? 'BLOQUEADO' : selected ? 'ESCOLHIDO' : p.recommended ? 'RECOMENDADO' : 'DISPONÍVEL';
-              const mbps = p.mbps[codec.codec];
+    <div role="dialog" aria-modal="true" aria-label="Entrar no ar" className="absolute inset-0 z-20 grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-6 overflow-y-auto bg-fundo px-8 py-7">
+      <section aria-label="O que transmitir" className="flex min-w-0 flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <span className="rotulo">/ Sala {roomLabel} · {viewers} {viewers === 1 ? 'pessoa pode' : 'pessoas podem'} assistir</span>
+          <h1 className="text-[76px]">Entrar no ar</h1>
+        </div>
+        <p className="m-0 max-w-[56ch] text-texto-fraco">
+          Escolha o que mostrar e a qualidade. Os números vêm do teste que mediu sua placa de vídeo e sua internet.
+        </p>
+        <h2 className="rotulo m-0 font-mono text-[12px]">Fonte</h2>
+        {native ? (
+          <div aria-label="Telas e janelas" className="grid grid-cols-2 gap-3" aria-busy={!sources}>
+            {!sources && [0, 1, 2, 3].map((n) => <span key={n} className="skeleton h-[150px]" />)}
+            {sources?.map((candidate) => {
+              const on = source?.id === candidate.id;
               return (
-                <button key={p.id} type="button" disabled={p.locked} aria-pressed={selected} onClick={() => setPicked(p.id)}
-                  className={`flex min-h-[176px] flex-col gap-2.5 rounded-[6px] border-2 px-4 py-3.5 text-left text-text ${selected ? 'border-live bg-active' : 'border-line bg-[#15171a]'} ${p.locked ? 'opacity-60' : ''}`}>
-                  <span className="flex items-center gap-2">
-                    <b className="font-cond text-[26px] font-bold tracking-[0.02em]">{p.height === 2160 ? '4K' : `${p.height}p`}</b>
-                    <span className="font-cond text-[18px] font-semibold text-muted">{p.fps} FPS</span>
-                    <span className={`label-caps ml-auto rounded px-2 py-0.5 text-[12px] ${selected ? 'bg-live text-bg' : p.recommended ? 'bg-[#2a2347] text-[#cbbdff]' : p.locked ? 'bg-[#24272c] text-muted' : 'bg-[#1f2226] text-muted'}`}>{badge}</span>
+                <button key={candidate.id} type="button" disabled={busy} aria-pressed={on}
+                  onClick={() => { setSource(candidate); setAudio(!!candidate.pid); }}
+                  className={`flex min-w-0 flex-col border border-texto bg-superficie p-0 text-left active:translate-y-px ${on ? 'outline-[3px] -outline-offset-1 outline-destaque' : ''}`}>
+                  <span className="relative flex h-[104px] items-end border-b border-texto bg-palco p-2">
+                    {candidate.thumbnail && <img alt="" className="absolute inset-0 size-full object-contain" src={`data:image/png;base64,${candidate.thumbnail}`} />}
+                    <span className="rotulo relative text-[10px] text-[#b3b3ab]">{candidate.width}×{candidate.height}</span>
                   </span>
-                  {p.locked ? (
-                    <span className="text-[13px] leading-[1.45] text-[#c5c8ce]">{p.reason}</span>
-                  ) : (
-                    <>
-                      <span className="grid grid-cols-3 gap-2">
-                        <Stat label="Usa de upload" value={`${fmt(mbps)} Mbps`} />
-                        {p.trial ? <Stat label="Carga da GPU" value={`${fmt(p.trial.encoder_load_percent!)}%`} />
-                          : <Stat label="Codec" value={codecLabel} />}
-                        <Stat label="Por pessoa" value={`${fmt(gbPerHour(mbps))} GB/h`} />
-                      </span>
-                      <span className="text-[12px] text-muted">{p.note}</span>
-                    </>
-                  )}
+                  <span className="flex min-w-0 items-center gap-2 px-3 py-2.5">
+                    <b title={candidate.title} className="truncate text-[14px]">{candidate.title}</b>
+                    <span className="rotulo ml-auto shrink-0 text-[10px]">{candidate.pid ? 'janela' : 'monitor'}</span>
+                  </span>
                 </button>
               );
             })}
           </div>
-          <p className="m-0 text-[12px] text-faint">
-            "Por pessoa" é quanto cada amigo que assistir baixa por hora. {native && 'A carga da GPU é estimada pelo teste de codificação.'}
-          </p>
-          {error && <p role="alert" className="m-0 text-danger-text">{error}</p>}
-        </section>
-      </div>
+        ) : (
+          <button type="button" onClick={pickSource} className={`flex min-h-[120px] flex-col justify-end border border-texto bg-superficie p-0 text-left ${sourceName ? 'outline-[3px] -outline-offset-1 outline-destaque' : ''}`}>
+            <span className="relative flex flex-1 items-center justify-center bg-palco">
+              {stream ? <video ref={video} autoPlay muted playsInline className="max-h-[200px] w-full object-contain" />
+                : <span className="text-[13px] text-[#b3b3ab]">Abre o seletor do Windows</span>}
+            </span>
+            <span className="flex flex-col border-t border-texto px-3 py-2.5">
+              <b className="text-[14px]">{sourceName ?? 'Escolher tela ou janela'}</b>
+              <span className="text-[12px] text-texto-fraco">{sourceName ? `${surface} · clique para trocar` : 'Modo de reserva pelo WebView2'}</span>
+            </span>
+          </button>
+        )}
+        <div className="janela flex items-center gap-3.5 px-3.5 py-3">
+          <span className="flex flex-1 flex-col gap-0.5">
+            <b className="text-[14px]">Levar o som do jogo</b>
+            <span className="text-[13px] text-texto-fraco">
+              {native && source?.pid ? `Só o áudio de ${source.process_name ?? source.title}. Voz e música ficam fora.` : 'Disponível ao escolher uma janela de jogo.'}
+            </span>
+          </span>
+          <div className="abas" role="group" aria-label="Som do jogo">
+            <button type="button" aria-pressed={withAudio} disabled={!native || !source?.pid || busy} onClick={() => setAudio(true)}>Ligado</button>
+            <button type="button" aria-pressed={!withAudio} disabled={!native || !source?.pid || busy} onClick={() => setAudio(false)}>Desligado</button>
+          </div>
+        </div>
+        {!demo && !native && <p className="m-0 text-[13px] text-texto-fraco">Modo de reserva WebView2: até 1080p60, com mais bitrate para manter a nitidez.</p>}
+      </section>
 
-      <footer className="flex h-[76px] shrink-0 items-center gap-4 border-t border-line bg-panel px-6">
-        <span className="font-cond text-[15px] tracking-[0.04em] text-muted">
-          VAI AO AR: <b className="text-text">{[sourceName ?? 'escolha uma fonte', chosen && presetLabel(chosen), codecLabel].filter(Boolean).join(' · ')}</b> · {withAudio ? 'com' : 'sem'} som do app
-        </span>
-        <button type="button" disabled={busy || !chosen || (native ? !source || testing : !track && !demo)} onClick={() => void start()} className="btn btn-primary ml-auto h-12 px-7 text-[18px] disabled:opacity-50">
-          {busy ? 'Conectando…' : 'Entrar no ar'}
-        </button>
-      </footer>
+      <section aria-label="Qualidade" className="flex min-w-0 flex-col gap-4">
+        <div className="janela">
+          <div className="barra barra-lima">
+            Qualidade escolhida
+            <span className="ml-auto truncate font-medium">
+              upload {upload === 'testing' ? 'medindo…' : upload === null ? 'não medido' : `${fmt(upload)} Mb/s`} · {native && testing ? 'testando a placa…' : `${codecLabel}${codec.hardware ? ' por hardware' : ''}`}
+            </span>
+          </div>
+          {chosen ? (
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] items-end gap-6 px-5 py-4">
+              <div className="relative pr-6">
+                <b className="font-display tabular-nums block text-[120px] leading-[0.95]">{fmtRes(chosen)}</b>
+                <span className="font-pincel absolute right-0 bottom-1 -rotate-6 text-[30px] text-destaque">{chosen.fps} fps</span>
+              </div>
+              <div className="flex flex-col gap-2.5 pb-2.5">
+                <div className="grid grid-cols-3 border border-texto">
+                  <Stat label="upload" value={`${fmt(chosen.mbps[codec.codec])}`} unit="Mb/s" />
+                  <Stat label="placa" value={gpuLoad !== null ? `${fmt(gpuLoad, 0)}%` : codecLabel} />
+                  <Stat label="por pessoa/h" value={fmt(gbPerHour(chosen.mbps[codec.codec]))} unit="GB" />
+                </div>
+                {gpuLoad !== null && (
+                  <span className="flex h-2.5 gap-0.5" role="meter" aria-label="Carga da placa de vídeo" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(gpuLoad)}>
+                    {Array.from({ length: 20 }, (_, k) => (
+                      <i key={k} className={`flex-1 ${k < Math.round(gpuLoad / 5) ? (k >= 16 ? 'bg-destaque' : 'bg-texto') : 'bg-superficie-topo'}`} />
+                    ))}
+                  </span>
+                )}
+                <span className="text-[14px] text-texto-fraco">{chosen.note}</span>
+              </div>
+            </div>
+          ) : (
+            <p className="m-0 px-5 py-6 text-texto-fraco">{native && testing ? 'Testando a placa de vídeo…' : 'Nenhum preset disponível. Refaça o teste.'}</p>
+          )}
+        </div>
+
+        <div className="janela flex min-h-0 flex-col">
+          <div className="barra">
+            Presets
+            <button type="button" disabled={upload === 'testing' || testing || busy} className="ml-auto border-0 bg-transparent font-mono text-[11px] font-bold text-superficie uppercase underline disabled:opacity-50"
+              onClick={() => { void runUploadTest(); if (native) void runMachineTest(true); }}>Refazer teste</button>
+          </div>
+          <div role="radiogroup" aria-label="Qualidade" className="flex flex-col">
+            {native && testing && !trials && [0, 1, 2].map((n) => <span key={n} className="skeleton m-2 h-10" />)}
+            {cards.map((p) => {
+              const selected = p.id === chosen?.id;
+              const tag = p.locked ? 'travado' : selected ? 'escolhido' : p.recommended ? 'recomendado' : '';
+              return (
+                <button key={p.id} type="button" role="radio" aria-checked={selected} disabled={p.locked} onClick={() => setPicked(p.id)}
+                  className={`grid min-h-[54px] grid-cols-[90px_54px_minmax(0,1fr)_auto] items-center gap-3 border-0 border-t border-texto px-3.5 py-2 text-left first:border-t-0 ${selected ? 'bg-texto text-superficie' : 'bg-superficie hover:bg-superficie-alta disabled:hover:bg-superficie'} ${p.locked ? 'text-texto-fraco' : ''}`}>
+                  <b className={`font-display tabular-nums text-[26px] ${p.locked ? 'line-through' : ''}`}>{fmtRes(p)}</b>
+                  <span className={`rotulo ${selected ? 'text-superficie opacity-75' : ''}`}>{p.fps} fps</span>
+                  <span className="text-[13px] leading-snug">{p.locked ? p.reason : `${fmt(p.mbps[codec.codec])} Mb/s · ${fmt(gbPerHour(p.mbps[codec.codec]))} GB/h por pessoa${p.trial ? ` · placa ${fmt(p.trial.encoder_load_percent ?? 0, 0)}%` : ''}`}</span>
+                  <span className={`rotulo text-[10px] ${selected ? 'text-superficie opacity-75' : ''}`}>{tag}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        {upload === null && <p className="m-0 text-[13px] text-perigo">O teste de upload não respondeu. {native && 'Refaça o teste para liberar os presets.'}</p>}
+        {error && <p role="alert" className="m-0 text-perigo">{error}</p>}
+
+        <div className="mt-auto flex flex-wrap items-center gap-3">
+          <span className="text-[14px] text-texto-fraco">
+            Vai transmitir <b className="text-texto">{sourceName ?? 'nenhuma fonte'}</b>{chosen && <> em <b className="text-texto">{presetLabel(chosen)}</b></>}, {withAudio ? 'com' : 'sem'} som do jogo.
+          </span>
+          <button type="button" className="btn btn-lg ml-auto" disabled={busy} onClick={onCancel}>Cancelar</button>
+          <button type="button" className="btn btn-prim btn-lg" disabled={busy || !chosen || (native ? !source || testing : !track && !demo)} onClick={() => void start()}>
+            <span aria-hidden="true" className="size-2 bg-sobre-destaque" />{busy ? 'Conectando…' : 'Entrar no ar'}
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, unit }: { label: string; value: string; unit?: string }) {
   return (
-    <span className="flex flex-col gap-0.5">
-      <span className="text-[11px] text-muted">{label}</span>
-      <b className="text-[16px] font-semibold">{value}</b>
+    <span className="flex flex-col px-3 py-2 [&+&]:border-l [&+&]:border-texto">
+      <span className="rotulo text-[10px]">{label}</span>
+      <b className="font-display tabular-nums text-[30px] leading-none">{value}{unit && <span className="rotulo ml-1 text-[10px]">{unit}</span>}</b>
     </span>
   );
 }

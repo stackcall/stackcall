@@ -1,24 +1,12 @@
-export const DEFAULT_SERVER = 'https://stackcall.80-190-79-129.sslip.io';
-
-/** Fixed room shortcuts. The porteiro controls which ones are open. */
-export const ROOMS = [
-  { id: 'geral', label: 'Geral' },
-  { id: 'cs', label: 'CS' },
-  { id: 'filme', label: 'Filme' },
-  { id: 'madrugada', label: 'Madrugada' },
-] as const;
-export type RoomId = (typeof ROOMS)[number]['id'];
-
-/** Same rule as `valid_name` in the porteiro. */
-export const NAME_PATTERN = /^[^:\p{Cc}]{1,32}$/u;
-
 export const UPDATE_CHECK_MS = 6 * 60 * 60 * 1000;
 export const CHANGELOG_URL =
   'https://github.com/stackcall/releases/releases/latest/download/changelog.json';
 
-export const isDemo = () => new URLSearchParams(location.search).has('demo');
-/** Demo only: opens one screen directly (entrada, ar, config, novidades), for review and prints. */
-export const demoScreen = () => (isDemo() ? new URLSearchParams(location.search).get('tela') : null);
+/** Same rule as the porteiro: 1 to 32 characters, no colon (":tela" marks the screen participant). */
+export const NAME_PATTERN = /^[^:\p{Cc}]{1,32}$/u;
+
+/** Fake server only: opens one screen directly (entrada, ar, config, novidades, perfil), for review and prints. */
+export const demoScreen = () => new URLSearchParams(location.search).get('tela');
 
 const STORE = 'stackcall.';
 export const store = {

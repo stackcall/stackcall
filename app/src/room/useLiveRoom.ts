@@ -5,13 +5,13 @@ import {
   Participant, RemoteParticipant, RemoteTrackPublication, Room, RoomEvent, Track,
   type DisconnectReason,
 } from 'livekit-client';
-import { requestToken } from '../lib/api';
-import type { RoomId } from '../lib/config';
+import { interfaceAtiva } from '../lib/leveza';
+import type { Servidor } from '../lib/servidor';
 import { resolutionOf, type Codec, type Preset } from '../lib/presets';
 import { stopTransmission, type StreamEvent } from '../lib/sidecar';
-import type { ChatMessage, Person, RoomActions, RoomModel, Stream } from './model';
+import type { ChatMessage, Person, RoomActions, RoomModel, Stream, StreamStats } from './model';
 
-export type Session = { server: string; name: string; invite: string };
+export type Session = { servidor: Servidor };
 
 const SCREEN = [Track.Source.ScreenShare, Track.Source.ScreenShareAudio];
 const SCREEN_SUFFIX = ':tela';
@@ -24,7 +24,7 @@ const decoder = new TextDecoder();
 const MAX_CHAT = 200;
 const MIC_ERROR = 'Microfone indisponível. Confira a permissão do Windows e o dispositivo.';
 
-export function useLiveRoom(session: Session, roomId: RoomId): RoomModel & RoomActions {
+export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomActions {
   const roomRef = useRef<Room | null>(null);
   const screenAccess = useRef<{ url: string; token: string; expires: number } | null>(null);
   const [, setTick] = useState(0);
@@ -34,6 +34,8 @@ export function useLiveRoom(session: Session, roomId: RoomId): RoomModel & RoomA
   const [micError, setMicError] = useState<string>();
   const [streamError, setStreamError] = useState<string>();
   const [chat, setChat] = useState<ChatMessage[]>([]);
+  const [ping, setPing] = useState<number | null>(null);
+  const [stageStats, setStageStats] = useState<StreamStats | null>(null);
   const [deafened, setDeafened] = useState(false);
   const deafRef = useRef(false);
   const micBeforeDeafen = useRef(true);
@@ -176,7 +178,7 @@ export function useLiveRoom(session: Session, roomId: RoomId): RoomModel & RoomA
     (async () => {
       try {
         const requestedAt = Date.now();
-        const { url, token, screen_token } = await requestToken(session.server, session.invite, session.name, roomId);
+        const { url, token, screen_token } = await session.servidor.token(roomId);
         if (closed) return;
         await room.connect(url, token, { autoSubscribe: false });
         if (closed) return void room.disconnect();
@@ -201,11 +203,30 @@ export function useLiveRoom(session: Session, roomId: RoomId): RoomModel & RoomA
       }
     })();
 
-    const levels = setInterval(rerender, 150); // audio meters
+    // Real ping and stage numbers from WebRTC stats every 2 s, only while someone can see them.
+    let lastVideo: { bytes: number; at: number } | null = null;
+    const stats = setInterval(async () => {
+      if (!interfaceAtiva() || room.state !== 'connected') return;
+      const tracks = [
+        room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track,
+        ...[...room.remoteParticipants.values()].flatMap((p) => [...p.audioTrackPublications.values()].map((pub) => pub.track)),
+      ].filter((t) => !!t);
+      const audio = await tracks[0]?.getRTCStatsReport().catch(() => undefined);
+      setPing(audio ? rttOf(audio) : null);
+      const owner = watchingRef.current;
+      const screen = owner
+        ? [room.remoteParticipants.get(owner + SCREEN_SUFFIX), room.remoteParticipants.get(owner)]
+          .map((p) => p?.getTrackPublication(Track.Source.ScreenShare)?.videoTrack).find((t) => !!t)
+        : undefined;
+      const report = await screen?.getRTCStatsReport().catch(() => undefined);
+      const next = report ? videoOf(report, lastVideo) : null;
+      lastVideo = next ? { bytes: next.bytes, at: performance.now() } : null;
+      setStageStats(next);
+    }, 2000);
     return () => {
       closed = true;
       screenAccess.current = null;
-      clearInterval(levels);
+      clearInterval(stats);
       live.current?.track.stop();
       live.current = null;
       const publishing = native.current;
@@ -335,9 +356,10 @@ export function useLiveRoom(session: Session, roomId: RoomId): RoomModel & RoomA
         name: 'tela',
         videoCodec: codec,
         simulcast: true,
-        screenShareEncoding: { maxBitrate: preset.mbps[codec] * 1e6, maxFramerate: preset.fps },
+        // WebView2 fallback: keep the resolution sharp and give it more bitrate than the native encoder.
+        screenShareEncoding: { maxBitrate: preset.mbps[codec] * 1.5e6, maxFramerate: preset.fps },
         backupCodec: codec === 'av1' ? { codec: 'h264' } : false,
-        degradationPreference: 'maintain-framerate',
+        degradationPreference: 'maintain-resolution',
       });
       live.current = { track, info: streamInfo(preset, codec) };
       track.addEventListener('ended', () => actions.stopLive(), { once: true });
@@ -379,9 +401,35 @@ export function useLiveRoom(session: Session, roomId: RoomId): RoomModel & RoomA
   };
 
   return {
-    room: roomId, state, error, people, streams, chat, deafened, micError, streamError,
+    room: roomId, state, error, people, streams, chat, deafened, micError, streamError, ping, stageStats,
     micOn: !!lp?.isMicrophoneEnabled,
     cameraOn: !!lp?.isCameraEnabled,
     ...actions,
   };
+}
+
+/** Round trip of the selected ICE candidate pair, in ms. */
+function rttOf(report: RTCStatsReport) {
+  let rtt: number | null = null;
+  report.forEach((s) => {
+    if (s.type === 'candidate-pair' && (s.nominated || s.selected) && typeof s.currentRoundTripTime === 'number') {
+      rtt = Math.round(s.currentRoundTripTime * 1000);
+    }
+  });
+  return rtt;
+}
+
+/** Resolution, frame rate, codec and bitrate of the watched screen. */
+function videoOf(report: RTCStatsReport, last: { bytes: number; at: number } | null): (StreamStats & { bytes: number }) | null {
+  let found: (StreamStats & { bytes: number }) | null = null;
+  report.forEach((s) => {
+    if (s.type !== 'inbound-rtp' || s.kind !== 'video' || !s.frameHeight) return;
+    const codec = report.get(s.codecId)?.mimeType?.split('/')[1]?.toUpperCase() ?? '';
+    const mbps = last ? ((s.bytesReceived - last.bytes) * 8) / ((performance.now() - last.at) / 1000) / 1e6 : null;
+    found = {
+      height: s.frameHeight, fps: Math.round(s.framesPerSecond ?? 0),
+      codec: codec === 'H264' ? 'H.264' : codec, mbps: mbps !== null && mbps >= 0 ? mbps : null, bytes: s.bytesReceived,
+    };
+  });
+  return found;
 }
