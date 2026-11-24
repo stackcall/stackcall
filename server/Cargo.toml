@@ -1,0 +1,16 @@
+[package]
+name = "porteiro"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = "0.8"
+livekit-api = { version = "=0.11.0", default-features = false, features = ["access-token"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+subtle = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
