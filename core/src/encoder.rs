@@ -1,7 +1,9 @@
 use crate::cli::{Codec, Encoder, Resolution, bits_per_second};
 use crate::media::{self, Frame, Pixel, check};
 use anyhow::{Context, Result};
-use ffmpeg_next::ffi::{AV_PKT_FLAG_KEY, AVCodecContext, AVDictionary, AVPacket, AVRational};
+use ffmpeg_sys_next::{
+    AV_PKT_FLAG_KEY, AVCodecContext, AVDictionary, AVERROR, AVERROR_EOF, AVPacket, AVRational,
+};
 use std::{ffi::CString, ptr};
 
 pub const CANDIDATES: [&str; 6] = [
@@ -163,16 +165,11 @@ pub fn drain(encoder: &mut Session, mut consume: impl FnMut(&Packet) -> Result<(
     anyhow::ensure!(!packet.0.is_null(), "could not allocate FFmpeg packet");
     loop {
         let status = unsafe { media::avcodec_receive_packet(encoder.0, packet.0) };
-        match ffmpeg_next::Error::from(status) {
-            ffmpeg_next::Error::Eof => return Ok(()),
-            ffmpeg_next::Error::Other { errno } if errno == ffmpeg_next::error::EAGAIN => {
-                return Ok(());
-            }
-            _ => {
-                check(status)?;
-                consume(&packet)?;
-            }
+        if status == AVERROR_EOF || status == AVERROR(libc::EAGAIN) {
+            return Ok(());
         }
+        check(status)?;
+        consume(&packet)?;
     }
 }
 

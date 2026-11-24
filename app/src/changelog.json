@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.2.1",
+    "date": "2026-11-24",
+    "categories": [
+      {
+        "name": "Correções",
+        "items": [
+          { "message": "A transmissão pela placa de vídeo não abria por falta de um arquivo do FFmpeg", "breaking": false }
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.1.0",
     "date": "2026-11-24",
     "categories": [
