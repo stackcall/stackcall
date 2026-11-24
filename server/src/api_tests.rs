@@ -16,6 +16,8 @@ pub(super) fn config(registration: auth::Registration) -> Arc<Config> {
         url: "wss://example.test/rtc".into(),
         trusted_proxy: Some("127.0.0.1".parse().unwrap()),
         attempts: Mutex::default(),
+        password_attempts: Mutex::default(),
+        invite_auth_attempts: Mutex::default(),
         uploads: Mutex::default(),
         db: Mutex::new(db::open(":memory:").unwrap()),
         registration,
@@ -478,5 +480,133 @@ async fn instance_metadata_matches_the_registration_policy() {
             "nome": "Stackcall teste", "versao": "0.3.0", "modo_cadastro": "convite",
             "steam": false, "versao_minima_app": "0.3.0",
         })
+    );
+}
+
+#[tokio::test]
+async fn an_outsider_gets_404_for_group_room_invite_and_livekit_token() {
+    let app = app(config(auth::Registration::Open));
+    let owner = register(app.clone(), "Dono").await;
+    let outsider = register(app.clone(), "Visitante").await;
+    let group = create_group(app.clone(), &owner).await;
+    let room = create_room(app.clone(), &owner, &group).await;
+    let invite = create_invite(app.clone(), &owner, &group, 10).await;
+    let invite_id = invite["id"].as_str().unwrap();
+
+    for (method, uri) in [
+        (Method::GET, format!("/api/grupos/{group}")),
+        (Method::POST, format!("/api/grupos/{group}/salas")),
+        (Method::POST, format!("/api/grupos/{group}/convites")),
+        (Method::PATCH, format!("/api/salas/{room}")),
+        (Method::DELETE, format!("/api/salas/{room}")),
+        (Method::DELETE, format!("/api/convites/{invite_id}")),
+        (Method::POST, format!("/api/salas/{room}/token")),
+    ] {
+        assert_eq!(
+            send(
+                app.clone(),
+                method,
+                &uri,
+                Some(&outsider),
+                json!({"nome":"Outro"})
+            )
+            .await
+            .0,
+            StatusCode::NOT_FOUND,
+            "{uri}",
+        );
+    }
+    let code = invite["codigo"].as_str().unwrap();
+    assert_eq!(
+        send(
+            app.clone(),
+            Method::POST,
+            &format!("/api/convites/{code}/aceitar"),
+            Some(&outsider),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(
+            app.clone(),
+            Method::PATCH,
+            &format!("/api/salas/{room}"),
+            Some(&outsider),
+            json!({"nome":"Outro"})
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        send(
+            app,
+            Method::POST,
+            &format!("/api/salas/{room}/token"),
+            Some(&outsider),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+async fn applies_auth_and_invite_limits_per_ip_and_ipv6_prefix() {
+    let app = app(config(auth::Registration::Invite));
+    let request = |method: Method, uri: &str, ip: &str| {
+        let mut req = Request::builder()
+            .method(method)
+            .uri(uri)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header("x-forwarded-for", ip)
+            .body(Body::from("{}"))
+            .unwrap();
+        req.extensions_mut()
+            .insert(ConnectInfo("127.0.0.1:1234".parse::<SocketAddr>().unwrap()));
+        app.clone().oneshot(req)
+    };
+    for _ in 0..10 {
+        assert_eq!(
+            request(Method::POST, "/api/auth/cadastro", "2001:db8:1::1")
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+    }
+    assert_eq!(
+        request(Method::POST, "/api/auth/entrar", "2001:db8:1::2")
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert_eq!(
+        request(Method::POST, "/api/auth/entrar", "2001:db8:2::2")
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    for _ in 0..30 {
+        assert_eq!(
+            request(Method::GET, "/api/convites/invalido", "2001:db8:1::1")
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::NOT_FOUND
+        );
+    }
+    assert_eq!(
+        request(Method::GET, "/c/invalido", "2001:db8:1::2")
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::TOO_MANY_REQUESTS
     );
 }

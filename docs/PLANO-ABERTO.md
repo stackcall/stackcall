@@ -46,7 +46,7 @@ Autenticação por `Authorization: Bearer <sessao>`. Sessão de 30 dias, renovad
 | Método e rota | Faz |
 |---|---|
 | `GET /api/instancia` | Dados públicos da instância |
-| `GET /api/auth/steam/iniciar?retorno=stackcall` | Redireciona para a Steam |
+| `GET /api/auth/steam/iniciar?retorno=stackcall&desafio=…` | Redireciona para a Steam |
 | `GET /api/auth/steam/retorno` | Confere a assinatura OpenID com a Steam, cria ou acha o usuário e redireciona para `stackcall://login?sessao=<token-de-uso-unico>` |
 | `POST /api/auth/troca` | Troca o token de uso único (60 s) pela sessão. O token nunca fica na URL depois disso |
 | `POST /api/auth/cadastro` | nome + senha (+ código de convite se a instância exigir) |
@@ -69,7 +69,7 @@ Cadastro e entrada recebem JSON com `nome`, `senha` e `nome_aparelho` opcional. 
 
 Grupos e salas recebem `{nome}`. Salas também aceitam `ordem` e são editadas ou removidas em `/api/salas/:id`. A leitura do grupo retorna `salas`, `membros`, o `papel` de quem consulta e os metadados dos convites que pode revogar. Qualquer membro cria um convite em `/api/grupos/:id/convites` com `dias` e `usos_max` opcionais e recebe `{id, codigo, url, expira_em, usos_max}`. O autor, o dono e os admins do grupo podem revogar. A prévia retorna `{grupo, convidado_por}` e o aceite retorna `{grupo_id}`. Convites expirados, revogados ou esgotados retornam 404 com a mesma mensagem.
 
-Toda rota com `:id` confere se o usuário é membro do grupo dono do objeto (sem IDOR). Rate limit por IP (/64 no IPv6) nas rotas de auth e convite: 10/min em `entrar`/`cadastro`, 30/min no resto.
+Toda rota com `:id` confere se o usuário é membro do grupo dono do objeto (sem IDOR). Rate limit por IP (/64 no IPv6) nas rotas de auth e convite: 10/min compartilhados entre `entrar` e `cadastro`. As outras rotas de autenticação e convites (incluindo `/c/`) compartilham 30/min.
 
 Na primeira subida da v0.3 com SQLite vazio, o porteiro cria o grupo Galera com a sala Geral e registra no log um link de uso único válido por 30 dias. O primeiro usuário é admin da instância e dono do grupo. Em modo `fechado`, só o convite inicial pode criar essa primeira conta. Em modo `aberto`, se o primeiro cadastro não usar o convite inicial, ele é revogado na mesma transação. Os dois tokens da sala voltam como `{url, token, screen_token}`.
 

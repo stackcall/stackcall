@@ -41,7 +41,7 @@ struct Name {
 #[derive(Deserialize)]
 struct RoomInput {
     nome: Option<String>,
-    ordem: Option<i64>,
+    ordem: Option<u32>,
 }
 
 #[derive(Serialize)]
@@ -173,9 +173,6 @@ async fn create_room(
     Json(input): Json<RoomInput>,
 ) -> Result<(StatusCode, Json<Room>), StatusCode> {
     let name = name(input.nome.ok_or(StatusCode::BAD_REQUEST)?)?;
-    if input.ordem.is_some_and(|order| order < 0) {
-        return Err(StatusCode::BAD_REQUEST);
-    }
     db::run(config, move |conn| {
         manager(&group_role(conn, &group, &user)?)?;
         let room = conn.query_row(
@@ -194,7 +191,7 @@ async fn update_room(
     Json(input): Json<RoomInput>,
 ) -> Result<Json<Room>, StatusCode> {
     let name = input.nome.map(name).transpose()?;
-    if input.ordem.is_some_and(|order| order < 0) || (name.is_none() && input.ordem.is_none()) {
+    if name.is_none() && input.ordem.is_none() {
         return Err(StatusCode::BAD_REQUEST);
     }
     db::run(config, move |conn| {

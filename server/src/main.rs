@@ -63,6 +63,8 @@ struct Config {
     url: String,
     trusted_proxy: Option<IpAddr>,
     attempts: Mutex<Attempts>,
+    password_attempts: Mutex<Attempts>,
+    invite_auth_attempts: Mutex<Attempts>,
     uploads: Mutex<Attempts>,
 }
 
@@ -135,6 +137,43 @@ async fn limit_token(
         TOKEN_LIMIT,
     )?;
     Ok(next.run(request).await)
+}
+
+async fn api_policy(
+    State(config): State<Arc<Config>>,
+    request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let path = request.uri().path();
+    let bucket = if matches!(path, "/api/auth/entrar" | "/api/auth/cadastro") {
+        Some((&config.password_attempts, 10))
+    } else if path.starts_with("/api/auth/")
+        || path.starts_with("/api/convites/")
+        || path.starts_with("/c/")
+        || (path.starts_with("/api/grupos/") && path.ends_with("/convites"))
+    {
+        Some((&config.invite_auth_attempts, 30))
+    } else {
+        None
+    };
+    if let Some((bucket, limit)) = bucket
+        && request.method() != Method::OPTIONS
+    {
+        let peer = request
+            .extensions()
+            .get::<ConnectInfo<SocketAddr>>()
+            .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?
+            .0;
+        allow(bucket, client_ip(&config, peer, &request)?, limit)?;
+    }
+    let private = path.starts_with("/api/") || path.starts_with("/c/");
+    let mut response = next.run(request).await;
+    if private {
+        response
+            .headers_mut()
+            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    }
+    Ok(response)
 }
 
 async fn limit_upload(
@@ -259,6 +298,7 @@ fn app(config: Arc<Config>) -> Router {
             get(|| async { Json(json!({"versao_minima_app": MIN_APP_VERSION})) }),
         )
         .layer(DefaultBodyLimit::max(4096))
+        .layer(middleware::from_fn_with_state(config.clone(), api_policy))
         .layer(
             CorsLayer::new()
                 .allow_origin(APP_ORIGINS.map(HeaderValue::from_static))
@@ -333,6 +373,8 @@ async fn main() -> std::io::Result<()> {
                 .expect("configure PORTEIRO_TRUSTED_PROXY com um IP")
         }),
         attempts: Mutex::default(),
+        password_attempts: Mutex::default(),
+        invite_auth_attempts: Mutex::default(),
         uploads: Mutex::default(),
     };
     let listener = tokio::net::TcpListener::bind(address).await?;

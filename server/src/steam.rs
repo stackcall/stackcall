@@ -362,10 +362,19 @@ mod tests {
     use axum::{
         Form,
         body::Body,
+        extract::ConnectInfo,
         http::{Method, Request},
     };
     use serde_json::json;
+    use std::net::SocketAddr;
     use tower::ServiceExt;
+
+    fn with_client_ip(mut request: Request<Body>) -> Request<Body> {
+        request
+            .extensions_mut()
+            .insert(ConnectInfo("192.0.2.1:1234".parse::<SocketAddr>().unwrap()));
+        request
+    }
 
     #[tokio::test]
     async fn validates_steam_signature_and_exchanges_a_code_only_once() {
@@ -397,14 +406,14 @@ mod tests {
         let proof = auth::token();
         let response = app
             .clone()
-            .oneshot(
+            .oneshot(with_client_ip(
                 Request::get(format!(
                     "/api/auth/steam/iniciar?retorno=stackcall&desafio={}",
                     auth::hex(&auth::hash(&proof))
                 ))
                 .body(Body::empty())
                 .unwrap(),
-            )
+            ))
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::SEE_OTHER);
@@ -436,12 +445,12 @@ mod tests {
         let verify = |sig: &str| {
             let mut url = url.clone();
             url.query_pairs_mut().append_pair("openid.sig", sig);
-            app.clone().oneshot(
+            app.clone().oneshot(with_client_ip(
                 Request::get(format!("{}?{}", url.path(), url.query().unwrap()))
                     .header(header::COOKIE, &cookie)
                     .body(Body::empty())
                     .unwrap(),
-            )
+            ))
         };
         assert_eq!(
             verify("mock-invalid").await.unwrap().status(),
