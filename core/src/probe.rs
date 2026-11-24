@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, time::Instant};
+use std::{
+    collections::BTreeMap,
+    time::{Duration, Instant},
+};
 
 use crate::media::{Frame, Pixel};
 use anyhow::{Context, Result};
@@ -45,6 +48,7 @@ enum Outcome {
         encoded_frames: usize,
         encode_ms_p50: Option<f64>,
         encode_ms_p95: Option<f64>,
+        encoder_load_percent: f64,
     },
     Failure {
         error: String,
@@ -79,17 +83,20 @@ pub fn run(options: ProbeOptions) -> Result<Report> {
         .collect();
 
     let presets = [
-        (Resolution::P720, 30, 2000),
-        (Resolution::P1080, 60, 6000),
-        (Resolution::P1440, 60, 10000),
-        (Resolution::P4k, 60, 18000),
+        (Resolution::P720, 30, 2000, 1400),
+        (Resolution::P1080, 30, 4500, 3200),
+        (Resolution::P1080, 60, 7000, 4200),
+        (Resolution::P1440, 60, 10000, 7000),
+        (Resolution::P4k, 30, 15000, 10500),
+        (Resolution::P4k, 60, 25000, 18000),
     ];
     let trials = encoder::CANDIDATES
         .into_iter()
         .flat_map(|name| {
             presets
                 .into_iter()
-                .map(move |(resolution, target_fps, kbps)| {
+                .map(move |(resolution, target_fps, h264, av1)| {
+                    let kbps = if name.starts_with("av1_") { av1 } else { h264 };
                     let result = measure(name, resolution, target_fps, kbps, options.seconds);
                     Trial {
                         encoder: name,
@@ -109,7 +116,7 @@ pub fn run(options: ProbeOptions) -> Result<Report> {
 fn measure(name: &str, res: Resolution, fps: u32, kbps: u32, seconds: u32) -> Result<Outcome> {
     let mut session = encoder::open(name, res, fps, kbps, None)?;
     let (width, height) = res.dimensions();
-    let mut frames: Vec<_> = (0..8)
+    let mut frames: Vec<_> = (0..4)
         .map(|phase| {
             let mut frame = Frame::new(Pixel::AV_PIX_FMT_NV12, width, height)?;
             let stride = frame.stride(0);
@@ -118,12 +125,12 @@ fn measure(name: &str, res: Resolution, fps: u32, kbps: u32, seconds: u32) -> Re
                 .chunks_mut(stride)
                 .enumerate()
             {
-                for (x, pixel) in row.iter_mut().enumerate() {
-                    *pixel = if ((x + phase * 17) / 32 + y / 32) % 2 == 0 {
+                for (x, block) in row.chunks_mut(32).enumerate() {
+                    block.fill(if (x + y / 32 + phase).is_multiple_of(2) {
                         48
                     } else {
                         208
-                    };
+                    });
                 }
             }
             frame.plane_mut(1, height as usize / 2).fill(128);
@@ -143,6 +150,9 @@ fn measure(name: &str, res: Resolution, fps: u32, kbps: u32, seconds: u32) -> Re
         encoder::drain(&mut session, |packet| {
             record(packet, &mut pending, &mut latencies)
         })?;
+        if start.elapsed() >= Duration::from_millis(1500) {
+            break;
+        }
     }
     session.send_eof()?;
     encoder::drain(&mut session, |packet| {
@@ -159,6 +169,7 @@ fn measure(name: &str, res: Resolution, fps: u32, kbps: u32, seconds: u32) -> Re
         encoded_frames: latencies.len(),
         encode_ms_p50: p50,
         encode_ms_p95: p95,
+        encoder_load_percent: (100.0 * f64::from(fps) / achieved).min(100.0),
     })
 }
 

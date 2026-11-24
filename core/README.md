@@ -10,9 +10,9 @@ C++ e Windows SDK, e LLVM x64 com `libclang.dll`. O SDK LiveKit baixa o
 WebRTC pré-compilado durante o build. Use Windows 11 para as provas com áudio.
 O loopback por processo requer build 20348 ou posterior.
 
-Baixe o ZIP `ffmpeg-n9.0-latest-win64-lgpl-shared-9.0.zip` dos
-[releases do BtbN](https://github.com/BtbN/FFmpeg-Builds/releases/tag/latest).
-Extraia fora do repositório. O diretório indicado em `FFMPEG_DIR` deve
+Execute `scripts/preparar-ffmpeg.ps1 -OnlyDownload` na raiz do repositório
+para baixar, conferir o SHA-256 e configurar o FFmpeg LGPL fixado para a sessão.
+O diretório indicado em `FFMPEG_DIR` fica fora do repositório e deve
 conter `include`, `lib` e `bin`. A compilação usa as bibliotecas de importação
 MSVC. O WebRTC pré-compilado usa o runtime C++ estático. O FFmpeg
 continua vinculado por DLL. As chamadas importam explicitamente
@@ -23,15 +23,14 @@ encontre os cabeçalhos aninhados do WebRTC. Para executar, mantenha o diretóri
 dele ao lado de `stackcall-core.exe`.
 
 ```powershell
-$env:FFMPEG_DIR = 'C:\deps\ffmpeg-n9.0-latest-win64-lgpl-shared-9.0'
-$env:LIBCLANG_PATH = 'C:\Program Files\LLVM\bin'
-$env:Path = "$env:FFMPEG_DIR\bin;$env:Path"
+& ./scripts/preparar-ffmpeg.ps1 -OnlyDownload
 $env:CARGO_TARGET_DIR = Join-Path $env:TEMP 'sc-target'
 $env:RUSTFLAGS = '-C target-feature=+crt-static -C link-arg=/STACK:16777216'
 cargo test --locked
 cargo build --locked --release
 $exe = Join-Path $env:CARGO_TARGET_DIR 'release\stackcall-core.exe'
 & $exe probe
+& $exe sources
 & $exe clock
 ```
 
@@ -39,6 +38,7 @@ Use os drivers atuais do fabricante. A opção `--cpu-path` faz a leitura da
 textura e a conversão BGRA → NV12 na CPU, mantendo a codificação no
 hardware. O caminho padrão usa o processador de vídeo D3D11 para converter e
 redimensionar a textura na GPU. Quick Sync tenta mapear as superfícies D3D11 para QSV.
+Se a sessão D3D11 não abrir, o núcleo tenta a conversão na CPU com o mesmo codificador de hardware.
 
 ## Executar as provas
 
@@ -70,24 +70,40 @@ mantenha a chamada em outro processo para verificar o isolamento.
 
 ## JSON no stdout
 
+`sources` imprime um array de objetos com `id`, `title`, `process_name`,
+`pid`, `width`, `height` e `thumbnail`. Passe o `id` diretamente em
+`publish --source`. Monitores têm `process_name` e `pid` nulos. A miniatura
+é um PNG de até 320 × 320 px codificado em base64. O campo pode ser nulo
+quando o Windows não entrega um quadro para prévia.
+
 `probe` imprime um objeto com `adapters` e `trials`. Cada adaptador
 inclui `name`, `vendor_id` (decimal), `vendor`, `dedicated_bytes` e
 `shared_bytes`. Cada ensaio inclui `encoder`, `resolution`, `target_fps`
-e `ok`. O ensaio usa três segundos de quadros sintéticos NV12,
-processados sem espera entre quadros. Assim, `fps` mede a capacidade,
-inclusive acima da taxa nominal.
+e `ok`. O ensaio processa até cinco segundos de quadros sintéticos NV12
+sem espera entre quadros. Cada amostra tem um teto de 1,5 s de processamento
+antes de drenar o codificador. Assim, `fps` mede a capacidade inclusive
+acima da taxa nominal.
 
 ```json
 {"encoder":"av1_qsv","resolution":"4k","target_fps":60,"ok":false,"error":"opening av1_qsv"}
 ```
 
-Um ensaio bem-sucedido inclui `fps`, `encoded_frames`, `encode_ms_p50`
-e `encode_ms_p95`. Os percentis medem da submissão até a saída do pacote.
+Um ensaio bem-sucedido inclui `fps`, `encoded_frames`, `encode_ms_p50`,
+`encode_ms_p95` e `encoder_load_percent` (taxa nominal dividida pela taxa
+medida, em porcentagem, limitada a 100). Os percentis medem da submissão
+até a saída do pacote. O teste cobre os seis presets da seção 3.2 do plano.
 
-`publish` imprime uma linha a cada cinco segundos.
+`publish --control-stdin` aceita uma linha JSON por comando: `{"cmd":"stop"}`,
+`{"cmd":"bitrate","kbps":4500}` ou `{"cmd":"keyframe"}`. Passe o token como
+primeira linha do stdin antes dos comandos ou por `--token`.
+Fechar o stdin encerra a transmissão. Com essa opção, cada evento ocupa
+uma linha no stdout. `started` é emitido após o primeiro quadro codificado e
+inclui `encoder` e `cpu_path` (se a conversão ocorre na CPU). `stats` sai a cada dois segundos. O evento final é `stopped`
+ou `error` com `reason`. Sem `--control-stdin`, as estatísticas mantêm o
+formato original e o intervalo de cinco segundos.
 
 ```json
-{"captured_fps":60.0,"encoded_fps":59.8,"dropped_frames":1,"encode_ms_p50":2.2,"encode_ms_p95":4.1,"bitrate_kbps":5800.0,"cpu_percent":11.0,"gpu_encoder_percent":34}
+{"event":"stats","captured_fps":60.0,"encoded_fps":59.8,"dropped_frames":1,"encode_ms_p50":2.2,"encode_ms_p95":4.1,"bitrate_kbps":5800.0,"cpu_percent":11.0,"gpu_encoder_percent":34}
 ```
 
 `captured_fps` conta callbacks WGC. `dropped_frames` conta intervalos

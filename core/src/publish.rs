@@ -12,9 +12,14 @@ use livekit::{
         video_source::{RtcVideoSource, VideoResolution, native::NativeVideoSource},
     },
 };
+use serde::Deserialize;
 use std::{
     collections::BTreeMap,
-    sync::{Arc, Mutex},
+    io::{BufRead, Write},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicU32, Ordering},
+    },
     time::{Duration, Instant},
 };
 use windows_capture::{
@@ -32,6 +37,39 @@ struct Setup {
     args: Publish,
     source: NativeVideoSource,
     stats: Arc<Mutex<Stats>>,
+    requests: Arc<Requests>,
+}
+
+#[derive(Default)]
+struct Requests {
+    kbps: AtomicU32,
+    keyframe: AtomicBool,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "cmd", rename_all = "snake_case")]
+enum Command {
+    Stop,
+    Bitrate { kbps: u32 },
+    Keyframe,
+}
+
+fn stdin_commands() -> tokio::sync::mpsc::Receiver<Command> {
+    let (tx, rx) = tokio::sync::mpsc::channel(16);
+    std::thread::spawn(move || {
+        for line in std::io::stdin().lock().lines().map_while(Result::ok) {
+            match serde_json::from_str(&line) {
+                Ok(command) => {
+                    let stop = matches!(command, Command::Stop);
+                    if tx.blocking_send(command).is_err() || stop {
+                        break;
+                    }
+                }
+                Err(_) => eprintln!("Comando de transmissão inválido."),
+            }
+        }
+    });
+    rx
 }
 
 #[derive(Default)]
@@ -42,6 +80,8 @@ struct Stats {
     bytes: u64,
     latency: Vec<f64>,
     nvenc: bool,
+    encoder: Option<&'static str>,
+    cpu_path: bool,
 }
 
 struct Capture {
@@ -51,6 +91,7 @@ struct Capture {
     last_key_request: Option<i64>,
     last_slot: Option<u128>,
     kbps: u32,
+    limit_kbps: u32,
 }
 
 struct Session {
@@ -94,11 +135,26 @@ fn start_capture(setup: Setup) -> Result<Control> {
                 .context("no capturable window for this PID")?;
             start(window, setup)
         }
+        Source::WindowHandle { handle, pid } => {
+            let window = Window::from_raw_hwnd(*handle as *mut _);
+            ensure!(
+                window.is_valid() && window.process_id().ok() == Some(*pid),
+                "A janela escolhida foi fechada."
+            );
+            start(window, setup)
+        }
+        Source::MonitorHandle(handle) => {
+            let monitor = Monitor::enumerate()?
+                .into_iter()
+                .find(|monitor| monitor.as_raw_hmonitor() as usize == *handle)
+                .context("A tela escolhida foi desconectada.")?;
+            start(monitor, setup)
+        }
     }
 }
 
 pub async fn run(args: Publish) -> Result<()> {
-    media::init()?;
+    media::init().context("Não foi possível carregar o FFmpeg")?;
     let (width, height) = args.res.dimensions();
     let (codec, source) = (
         match args.codec {
@@ -109,7 +165,25 @@ pub async fn run(args: Publish) -> Result<()> {
     );
     let duration = args.duration.map(Duration::from_secs);
     let audio_pid = args.audio_pid;
-    let (room, mut events) = Room::connect(&args.url, &args.token, RoomOptions::default()).await?;
+    let controlled = args.control_stdin;
+    let token = match &args.token {
+        Some(token) => token.clone(),
+        None => {
+            let mut token = String::new();
+            std::io::stdin().read_line(&mut token)?;
+            ensure!(
+                !token.trim().is_empty(),
+                "O núcleo não recebeu o token de transmissão."
+            );
+            token.trim().to_owned()
+        }
+    };
+    let mut commands = controlled.then(stdin_commands);
+    let mut room_options = RoomOptions::default();
+    room_options.auto_subscribe = false;
+    let (room, mut events) = Room::connect(&args.url, &token, room_options)
+        .await
+        .context("Não foi possível conectar a transmissão à sala")?;
     let result = async {
         room.local_participant().publish_track(
             LocalTrack::Video(LocalVideoTrack::create_video_track("screen", RtcVideoSource::Native(source.clone()))),
@@ -122,13 +196,15 @@ pub async fn run(args: Publish) -> Result<()> {
                 simulcast: false,
                 ..Default::default()
             },
-        ).await?;
+        ).await.context("O servidor recusou a publicação da tela")?;
         let stats = Arc::new(Mutex::new(Stats::default()));
-        let control = start_capture(Setup { args, source, stats: stats.clone() })?;
+        let requests = Arc::new(Requests::default());
+        let control = start_capture(Setup { args, source, stats: stats.clone(), requests: requests.clone() })
+            .context("Não foi possível iniciar a captura")?;
         let mut audio = crate::audio::Worker::default();
         let result = async {
             if let Some(pid) = audio_pid {
-                audio.start(&room, pid).await?;
+                audio.start(&room, pid).await.context("Não foi possível capturar o som do app")?;
             }
             let start = Instant::now();
             let mut sample_start = start;
@@ -138,23 +214,56 @@ pub async fn run(args: Publish) -> Result<()> {
             let mut timer = tokio::time::interval(Duration::from_millis(100));
             let signal = tokio::signal::ctrl_c();
             tokio::pin!(signal);
+            let mut started = !controlled;
             loop {
                 tokio::select! {
                     result = &mut signal => { result?; break; }
+                    command = async {
+                        match commands.as_mut() {
+                            Some(rx) => rx.recv().await,
+                            None => std::future::pending().await,
+                        }
+                    } => match command {
+                        Some(Command::Stop) | None => break,
+                        Some(Command::Bitrate { kbps }) if (1..=100_000).contains(&kbps) => {
+                            requests.kbps.store(kbps, Ordering::Relaxed);
+                        }
+                        Some(Command::Keyframe) => { requests.keyframe.store(true, Ordering::Relaxed); }
+                        Some(Command::Bitrate { .. }) => eprintln!("Bitrate fora do intervalo de 1 a 100.000 kbps."),
+                    },
                     event = events.recv() => {
                         if matches!(event, None | Some(RoomEvent::Disconnected { .. })) {
-                            anyhow::bail!("LiveKit room disconnected");
+                            anyhow::bail!("A conexão com a sala caiu.");
                         }
                     }
                     _ = timer.tick() => {
-                        audio.check().await?;
-                        if control.is_finished() || duration.is_some_and(|limit| start.elapsed() >= limit) { break; }
+                        audio.check().await.context("A captura do som do app foi interrompida")?;
+                        if control.is_finished() {
+                            if controlled { anyhow::bail!("A captura foi encerrada pela janela ou pelo codificador."); }
+                            break;
+                        }
+                        if duration.is_some_and(|limit| start.elapsed() >= limit) { break; }
+                        if !started {
+                            let mut sample = stats.lock().unwrap();
+                            if sample.encoded > 0 {
+                                emit(serde_json::json!({"event": "started", "encoder": sample.encoder, "cpu_path": sample.cpu_path}));
+                                *sample = Stats { encoder: sample.encoder, nvenc: sample.nvenc, cpu_path: sample.cpu_path, ..Stats::default() };
+                                started = true;
+                                sample_start = Instant::now();
+                                cpu_start = process_ticks();
+                            } else {
+                                ensure!(start.elapsed() < Duration::from_secs(12), "A captura não enviou quadros. Confira se a janela está aberta e visível.");
+                                continue;
+                            }
+                        }
                         let elapsed = sample_start.elapsed().as_secs_f64();
-                        if elapsed >= 5.0 {
+                        if elapsed >= if controlled { 2.0 } else { 5.0 } {
                             let mut sample = {
                                 let mut guard = stats.lock().unwrap();
                                 let sample = std::mem::take(&mut *guard);
                                 guard.nvenc = sample.nvenc;
+                                guard.encoder = sample.encoder;
+                                guard.cpu_path = sample.cpu_path;
                                 sample
                             };
                             let (p50, p95) = encoder::percentiles(&mut sample.latency);
@@ -166,14 +275,18 @@ pub async fn run(args: Publish) -> Result<()> {
                             let cpu_percent = cpu.zip(cpu_start).map(|(now, last)| {
                                 (now.saturating_sub(last) as f64 / 100_000.0) / (elapsed * logical_cpus)
                             });
-                            println!("{}", serde_json::json!({
+                            let mut event = serde_json::json!({
                                 "captured_fps": sample.captured as f64 / elapsed,
                                 "encoded_fps": sample.encoded as f64 / elapsed,
                                 "dropped_frames": sample.dropped,
                                 "encode_ms_p50": p50, "encode_ms_p95": p95,
                                 "bitrate_kbps": sample.bytes as f64 * 0.008 / elapsed,
                                 "cpu_percent": cpu_percent, "gpu_encoder_percent": gpu,
-                            }));
+                            });
+                            if controlled {
+                                event["event"] = "stats".into();
+                            }
+                            emit(event);
                             cpu_start = cpu;
                             sample_start = Instant::now();
                         }
@@ -183,14 +296,20 @@ pub async fn run(args: Publish) -> Result<()> {
             Ok::<_, anyhow::Error>(())
         }.await;
         let capture_result = if control.is_finished() { control.wait() } else { control.stop() }
-            .map_err(|err| anyhow::anyhow!("{err:?}"));
+            .map_err(|err| anyhow::anyhow!("Falha na captura ou na codificação: {err:?}"));
         let audio_result = audio.stop().await;
-        result.and(capture_result).and(audio_result)
+        capture_result.and(result).and(audio_result)
     }.await;
     let close = room.close().await;
     result?;
-    close?;
+    close.context("Não foi possível encerrar a conexão com a sala")?;
     Ok(())
+}
+
+fn emit(event: serde_json::Value) {
+    let mut stdout = std::io::stdout().lock();
+    let _ = writeln!(stdout, "{event}");
+    let _ = stdout.flush();
 }
 
 fn process_ticks() -> Option<u64> {
@@ -230,6 +349,7 @@ impl GraphicsCaptureApiHandler for Capture {
             last_key_request: None,
             last_slot: None,
             kbps,
+            limit_kbps: kbps,
         })
     }
 
@@ -251,12 +371,20 @@ impl GraphicsCaptureApiHandler for Capture {
         }
         self.last_slot = Some(slot);
         let source = &self.setup.source;
-        let requested = source
-            .take_rate_control_request()
-            .map(|rate| (rate.target_bitrate_bps / 1000).clamp(1, u64::from(args.bitrate)) as u32);
-        let update =
-            requested.filter(|requested| requested.abs_diff(self.kbps) >= (self.kbps / 10).max(1));
+        let manual = self.setup.requests.kbps.swap(0, Ordering::Relaxed);
+        if manual != 0 {
+            self.limit_kbps = manual;
+        }
+        let requested = source.take_rate_control_request().map(|rate| {
+            (rate.target_bitrate_bps / 1000).clamp(1, u64::from(self.limit_kbps)) as u32
+        });
+        let update = if manual != 0 && manual != self.kbps {
+            Some(manual)
+        } else {
+            requested.filter(|requested| requested.abs_diff(self.kbps) >= (self.kbps / 10).max(1))
+        };
         let mut key = source.take_keyframe_request();
+        key |= self.setup.requests.keyframe.swap(false, Ordering::Relaxed);
         if self
             .session
             .as_ref()
@@ -270,19 +398,7 @@ impl GraphicsCaptureApiHandler for Capture {
             self.kbps = update.unwrap_or(self.kbps);
             let mut errors = Vec::new();
             for name in encoder::candidates(args.codec, args.encoder) {
-                let attempt = (|| {
-                    let (w, h) = args.res.dimensions();
-                    let gpu = if args.cpu_path {
-                        None
-                    } else {
-                        Some(gpu::Converter::new(
-                            frame,
-                            w,
-                            h,
-                            args.fps,
-                            name.ends_with("_qsv"),
-                        )?)
-                    };
+                let open = |gpu: Option<gpu::Converter>| {
                     let encoder = encoder::open(
                         name,
                         args.res,
@@ -297,7 +413,15 @@ impl GraphicsCaptureApiHandler for Capture {
                         input_size: dimensions,
                         pending: BTreeMap::new(),
                     })
-                })();
+                };
+                let attempt = if args.cpu_path {
+                    open(None)
+                } else {
+                    let (width, height) = args.res.dimensions();
+                    gpu::Converter::new(frame, width, height, args.fps, name.ends_with("_qsv"))
+                        .and_then(|converter| open(Some(converter)))
+                        .or_else(|error| open(None).with_context(|| format!("D3D11: {error:#}")))
+                };
                 match attempt {
                     Ok(session) => {
                         self.session = Some(session);
@@ -378,6 +502,8 @@ impl Capture {
             stats.bytes += payload.len() as u64;
             stats.latency.push(encode_ms);
             stats.nvenc = session.name.ends_with("_nvenc");
+            stats.encoder = Some(session.name);
+            stats.cpu_path = session.gpu.is_none();
             Ok(())
         })
     }
