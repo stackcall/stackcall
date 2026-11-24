@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    outputs:
+      windows_core: ${{ steps.core.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verificar mudanças no núcleo Windows
+        id: core
+        if: hashFiles('core/Cargo.toml') != ''
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [[ "$BASE_SHA" == 0000000000000000000000000000000000000000 ]]; then
+            BASE_SHA=$(git hash-object -t tree /dev/null)
+          fi
+          changed=$(git diff --name-only "$BASE_SHA" "$GITHUB_SHA" -- core/)
+          if [[ -n "$changed" ]]; then
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Conferir formatação e testar o workspace Rust
+        run: |
+          cargo fmt --all --check
+          members=$(cargo metadata --format-version 1 --no-deps)
+          core=$(jq -r --arg manifest "$GITHUB_WORKSPACE/core/Cargo.toml" \
+            '.packages[] | select(.manifest_path == $manifest) | .name' <<< "$members")
+          workspace=(--workspace)
+          if [[ -n "$core" ]]; then
+            workspace+=(--exclude "$core")
+          fi
+          cargo clippy "${workspace[@]}" -- -D warnings
+          cargo test "${workspace[@]}"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: ${{ hashFiles('app/package-lock.json') != '' && 'npm' || '' }}
+          cache-dependency-path: app/package-lock.json
+
+      - run: node scripts/versao.mjs --check
+
+      - name: Compilar e testar o frontend
+        if: hashFiles('app/package.json') != ''
+        working-directory: app
+        run: |
+          npm ci
+          npm run build
+          npm test
+
+  core-windows:
+    needs: checks
+    if: needs.checks.outputs.windows_core == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      - run: cargo fmt --manifest-path core/Cargo.toml --check
+      - run: cargo clippy --manifest-path core/Cargo.toml -- -D warnings
+      - run: cargo test --manifest-path core/Cargo.toml

@@ -1,0 +1,44 @@
+name: Sincronizar README de downloads
+
+on:
+  push:
+    branches: [main]
+    paths: [releases-repo/README.md]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-download-readme
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Atualizar README no repositório público
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo '::error::Cadastre o segredo RELEASES_TOKEN no GitHub Actions.'
+            exit 1
+          fi
+          readme=releases-repo/README.md
+          current=$(gh api 'repos/stackcall/releases/contents?ref=main' \
+            --jq '.[] | select(.name == "README.md") | .sha')
+          if [[ "$current" == "$(git hash-object "$readme")" ]]; then
+            exit 0
+          fi
+          fields=()
+          if [[ -n "$current" ]]; then
+            fields+=(-f "sha=$current")
+          fi
+          gh api repos/stackcall/releases/contents/README.md --method PUT --silent \
+            -f branch=main -f 'message=docs: update Stackcall download instructions' \
+            -f "content=$(base64 -w0 "$readme")" "${fields[@]}"
