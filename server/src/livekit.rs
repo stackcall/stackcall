@@ -147,7 +147,7 @@ impl LiveKit {
                     .call("ListParticipants", grants, json!({"room": room.name}))
                     .await?;
                 if reply.status() == StatusCode::NOT_FOUND {
-                    return Ok(Vec::new());
+                    return Ok::<_, StatusCode>(Vec::new());
                 }
                 let people: Participants = reply
                     .error_for_status()

@@ -671,3 +671,105 @@ async fn images_are_checked_by_content_and_stored_as_cacheable_webp() {
         format!("/media/{}.webp", auth::hex(&Sha256::digest(&webp)))
     );
 }
+
+#[tokio::test]
+async fn an_expired_device_link_cannot_issue_a_session() {
+    let fixture = fixture(false).await;
+    let owner = join(&fixture.app, &fixture.owner_code, "Dono").await;
+    let (_, link) = send(
+        &fixture.app,
+        Method::POST,
+        "/api/aparelhos/link",
+        Some(session(&owner)),
+        Value::Null,
+    )
+    .await;
+    let code = link["codigo"].as_str().unwrap();
+    fixture
+        .config
+        .db
+        .lock()
+        .unwrap()
+        .execute(
+            "UPDATE logins_aparelho SET expira_em = unixepoch() - 1 WHERE codigo_hash = ?1",
+            [auth::hash(code)],
+        )
+        .unwrap();
+    assert_eq!(
+        send(
+            &fixture.app,
+            Method::POST,
+            "/api/aparelhos/entrar",
+            None,
+            json!({"codigo": code, "aparelho": "Outro"})
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[tokio::test]
+async fn invitation_limits_group_ipv6_addresses_by_prefix_and_keep_other_routes_available() {
+    let fixture = fixture(false).await;
+    let app = &fixture.app;
+    let peer = "127.0.0.1:1234".parse().unwrap();
+    let call = |uri, ip| {
+        let mut req = request(Method::GET, uri, None, Body::empty(), peer);
+        req.headers_mut()
+            .insert("x-forwarded-for", HeaderValue::from_static(ip));
+        app.clone().oneshot(req)
+    };
+    for _ in 0..10 {
+        assert_eq!(
+            call("/api/convites/invalido", "2001:db8:1::1")
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::NOT_FOUND
+        );
+    }
+    assert_eq!(
+        call("/c/invalido", "2001:db8:1::2").await.unwrap().status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert_eq!(
+        call("/api/convites/invalido", "2001:db8:2::2")
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        call("/api/servidor", "2001:db8:1::2")
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn keeps_the_upload_probe_bounded_and_times_out_incomplete_bodies() {
+    let fixture = fixture(false).await;
+    let peer = "192.0.2.200:1234".parse().unwrap();
+    let req = request(
+        Method::POST,
+        "/api/upload-test",
+        None,
+        Body::from(vec![0; UPLOAD_MAX_BYTES + 1]),
+        peer,
+    );
+    assert_eq!(
+        result(&fixture.app, req).await.0,
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
+    let body = Body::from_stream(futures_util::stream::pending::<
+        Result<axum::body::Bytes, std::io::Error>,
+    >());
+    let req = request(Method::POST, "/api/upload-test", None, body, peer);
+    assert_eq!(
+        result(&fixture.app, req).await.0,
+        StatusCode::REQUEST_TIMEOUT
+    );
+}

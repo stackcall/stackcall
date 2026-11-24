@@ -1063,6 +1063,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-service",
+ "webpki-roots",
 ]
 
 [[package]]
@@ -2481,8 +2482,8 @@ dependencies = [
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "webpki-roots",
  "web-sys",
+ "webpki-roots",
 ]
 
 [[package]]
@@ -3876,6 +3877,7 @@ name = "zmij"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
+
 [[package]]
 name = "zune-core"
 version = "0.5.3"
