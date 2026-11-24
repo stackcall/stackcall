@@ -31,6 +31,8 @@ pub struct Publish {
     pub res: Resolution,
     #[arg(long, value_parser = parse_fps)]
     pub fps: u32,
+    #[arg(long, help = "Limit WGC capture updates to the target frame rate")]
+    pub limit_capture_fps: bool,
     #[arg(long, value_parser = clap::value_parser!(u32).range(1..=100_000))]
     pub bitrate: u32,
     #[arg(long, default_value = "auto")]

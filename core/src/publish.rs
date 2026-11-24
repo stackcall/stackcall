@@ -25,7 +25,7 @@ use std::{
 use windows_capture::{
     capture::{CaptureControl, Context, GraphicsCaptureApiHandler},
     frame::Frame,
-    graphics_capture_api::InternalCaptureControl,
+    graphics_capture_api::{GraphicsCaptureApi, InternalCaptureControl},
     monitor::Monitor,
     settings::*,
     window::Window,
@@ -105,14 +105,26 @@ struct Session {
 fn start_capture(setup: Setup) -> Result<Control> {
     fn start<T: TryInto<GraphicsCaptureItemType> + Send + 'static>(
         target: T,
+        monitor: Option<Monitor>,
         setup: Setup,
     ) -> Result<Control> {
+        let interval = if setup.args.limit_capture_fps
+            && GraphicsCaptureApi::is_minimum_update_interval_supported().unwrap_or(false)
+        {
+            let refresh = monitor.and_then(|monitor| monitor.refresh_rate().ok());
+            MinimumUpdateIntervalSettings::Custom(Duration::from_micros(capture_interval_us(
+                setup.args.fps,
+                refresh,
+            )))
+        } else {
+            MinimumUpdateIntervalSettings::Default
+        };
         Capture::start_free_threaded(Settings::new(
             target,
             CursorCaptureSettings::Default,
             DrawBorderSettings::Default,
             SecondaryWindowSettings::Default,
-            MinimumUpdateIntervalSettings::Default,
+            interval,
             DirtyRegionSettings::Default,
             ColorFormat::Bgra8,
             setup,
@@ -120,20 +132,24 @@ fn start_capture(setup: Setup) -> Result<Control> {
         .map_err(|err| anyhow::anyhow!("{err:?}"))
     }
 
+    let start_window = |window: Window, setup| {
+        let monitor = window.monitor();
+        start(window, monitor, setup)
+    };
     match &setup.args.source {
-        Source::Monitor(index) => start(
-            *Monitor::enumerate()?
+        Source::Monitor(index) => {
+            let monitor = *Monitor::enumerate()?
                 .get(*index)
-                .context("monitor index out of range")?,
-            setup,
-        ),
-        Source::Window(title) => start(Window::from_name(title)?, setup),
+                .context("monitor index out of range")?;
+            start(monitor, Some(monitor), setup)
+        }
+        Source::Window(title) => start_window(Window::from_name(title)?, setup),
         Source::Pid(pid) => {
             let window = Window::enumerate()?
                 .into_iter()
                 .find(|window| window.process_id().ok() == Some(*pid))
                 .context("no capturable window for this PID")?;
-            start(window, setup)
+            start_window(window, setup)
         }
         Source::WindowHandle { handle, pid } => {
             let window = Window::from_raw_hwnd(*handle as *mut _);
@@ -141,15 +157,33 @@ fn start_capture(setup: Setup) -> Result<Control> {
                 window.is_valid() && window.process_id().ok() == Some(*pid),
                 "A janela escolhida foi fechada."
             );
-            start(window, setup)
+            start_window(window, setup)
         }
         Source::MonitorHandle(handle) => {
             let monitor = Monitor::enumerate()?
                 .into_iter()
                 .find(|monitor| monitor.as_raw_hmonitor() as usize == *handle)
                 .context("A tela escolhida foi desconectada.")?;
-            start(monitor, setup)
+            start(monitor, Some(monitor), setup)
         }
+    }
+}
+
+fn capture_interval_us(fps: u32, refresh: Option<u32>) -> u64 {
+    let nominal = 900_000 / u64::from(fps);
+    refresh.filter(|&hz| hz >= fps).map_or(nominal, |hz| {
+        // Round down to a whole number of refreshes so 144 Hz can feed a 60 fps stream.
+        nominal.min(950_000 * u64::from(hz / fps) / u64::from(hz))
+    })
+}
+
+#[cfg(test)]
+#[test]
+fn capture_interval_preserves_target_on_high_refresh_displays() {
+    assert_eq!(capture_interval_us(60, None), 15_000);
+    assert_eq!(capture_interval_us(60, Some(240)), 15_000);
+    for hz in [75, 144, 165] {
+        assert!(capture_interval_us(60, Some(hz)) * u64::from(hz) < 1_000_000 * u64::from(hz / 60));
     }
 }
 
