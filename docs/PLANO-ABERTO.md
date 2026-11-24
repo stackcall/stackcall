@@ -73,6 +73,12 @@ Autenticação por `Authorization: Bearer <sessao>` (token aleatório; o servido
 | `/api/rtt`, `/api/upload-test`, `/api/versao-minima-app` | Continuam |
 | `GET /c/<codigo>` | Página do convite (HTML simples) |
 
+A prévia devolve `{servidor, convidado_por}`. Convites vencidos, revogados ou esgotados devolvem o mesmo 404. `POST /api/convites` aceita `dias` e `usos_max` opcionais e devolve `{id, codigo, url, expira_em, usos_max}`. A listagem administrativa retorna os metadados sem o código.
+
+`POST /api/aparelhos/link` retorna `{codigo, url, expira_em}`, com deep link `stackcall://aparelho?servidor=<url>&codigo=<codigo>`. `POST /api/aparelhos/entrar` recebe `{codigo, aparelho}` e devolve `{sessao, usuario}`. `GET /api/eu` devolve o perfil diretamente. Horários são segundos Unix.
+
+A origem dos links vem de `SERVIDOR_URL`. `SERVIDOR_NOME` e `MEMBROS_CONVIDAM` configuram o nome e a permissão de convite. `GET /api/servidor` devolve `{nome, versao, versao_minima_app, membros_convidam}`. No log, o link inicial aparece na linha `Convite do dono: <url>`.
+
 Migração do nosso servidor: na primeira subida da v0.3, o `CONVITE` antigo sai e o porteiro imprime no log um convite de dono (uso único, 7 dias). O Filippe entra com ele e gera os convites dos amigos.
 
 ## Perfil personalizável (como no Fivestack)

@@ -64,3 +64,29 @@ pub async fn run<T: Send + 'static>(
     .await
     .map_err(internal)?
 }
+
+pub fn settings(
+    conn: &mut Connection,
+    name: Option<&str>,
+    members: Option<&str>,
+) -> rusqlite::Result<(String, bool)> {
+    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    for (key, value, default) in [
+        ("nome", name, "Stackcall"),
+        ("membros_convidam", members, "false"),
+    ] {
+        tx.execute(
+            "INSERT INTO config (chave, valor) VALUES (?1, COALESCE(?2, ?3))
+             ON CONFLICT(chave) DO UPDATE SET valor = ?2 WHERE ?2 IS NOT NULL",
+            rusqlite::params![key, value, default],
+        )?;
+    }
+    let (name, members) = tx.query_row(
+        "SELECT (SELECT valor FROM config WHERE chave = 'nome'),
+                (SELECT valor FROM config WHERE chave = 'membros_convidam') = 'true'",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    tx.commit()?;
+    Ok((name, members))
+}
