@@ -37,6 +37,8 @@ pub struct Publish {
     pub bitrate: u32,
     #[arg(long, help = "Use low-latency CBR with a short video buffer")]
     pub cbr: bool,
+    #[arg(long, help = "Apply bitrate hysteresis and reuse the conversion path")]
+    pub adaptive_bitrate: bool,
     #[arg(long, default_value = "auto")]
     pub encoder: Encoder,
     #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]

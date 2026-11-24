@@ -92,6 +92,9 @@ struct Capture {
     last_slot: Option<u128>,
     kbps: u32,
     limit_kbps: u32,
+    pending_kbps: Option<u32>,
+    last_bitrate_change: Instant,
+    qsv_reset_supported: bool,
 }
 
 struct Session {
@@ -384,6 +387,9 @@ impl GraphicsCaptureApiHandler for Capture {
             last_slot: None,
             kbps,
             limit_kbps: kbps,
+            pending_kbps: None,
+            last_bitrate_change: Instant::now(),
+            qsv_reset_supported: true,
         })
     }
 
@@ -412,64 +418,49 @@ impl GraphicsCaptureApiHandler for Capture {
         let requested = source.take_rate_control_request().map(|rate| {
             (rate.target_bitrate_bps / 1000).clamp(1, u64::from(self.limit_kbps)) as u32
         });
-        let update = if manual != 0 && manual != self.kbps {
+        let update = if args.adaptive_bitrate {
+            if let Some(target) = (manual != 0).then_some(manual).or(requested) {
+                self.pending_kbps = Some(target);
+            }
+            self.pending_kbps.filter(|&target| {
+                bitrate_change_due(self.kbps, target, self.last_bitrate_change.elapsed())
+            })
+        } else if manual != 0 && manual != self.kbps {
             Some(manual)
         } else {
             requested.filter(|requested| requested.abs_diff(self.kbps) >= (self.kbps / 10).max(1))
         };
         let mut key = source.take_keyframe_request();
         key |= self.setup.requests.keyframe.swap(false, Ordering::Relaxed);
-        if self
+        let input_changed = self
             .session
             .as_ref()
-            .is_none_or(|session| session.input_size != dimensions)
-            || update.is_some()
+            .is_none_or(|session| session.input_size != dimensions);
+        if let Some(target) = update {
+            self.kbps = target;
+            self.pending_kbps = None;
+            self.last_bitrate_change = Instant::now();
+        }
+        let mut in_place = false;
+        if args.adaptive_bitrate
+            && self.qsv_reset_supported
+            && !input_changed
+            && update.is_some()
+            && let Some(session) = self.session.as_mut()
+            && session.name.ends_with("_qsv")
         {
+            in_place = session.encoder.update_qsv_bitrate(self.kbps, args.cbr);
+        }
+        if input_changed || (update.is_some() && !in_place) {
+            let mut reusable = None;
             if let Some(mut old) = self.session.take() {
                 old.encoder.send_eof()?;
                 self.send_packets(&mut old)?;
-            }
-            self.kbps = update.unwrap_or(self.kbps);
-            let mut errors = Vec::new();
-            for name in encoder::candidates(args.codec, args.encoder) {
-                let open = |gpu: Option<gpu::Converter>| {
-                    let encoder = encoder::open(
-                        name,
-                        args.res,
-                        args.fps,
-                        self.kbps,
-                        gpu.as_ref().map(gpu::Converter::output_pool),
-                        encoder::Tuning { cbr: args.cbr },
-                    )?;
-                    Ok::<_, anyhow::Error>(Session {
-                        name,
-                        encoder,
-                        gpu,
-                        input_size: dimensions,
-                        pending: BTreeMap::new(),
-                    })
-                };
-                let attempt = if args.cpu_path {
-                    open(None)
-                } else {
-                    let (width, height) = args.res.dimensions();
-                    gpu::Converter::new(frame, width, height, args.fps, name.ends_with("_qsv"))
-                        .and_then(|converter| open(Some(converter)))
-                        .or_else(|error| open(None).with_context(|| format!("D3D11: {error:#}")))
-                };
-                match attempt {
-                    Ok(session) => {
-                        self.session = Some(session);
-                        break;
-                    }
-                    Err(err) => errors.push(format!("{name}: {err:#}")),
+                if args.adaptive_bitrate && !input_changed {
+                    reusable = Some((old.name, old.gpu));
                 }
             }
-            ensure!(
-                self.session.is_some(),
-                "no usable encoder: {}",
-                errors.join("; ")
-            );
+            self.session = Some(self.open_session(frame, reusable)?);
             key = true;
         }
         let mut session = self.session.take().context("encoder session missing")?;
@@ -494,14 +485,89 @@ impl GraphicsCaptureApiHandler for Capture {
             Picture::AV_PICTURE_TYPE_NONE
         };
         session.pending.insert(encoder_pts, (pts, Instant::now()));
-        session.encoder.send_frame(&picture)?;
-        self.send_packets(&mut session)?;
+        let result = session
+            .encoder
+            .send_frame(&picture)
+            .and_then(|()| self.send_packets(&mut session));
+        if in_place && let Err(error) = result {
+            eprintln!("QSV bitrate reset failed, reopening encoder: {error:#}");
+            self.qsv_reset_supported = false;
+            let reusable = (session.name, session.gpu);
+            drop(picture);
+            drop(session.encoder);
+            self.session = Some(self.open_session(frame, Some(reusable))?);
+            self.last_key_request = None;
+            return Ok(());
+        }
+        result?;
         self.session = Some(session);
         Ok(())
     }
 }
 
+fn bitrate_change_due(current: u32, target: u32, elapsed: Duration) -> bool {
+    elapsed >= Duration::from_secs(3) && target.abs_diff(current) * 5 >= current
+}
+
+#[cfg(test)]
+#[test]
+fn bitrate_hysteresis_is_inclusive_and_bidirectional() {
+    let ready = Duration::from_secs(3);
+    assert!(!bitrate_change_due(5000, 4000, Duration::from_millis(2999)));
+    assert!(!bitrate_change_due(5000, 4001, ready));
+    assert!(!bitrate_change_due(5000, 5999, ready));
+    assert!(bitrate_change_due(5000, 4000, ready));
+    assert!(bitrate_change_due(5000, 6000, ready));
+}
+
 impl Capture {
+    fn open_session(
+        &self,
+        frame: &Frame,
+        reusable: Option<(&'static str, Option<gpu::Converter>)>,
+    ) -> Result<Session> {
+        let args = &self.setup.args;
+        let open = |name, gpu: Option<gpu::Converter>| {
+            let encoder = encoder::open(
+                name,
+                args.res,
+                args.fps,
+                self.kbps,
+                gpu.as_ref().map(gpu::Converter::output_pool),
+                encoder::Tuning { cbr: args.cbr },
+            )?;
+            Ok::<_, anyhow::Error>(Session {
+                name,
+                encoder,
+                gpu,
+                input_size: (frame.width(), frame.height()),
+                pending: BTreeMap::new(),
+            })
+        };
+        let mut errors = Vec::new();
+        if let Some((name, converter)) = reusable {
+            match open(name, converter) {
+                Ok(session) => return Ok(session),
+                Err(err) => errors.push(format!("{name} with existing converter: {err:#}")),
+            }
+        }
+        for name in encoder::candidates(args.codec, args.encoder) {
+            let attempt = if args.cpu_path {
+                open(name, None)
+            } else {
+                let (width, height) = args.res.dimensions();
+                gpu::Converter::new(frame, width, height, args.fps, name.ends_with("_qsv"))
+                    .and_then(|converter| open(name, Some(converter)))
+                    .or_else(|error| open(name, None).with_context(|| format!("D3D11: {error:#}")))
+            };
+            match attempt {
+                Ok(session) => return Ok(session),
+                Err(err) => errors.push(format!("{name}: {err:#}")),
+            }
+        }
+        anyhow::bail!("no usable encoder: {}", errors.join("; "))
+    }
+
     fn send_packets(&self, session: &mut Session) -> Result<()> {
         let (width, height) = self.setup.args.res.dimensions();
         let codec = match self.setup.args.codec {

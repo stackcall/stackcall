@@ -43,6 +43,21 @@ impl Drop for Session {
 }
 
 impl Session {
+    pub fn update_qsv_bitrate(&mut self, kbps: u32, cbr: bool) -> bool {
+        let video = unsafe { &mut *self.0 };
+        let bitrate = bits_per_second(kbps) as i64;
+        if cbr {
+            let buffer = i64::from(video.rc_buffer_size);
+            if buffer < bitrate / i64::from(video.framerate.num) || buffer > bitrate / 2 {
+                return false;
+            }
+            video.rc_max_rate = bitrate;
+        }
+        // oneVPL Reset can change the target without changing the allocated VBV.
+        video.bit_rate = bitrate;
+        true
+    }
+
     pub fn send_frame(&mut self, frame: &Frame) -> Result<()> {
         check(unsafe { media::avcodec_send_frame(self.0, frame.as_ptr()) })
     }
