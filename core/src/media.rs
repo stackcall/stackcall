@@ -1,11 +1,11 @@
 use anyhow::{Result, ensure};
-use ffmpeg_next::ffi::*;
+use ffmpeg_sys_next::*;
 use std::{
     ffi::{CStr, c_char, c_int},
     ptr::NonNull,
 };
 
-pub use ffmpeg_next::ffi::{AVPictureType as Picture, AVPixelFormat as Pixel};
+pub use ffmpeg_sys_next::{AVPictureType as Picture, AVPixelFormat as Pixel};
 
 use std::sync::OnceLock;
 use windows::{

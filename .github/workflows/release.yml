@@ -141,6 +141,9 @@ jobs:
           updaterJsonPreferNsis: true
           uploadWorkflowArtifacts: ${{ github.event_name == 'workflow_dispatch' }}
 
+      - name: Conferir DLLs do sidecar
+        run: ./scripts/verificar-dlls-sidecar.ps1
+
       - name: Conferir instalador e assinatura
         env:
           ARTIFACT_PATHS: ${{ steps.tauri.outputs.artifactPaths }}
