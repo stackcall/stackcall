@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
+import { isTauri } from '@tauri-apps/api/core';
 import { measureUpload } from '../lib/api';
 import { store } from '../lib/config';
 import { checkPresets, pickCodec } from '../lib/encoder';
-import { evaluatePresets, gbPerHour, presetLabel, type Codec, type Encoding, type Preset } from '../lib/presets';
+import { evaluatePresets, gbPerHour, presetLabel, type Codec, type Encoding, type Preset, type PresetCard } from '../lib/presets';
+import { listSources, testMachine, type CaptureSource, type Trial } from '../lib/sidecar';
 
 type Props = {
   demo: boolean;
@@ -11,12 +13,14 @@ type Props = {
   viewers: number;
   onCancel(): void;
   onStart(track: MediaStreamTrack, preset: Preset, codec: Codec): Promise<void>;
+  onNativeStart?(source: CaptureSource, preset: PresetCard, codec: Codec, audio: boolean): Promise<void>;
+  fallback?: boolean;
 };
 
 const fmt = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
 const SURFACE: Record<string, string> = { monitor: 'tela inteira', window: 'janela', browser: 'aba' };
 
-export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart }: Props) {
+export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart, onNativeStart, fallback }: Props) {
   const [upload, setUpload] = useState<number | null | 'testing'>('testing');
   const [codec, setCodec] = useState<{ codec: Codec; hardware: boolean }>({ codec: 'h264', hardware: false });
   const [encoding, setEncoding] = useState<Record<string, Encoding>>({});
@@ -24,6 +28,12 @@ export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart }: 
   const [picked, setPicked] = useState<string | null>(null);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [native, setNative] = useState(() => !demo && !fallback && isTauri() && !!onNativeStart);
+  const [sources, setSources] = useState<CaptureSource[]>();
+  const [source, setSource] = useState<CaptureSource>();
+  const [trials, setTrials] = useState<Trial[]>();
+  const [testing, setTesting] = useState(false);
+  const [audio, setAudio] = useState(false);
   const video = useRef<HTMLVideoElement>(null);
   const started = useRef(false);
 
@@ -37,11 +47,54 @@ export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart }: 
   useEffect(() => {
     void runUploadTest();
     if (demo) return setCodec({ codec: 'av1', hardware: true });
-    void pickCodec().then(async (c) => {
-      setCodec(c);
-      setEncoding(await checkPresets(c.codec));
-    });
   }, []);
+
+  async function runMachineTest(force = false) {
+    setTesting(true);
+    try {
+      const { trials } = await testMachine(force);
+      const baseline = trials.filter((trial) => trial.ok && trial.resolution === '720p'
+        && (trial.fps ?? 0) >= 28.5 && (trial.encoder_load_percent ?? Infinity) <= 80);
+      if (!baseline.length) throw new Error('A GPU não conseguiu sustentar o preset de entrada.');
+      setCodec({ codec: baseline.some((t) => t.encoder.startsWith('av1_')) ? 'av1' : 'h264', hardware: true });
+      setTrials(trials);
+    } catch (e) {
+      setError(String(e));
+      setNative(false);
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!native) return;
+    let current = true;
+    void listSources().then((next) => {
+      if (!current) return;
+      if (!next.length) throw new Error('Nenhuma tela ou janela disponível para captura.');
+      setSources(next);
+    }).catch((e: unknown) => {
+      if (current) {
+        setError(String(e));
+        setNative(false);
+      }
+    });
+    void runMachineTest();
+    return () => { current = false; };
+  }, [native]);
+
+  useEffect(() => {
+    if (demo || native) return;
+    let current = true;
+    void pickCodec().then(async (c) => {
+      const supported = await checkPresets(c.codec);
+      if (current) {
+        setCodec(c);
+        setEncoding(supported);
+      }
+    });
+    return () => { current = false; };
+  }, [demo, native]);
 
   // Stop the capture if the user leaves without going live.
   useEffect(() => () => {
@@ -54,24 +107,29 @@ export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart }: 
 
   const track = stream?.getVideoTracks()[0];
   const caps = track?.getCapabilities?.();
-  const sourceHeight = demo ? 1080 : caps?.height?.max && Number.isFinite(caps.height.max) ? caps.height.max : null;
+  const sourceHeight = native ? source?.height ?? null
+    : demo ? 1080 : caps?.height?.max && Number.isFinite(caps.height.max) ? caps.height.max : null;
   const cards = evaluatePresets({
     codec: codec.codec,
     uploadMbps: typeof upload === 'number' ? upload : null,
-    sourceHeight: stream || demo ? sourceHeight : null,
+    sourceHeight,
+    sourceWidth: native ? source?.width : undefined,
     encoding,
-  });
+    trials: native ? trials ?? [] : undefined,
+  }).filter((p) => !native || p.height <= 1080
+    || (p.trial && typeof upload === 'number' && upload * 0.5 >= p.uploadNeeded));
   const chosen = cards.find((c) => c.id === picked && !c.locked) ?? cards.find((c) => c.recommended);
   const codecLabel = codec.codec === 'av1' ? 'AV1' : 'H.264';
   const surface = SURFACE[track?.getSettings().displaySurface ?? ''] ?? 'fonte';
-  const sourceName = demo ? 'Counter-Strike 2' : track ? track.label || surface : null;
+  const sourceName = native ? source?.title : demo ? 'Counter-Strike 2' : track ? track.label || surface : null;
+  const withAudio = native && !!source?.pid && audio;
 
   async function pickSource() {
     setError(undefined);
     try {
       const next = await navigator.mediaDevices.getDisplayMedia({
         video: { frameRate: { ideal: 60 }, width: { ideal: 2560 }, height: { ideal: 1440 } },
-        audio: false, // game audio comes in v0.2 with the native core
+        audio: false,
       });
       stream?.getTracks().forEach((t) => t.stop());
       next.getVideoTracks()[0]?.addEventListener('ended', () => setStream(null), { once: true });
@@ -84,15 +142,20 @@ export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart }: 
   async function start() {
     if (!chosen) return;
     if (demo) return onCancel();
-    if (!track) return;
+    if (native ? !source || !onNativeStart : !track) return;
     setBusy(true);
     setError(undefined);
     try {
-      started.current = true;
-      await onStart(track, chosen, codec.codec);
+      if (native && source && onNativeStart) {
+        await onNativeStart(source, chosen, codec.codec, withAudio);
+      } else if (track) {
+        started.current = true;
+        await onStart(track, chosen, codec.codec);
+      }
     } catch (e) {
       started.current = false;
       setError('Falhou ao entrar no ar: ' + (e instanceof Error ? e.message : String(e)));
+      if (native) setNative(false);
     } finally {
       setBusy(false);
     }
@@ -104,27 +167,47 @@ export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart }: 
       <header className="flex h-14 shrink-0 items-center gap-4 border-b border-line bg-panel px-6">
         <span className="font-cond text-[20px] font-bold tracking-[0.04em]">ENTRAR NO AR</span>
         <span className="text-muted">sala {roomLabel} · {viewers} {viewers === 1 ? 'pessoa pode' : 'pessoas podem'} assistir</span>
-        <button type="button" onClick={onCancel} className="ml-auto h-9 rounded-[6px] border border-line bg-transparent px-3.5 text-[#c5c8ce]">Cancelar</button>
+        <button type="button" disabled={busy} onClick={onCancel} className="ml-auto h-9 rounded-[6px] border border-line bg-transparent px-3.5 text-[#c5c8ce]">Cancelar</button>
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-[420px_minmax(0,1fr)]">
         <section aria-label="O que transmitir" className="flex flex-col gap-3.5 border-r border-line px-6 py-5">
           <h2 className="label-caps m-0 text-[15px] text-muted">1 · O que transmitir</h2>
-          <button type="button" onClick={pickSource} className={`flex flex-col items-start gap-0.5 rounded-[6px] border-2 bg-surface px-3 py-3 text-left text-text ${sourceName ? 'border-live' : 'border-line'}`}>
+          {native ? (
+            <div aria-label="Telas e janelas" className="grid max-h-[230px] grid-cols-2 gap-2 overflow-y-auto" aria-busy={!sources}>
+              {!sources && <span className="text-muted">Buscando telas e janelas…</span>}
+              {sources?.map((candidate) => (
+                <button key={candidate.id} type="button" disabled={busy} aria-pressed={source?.id === candidate.id}
+                  onClick={() => { setSource(candidate); setAudio(!!candidate.pid); }}
+                  className={`min-w-0 rounded-[6px] border-2 bg-surface p-2 text-left ${source?.id === candidate.id ? 'border-live' : 'border-line'}`}>
+                  {candidate.thumbnail && <img alt="" className="h-16 w-full object-contain"
+                    src={`data:image/png;base64,${candidate.thumbnail}`} />}
+                  <b title={candidate.title} className="block truncate text-text">{candidate.title}</b>
+                  <span className="block truncate text-[12px] text-muted">
+                    {candidate.process_name ?? `${candidate.width} × ${candidate.height}`}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : <button type="button" onClick={pickSource} className={`flex flex-col items-start gap-0.5 rounded-[6px] border-2 bg-surface px-3 py-3 text-left text-text ${sourceName ? 'border-live' : 'border-line'}`}>
             <b className="font-semibold">{sourceName ?? 'Escolher tela ou janela'}</b>
             <span className="text-[12px] text-muted">{sourceName ? `${surface} · clique para trocar` : 'Abre o seletor do Windows'}</span>
-          </button>
+          </button>}
           <label className="flex h-11 items-center gap-2.5 rounded-[6px] border border-line bg-panel px-3 text-muted">
-            <input type="checkbox" disabled checked={false} onChange={() => undefined} className="size-[18px] accent-live" />
-            <span>Transmitir o som do app <span className="text-faint">· chega na v0.2</span></span>
+            <input type="checkbox" disabled={!native || !source?.pid || busy} checked={withAudio}
+              onChange={(event) => setAudio(event.currentTarget.checked)} className="size-[18px] accent-live" />
+            <span>Transmitir o som deste app</span>
           </label>
+          {!demo && !native && <span className="text-[13px] text-muted">Modo de reserva WebView2. Escolha a tela ou janela para continuar.</span>}
           <div className="relative mt-auto h-[200px] overflow-hidden rounded-[6px] border border-line" style={{ background: hatch }}>
             <span className="label-caps absolute top-2 left-2.5 z-10 text-[13px] text-muted">Prévia</span>
-            {stream ? (
+            {native && source?.thumbnail ? (
+              <img alt={source.title} className="size-full object-contain" src={`data:image/png;base64,${source.thumbnail}`} />
+            ) : stream ? (
               <video ref={video} autoPlay muted playsInline className="size-full object-contain" />
             ) : (
               <span className="absolute inset-0 flex items-center justify-center font-cond tracking-[0.05em] text-[#5d6470]">
-                {demo ? '[ Counter-Strike 2 ]' : '[ nada escolhido ]'}
+                {sourceName ?? '[ nada escolhido ]'}
               </span>
             )}
           </div>
@@ -136,16 +219,18 @@ export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart }: 
             <span className="ml-auto text-[13px] text-muted">
               Teste da máquina:{' '}
               <b className="font-semibold text-text">
-                {codecLabel}{codec.hardware ? ' por hardware' : ''} · upload{' '}
+                {native && testing ? 'medindo GPU…' : `${codecLabel}${codec.hardware ? ' por hardware' : ''}`} · upload{' '}
                 {upload === 'testing' ? 'medindo…' : upload === null ? 'não medido' : `${fmt(upload)} Mbps`}
               </b>
             </span>
-            <button type="button" disabled={upload === 'testing'} onClick={() => void runUploadTest()} className="h-8 rounded-[6px] border border-line bg-raised px-3 text-text">
+            <button type="button" disabled={upload === 'testing' || testing || busy}
+              onClick={() => { void runUploadTest(); if (native) void runMachineTest(true); }}
+              className="h-8 rounded-[6px] border border-line bg-raised px-3 text-text">
               Refazer teste
             </button>
           </div>
           {upload === null && (
-            <p className="m-0 text-[13px] text-danger-text">O teste de upload não respondeu. Os cartões não levam o upload em conta.</p>
+            <p className="m-0 text-[13px] text-danger-text">O teste de upload não respondeu. {native && 'Refaça o teste para liberar os presets.'}</p>
           )}
 
           <div className="grid grid-cols-3 gap-3">
@@ -167,7 +252,8 @@ export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart }: 
                     <>
                       <span className="grid grid-cols-3 gap-2">
                         <Stat label="Usa de upload" value={`${fmt(mbps)} Mbps`} />
-                        <Stat label="Codec" value={codecLabel} />
+                        {p.trial ? <Stat label="Carga da GPU" value={`${fmt(p.trial.encoder_load_percent!)}%`} />
+                          : <Stat label="Codec" value={codecLabel} />}
                         <Stat label="Por pessoa" value={`${fmt(gbPerHour(mbps))} GB/h`} />
                       </span>
                       <span className="text-[12px] text-muted">{p.note}</span>
@@ -178,7 +264,7 @@ export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart }: 
             })}
           </div>
           <p className="m-0 text-[12px] text-faint">
-            "Por pessoa" é quanto cada amigo que assistir baixa por hora. A carga da placa só aparece na v0.2, com o teste completo.
+            "Por pessoa" é quanto cada amigo que assistir baixa por hora. {native && 'A carga da GPU é estimada pelo teste de codificação.'}
           </p>
           {error && <p role="alert" className="m-0 text-danger-text">{error}</p>}
         </section>
@@ -186,9 +272,9 @@ export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart }: 
 
       <footer className="flex h-[76px] shrink-0 items-center gap-4 border-t border-line bg-panel px-6">
         <span className="font-cond text-[15px] tracking-[0.04em] text-muted">
-          VAI AO AR: <b className="text-text">{[sourceName ?? 'escolha uma fonte', chosen && presetLabel(chosen), codecLabel].filter(Boolean).join(' · ')}</b> · sem som do app
+          VAI AO AR: <b className="text-text">{[sourceName ?? 'escolha uma fonte', chosen && presetLabel(chosen), codecLabel].filter(Boolean).join(' · ')}</b> · {withAudio ? 'com' : 'sem'} som do app
         </span>
-        <button type="button" disabled={busy || !chosen || (!track && !demo)} onClick={() => void start()} className="btn btn-primary ml-auto h-12 px-7 text-[18px] disabled:opacity-50">
+        <button type="button" disabled={busy || !chosen || (native ? !source || testing : !track && !demo)} onClick={() => void start()} className="btn btn-primary ml-auto h-12 px-7 text-[18px] disabled:opacity-50">
           {busy ? 'Conectando…' : 'Entrar no ar'}
         </button>
       </footer>

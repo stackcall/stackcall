@@ -1,0 +1,12 @@
+Stackcall distribui bibliotecas dinâmicas do FFmpeg sob LGPL, sem alterações.
+Build para Windows x64 produzido pelo projeto BtbN/FFmpeg-Builds (renomeado
+FFmpeg-Builds/FFmpeg-Builds), variante win64-lgpl-shared-9.0.
+
+Release: https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/tag/autobuild-2026-10-31-12-59
+Código-fonte do FFmpeg usado nesta build: https://github.com/FFmpeg/FFmpeg/tree/7adfbe40dc
+Receita e dependências da build: https://github.com/FFmpeg-Builds/FFmpeg-Builds/tree/autobuild-2026-10-31-12-59
+Licença LGPL v3 (também em FFmpeg-LGPL.txt): https://www.gnu.org/licenses/lgpl-3.0.html
+Texto da GPL v3 incorporado pela LGPL (também em FFmpeg-GPL.txt): https://www.gnu.org/licenses/gpl-3.0.html
+
+As DLLs do FFmpeg ficam ao lado de stackcall-core.exe e podem ser substituídas
+por builds compatíveis com a mesma ABI e arquitetura.

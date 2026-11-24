@@ -13,6 +13,8 @@ mod media;
 mod probe;
 #[cfg(windows)]
 mod publish;
+#[cfg(windows)]
+mod sources;
 
 use anyhow::Result;
 use clap::Parser;
@@ -23,10 +25,22 @@ fn main() -> Result<()> {
     match args.command {
         cli::Command::Probe => println!(
             "{}",
-            serde_json::to_string(&probe::run(probe::ProbeOptions { seconds: 3 })?)?
+            serde_json::to_string(&probe::run(probe::ProbeOptions { seconds: 5 })?)?
         ),
+        cli::Command::Sources => println!("{}", serde_json::to_string(&sources::list()?)?),
         cli::Command::Publish(options) => {
-            tokio::runtime::Runtime::new()?.block_on(publish::run(options))?
+            let controlled = options.control_stdin;
+            let result = tokio::runtime::Runtime::new()?.block_on(publish::run(options));
+            if controlled {
+                match &result {
+                    Ok(()) => println!("{}", serde_json::json!({"event": "stopped"})),
+                    Err(error) => println!(
+                        "{}",
+                        serde_json::json!({"event": "error", "reason": format!("{error:#}")})
+                    ),
+                }
+            }
+            result?
         }
         cli::Command::Clock => clock::run()?,
     }

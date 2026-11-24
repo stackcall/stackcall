@@ -107,10 +107,8 @@ fn capture(
                     reader.read_from_device_to_deque(&mut bytes)?;
                 }
                 while bytes.len() >= CHUNK_BYTES && !stopping.load(Ordering::Relaxed) {
-                    let data = bytes.make_contiguous()[..CHUNK_BYTES]
-                        .chunks_exact(2)
-                        .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
-                        .collect();
+                    let (samples, _) = bytes.make_contiguous()[..CHUNK_BYTES].as_chunks::<2>();
+                    let data = samples.iter().copied().map(i16::from_le_bytes).collect();
                     bytes.drain(..CHUNK_BYTES);
                     runtime.block_on(async {
                         tokio::time::timeout(

@@ -10,6 +10,7 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Command {
     Probe,
+    Sources,
     Publish(Publish),
     Clock,
 }
@@ -18,8 +19,10 @@ pub enum Command {
 pub struct Publish {
     #[arg(long)]
     pub url: String,
+    #[arg(long, required_unless_present = "control_stdin")]
+    pub token: Option<String>,
     #[arg(long)]
-    pub token: String,
+    pub control_stdin: bool,
     #[arg(long)]
     pub source: Source,
     #[arg(long)]
@@ -86,6 +89,8 @@ pub enum Source {
     Monitor(usize),
     Window(String),
     Pid(u32),
+    WindowHandle { handle: usize, pid: u32 },
+    MonitorHandle(usize),
 }
 
 impl std::str::FromStr for Source {
@@ -101,6 +106,22 @@ impl std::str::FromStr for Source {
                 .ok()
                 .filter(|pid| *pid > 0)
                 .map(Self::Pid)
+                .ok_or(invalid),
+            Some(("hwnd", identity)) => {
+                let (handle, pid) = identity.split_once(':').ok_or(invalid)?;
+                let handle = handle
+                    .parse()
+                    .ok()
+                    .filter(|handle| *handle > 0)
+                    .ok_or(invalid)?;
+                let pid = pid.parse().ok().filter(|pid| *pid > 0).ok_or(invalid)?;
+                Ok(Self::WindowHandle { handle, pid })
+            }
+            Some(("hmonitor", handle)) => handle
+                .parse()
+                .ok()
+                .filter(|handle| *handle > 0)
+                .map(Self::MonitorHandle)
                 .ok_or(invalid),
             _ => Err(invalid),
         }

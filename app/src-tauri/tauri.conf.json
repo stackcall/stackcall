@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "io.github.stackcall",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "set \"PSModulePath=\" & powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/preparar-ffmpeg.ps1 && npm run dev",
     "devUrl": "http://127.0.0.1:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "set \"PSModulePath=\" & powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/preparar-ffmpeg.ps1 && npm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -30,6 +30,16 @@
     "active": true,
     "targets": ["nsis"],
     "createUpdaterArtifacts": true,
+    "externalBin": ["sidecar/stackcall-core"],
+    "resources": {
+      "sidecar/avcodec-63.dll": "avcodec-63.dll",
+      "sidecar/avutil-61.dll": "avutil-61.dll",
+      "sidecar/swscale-10.dll": "swscale-10.dll",
+      "sidecar/swresample-7.dll": "swresample-7.dll",
+      "sidecar/FFmpeg-LGPL.txt": "FFmpeg-LGPL.txt",
+      "sidecar/FFmpeg-GPL.txt": "FFmpeg-GPL.txt",
+      "../../NOTICE": "NOTICE"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

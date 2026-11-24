@@ -161,7 +161,8 @@ async fn token(
     if !bool::from(provided.ct_eq(&config.invite_hash)) {
         return Err(StatusCode::UNAUTHORIZED);
     }
-    if !valid_label(&input.nome) || !valid_label(&input.sala) {
+    let screen_owner = input.nome.strip_suffix(":tela");
+    if !valid_label(screen_owner.unwrap_or(&input.nome)) || !valid_label(&input.sala) {
         return Err(StatusCode::BAD_REQUEST);
     }
 
@@ -171,6 +172,12 @@ async fn token(
         .with_grants(VideoGrants {
             room_join: true,
             room: input.sala,
+            can_publish: screen_owner.map(|_| true),
+            can_subscribe: screen_owner.map(|_| false),
+            can_publish_data: screen_owner.map(|_| false),
+            can_publish_sources: screen_owner.map_or_else(Vec::new, |_| {
+                vec!["screen_share".into(), "screen_share_audio".into()]
+            }),
             ..Default::default()
         })
         .to_jwt()
@@ -308,7 +315,40 @@ mod tests {
         assert_eq!(claims.video.room, "sala-1");
         assert!(claims.video.room_join);
         assert!(!claims.video.room_admin);
+        assert_eq!(claims.video.can_publish, None);
+        assert_eq!(claims.video.can_subscribe, None);
+        assert_eq!(claims.video.can_publish_data, None);
+        assert!(claims.video.can_publish_sources.is_empty());
         assert_eq!(claims.exp - claims.nbf, 3600);
+    }
+
+    #[tokio::test]
+    async fn screen_token_can_only_publish_screen_video_and_audio() {
+        let response = request(
+            router(),
+            "test_invite",
+            "Pessoa_1:tela",
+            "127.0.0.1:1234",
+            "192.0.2.1",
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 4096).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let claims = TokenVerifier::with_api_key("test_key", "test_secret")
+            .verify(body["token"].as_str().unwrap())
+            .unwrap();
+        assert_eq!(claims.sub, "Pessoa_1:tela");
+        assert_eq!(claims.exp - claims.nbf, 3600);
+        assert_eq!(claims.video.room, "sala-1");
+        assert!(claims.video.room_join);
+        assert_eq!(claims.video.can_publish, Some(true));
+        assert_eq!(claims.video.can_subscribe, Some(false));
+        assert_eq!(claims.video.can_publish_data, Some(false));
+        assert_eq!(
+            claims.video.can_publish_sources,
+            ["screen_share", "screen_share_audio"]
+        );
     }
 
     #[tokio::test]
@@ -317,6 +357,8 @@ mod tests {
         for (invite, name, expected) in [
             ("wrong", "valid", StatusCode::UNAUTHORIZED),
             ("test_invite", "invalid name", StatusCode::BAD_REQUEST),
+            ("test_invite", ":tela", StatusCode::BAD_REQUEST),
+            ("test_invite", "a:tela:tela", StatusCode::BAD_REQUEST),
         ] {
             let response = request(app.clone(), invite, name, "127.0.0.1:1234", "192.0.2.1").await;
             assert_eq!(response.status(), expected);

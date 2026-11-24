@@ -1,3 +1,5 @@
+mod sidecar;
+
 const KEYRING_SERVICE: &str = "io.github.stackcall";
 const KEYRING_USER: &str = "convite";
 const CHANGELOG_URL: &str =
@@ -47,11 +49,17 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .manage(sidecar::Sidecar::default())
         .invoke_handler(tauri::generate_handler![
             invite_load,
             invite_save,
             invite_clear,
-            remote_changelog
+            remote_changelog,
+            sidecar::listar_fontes,
+            sidecar::testar_maquina,
+            sidecar::iniciar_transmissao,
+            sidecar::parar_transmissao,
+            sidecar::mudar_bitrate
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Stackcall");

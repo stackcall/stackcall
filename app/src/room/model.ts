@@ -1,4 +1,5 @@
-import type { Codec, Preset } from '../lib/presets';
+import type { Codec, Preset, PresetCard } from '../lib/presets';
+import type { CaptureSource } from '../lib/sidecar';
 import type { RoomId } from '../lib/config';
 
 /** Anything that can render into a media element (a LiveKit Track). */
@@ -43,6 +44,7 @@ export type RoomModel = {
   deafened: boolean;
   cameraOn: boolean;
   micError?: string;
+  streamError?: string;
 };
 
 export type RoomActions = {
@@ -54,6 +56,8 @@ export type RoomActions = {
   unwatch(id: string): void;
   sendChat(text: string): void;
   goLive(track: MediaStreamTrack, preset: Preset, codec: Codec): Promise<void>;
+  goLiveNative?(source: CaptureSource, preset: PresetCard, codec: Codec, audio: boolean): Promise<void>;
+  clearStreamError?(): void;
   stopLive(): void;
 };
 
