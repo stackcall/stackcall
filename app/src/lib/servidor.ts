@@ -74,22 +74,28 @@ const nomeAparelho = () => (navigator.userAgent.includes('Windows') ? 'PC com Wi
 const str = (v: unknown) => (typeof v === 'string' ? v : v == null ? '' : String(v));
 const opt = (v: unknown) => (typeof v === 'string' && v ? v : null);
 
-export function lerUsuario(o: Record<string, unknown>): Usuario {
+/** Avatar and banner come as a media hash; the image lives at `<server>/media/<hash>.webp`. */
+const midia = (v: unknown, base?: string) => {
+  const s = opt(v);
+  return s && base && /^[0-9a-f]{64}$/.test(s) ? `${base}/media/${s}.webp` : s;
+};
+
+export function lerUsuario(o: Record<string, unknown>, base?: string): Usuario {
   const tema = str(o.tema_perfil ?? o.tema);
   const papel = str(o.papel);
   return {
     id: str(o.id),
     nome: str(o.nome),
     papel: papel === 'dono' || papel === 'admin' ? papel : 'membro',
-    avatar: opt(o.avatar ?? o.avatar_url),
-    banner: opt(o.banner ?? o.banner_url),
+    avatar: midia(o.avatar ?? o.avatar_url, base),
+    banner: midia(o.banner ?? o.banner_url, base),
     bio: str(o.bio),
     tema: tema === 'noite' || tema === 'lima' ? tema : 'papel',
     cor: opt(o.cor),
   };
 }
-const lerPessoa = (o: Record<string, unknown>): Pessoa => ({
-  ...lerUsuario(o),
+const lerPessoa = (o: Record<string, unknown>, base?: string): Pessoa => ({
+  ...lerUsuario(o, base),
   online: !!o.online,
   amigo: !!o.amigo,
   sala: opt(o.sala ?? o.sala_id),
@@ -101,10 +107,12 @@ const lerSala = (o: Record<string, unknown>): Sala => ({
   pessoas: Number(o.pessoas) || 0,
   noAr: !!(o.no_ar ?? o.noAr),
 });
+// expira_em comes in Unix seconds from the porteiro.
+const quando = (v: unknown) => (typeof v === 'number' ? new Date(v * 1000).toISOString() : str(v));
 const lerConvite = (o: Record<string, unknown>): Convite => ({
   id: str(o.id),
-  link: opt(o.link),
-  expiraEm: str(o.expira_em ?? o.expiraEm),
+  link: opt(o.link ?? o.url),
+  expiraEm: quando(o.expira_em ?? o.expiraEm),
   usos: Number(o.usos) || 0,
   usosMax: Number(o.usos_max ?? o.usosMax) || 1,
 });
@@ -133,7 +141,8 @@ export function servidorReal(url: string): Servidor {
     }
     return (r.corpo ?? {}) as Obj;
   }
-  const usuarioDe = (o: Obj) => lerUsuario((o.usuario as Obj) ?? o);
+  const base = url.replace(/\/+$/, '');
+  const usuarioDe = (o: Obj) => lerUsuario((o.usuario as Obj) ?? o, base);
   const c = encodeURIComponent;
   return {
     url,
@@ -147,13 +156,16 @@ export function servidorReal(url: string): Servidor {
       return { servidor: str(o.servidor ?? o.nome), convidadoPor: str(o.convidado_por ?? o.convidadoPor) };
     },
     aceitar: async (codigo, nome) => usuarioDe(await chamar('POST', `/api/convites/${c(codigo)}/aceitar`, { nome, aparelho: nomeAparelho() })),
-    linkAparelho: async () => str((await chamar('POST', '/api/aparelhos/link')).link),
+    linkAparelho: async () => {
+      const o = await chamar('POST', '/api/aparelhos/link');
+      return str(o.url ?? o.link);
+    },
     entrarAparelho: async (codigo) => usuarioDe(await chamar('POST', '/api/aparelhos/entrar', { codigo, aparelho: nomeAparelho() })),
     sair: async () => void (await chamar('POST', '/api/sair').catch(() => undefined)),
     eu: async () => usuarioDe(await chamar('GET', '/api/eu')),
-    perfil: async (dados) => usuarioDe(await chamar('PATCH', '/api/eu/perfil', dados)),
+    perfil: async ({ tema, ...resto }) => usuarioDe(await chamar('PATCH', '/api/eu/perfil', tema ? { ...resto, tema_perfil: tema } : resto)),
     imagem: async (tipo, webp) => usuarioDe(await chamar('PUT', `/api/eu/${tipo}`, undefined, webp)),
-    pessoas: async () => lista(await chamar('GET', '/api/pessoas'), 'pessoas').map(lerPessoa),
+    pessoas: async () => lista(await chamar('GET', '/api/pessoas'), 'pessoas').map((o) => lerPessoa(o, base)),
     amigo: async (id, sim) => void (await chamar(sim ? 'POST' : 'DELETE', `/api/amigos/${c(id)}`)),
     remover: async (id) => void (await chamar('DELETE', `/api/pessoas/${c(id)}`)),
     salas: async () => lista(await chamar('GET', '/api/salas'), 'salas').map(lerSala).sort((a, b) => a.ordem - b.ordem),
@@ -167,7 +179,9 @@ export function servidorReal(url: string): Servidor {
       }
       return { url: o.url, token: o.token, screen_token: o.screen_token };
     },
-    convites: async () => lista(await chamar('GET', '/api/convites'), 'convites').map(lerConvite),
+    convites: async () => lista(await chamar('GET', '/api/convites'), 'convites')
+      .filter((o) => !o.revogado && !(typeof o.expira_em === 'number' && o.expira_em * 1000 < Date.now()) && Number(o.usos) < Number(o.usos_max ?? 1))
+      .map(lerConvite),
     criarConvite: async () => lerConvite(await chamar('POST', '/api/convites')),
     revogarConvite: async (id) => void (await chamar('DELETE', `/api/convites/${c(id)}`)),
   };
