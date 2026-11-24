@@ -30,6 +30,7 @@ const RATE_LIMIT_CAPACITY: usize = 4096;
 // The app's upload test sends a series of growing blocks for about 5 seconds.
 const UPLOAD_LIMIT: u8 = 60;
 const UPLOAD_MAX_BYTES: usize = 16 * 1024 * 1024;
+const UPLOAD_READ_TIMEOUT: Duration = Duration::from_secs(20);
 // Origins of the Tauri app on Windows (release and `tauri dev`).
 const APP_ORIGINS: [&str; 3] = [
     "http://tauri.localhost",
@@ -169,14 +170,19 @@ async fn limit_upload(
 /// Streams instead of buffering: the container has 64 MB of memory.
 async fn upload_test(body: Body) -> Result<Json<serde_json::Value>, StatusCode> {
     let start = Instant::now();
-    let mut bytes = 0usize;
-    let mut stream = body.into_data_stream();
-    while let Some(chunk) = stream.next().await {
-        bytes += chunk.map_err(|_| StatusCode::BAD_REQUEST)?.len();
-        if bytes > UPLOAD_MAX_BYTES {
-            return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    let bytes = tokio::time::timeout(UPLOAD_READ_TIMEOUT, async {
+        let mut bytes = 0usize;
+        let mut stream = body.into_data_stream();
+        while let Some(chunk) = stream.next().await {
+            bytes += chunk.map_err(|_| StatusCode::BAD_REQUEST)?.len();
+            if bytes > UPLOAD_MAX_BYTES {
+                return Err(StatusCode::PAYLOAD_TOO_LARGE);
+            }
         }
-    }
+        Ok(bytes)
+    })
+    .await
+    .map_err(|_| StatusCode::REQUEST_TIMEOUT)??;
     Ok(Json(
         json!({"bytes": bytes, "ms": start.elapsed().as_millis() as u64}),
     ))
@@ -510,6 +516,21 @@ mod tests {
                 assert_eq!(body["bytes"], size);
             }
         }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn upload_times_out_if_the_body_never_finishes() {
+        let body = Body::from_stream(futures_util::stream::pending::<
+            Result<axum::body::Bytes, std::io::Error>,
+        >());
+        let mut request = Request::post("/api/upload-test").body(body).unwrap();
+        request.extensions_mut().insert(ConnectInfo(
+            "192.0.2.30:1234".parse::<SocketAddr>().unwrap(),
+        ));
+        let start = tokio::time::Instant::now();
+        let response = router().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::REQUEST_TIMEOUT);
+        assert_eq!(start.elapsed(), UPLOAD_READ_TIMEOUT);
     }
 
     #[tokio::test]
