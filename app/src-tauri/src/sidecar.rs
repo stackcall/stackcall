@@ -29,7 +29,7 @@ struct Running {
 fn command(program: impl AsRef<std::ffi::OsStr>) -> Command {
     let mut command = Command::new(program);
     #[cfg(windows)]
-    command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    command.creation_flags(0x08000000 | 0x20); // CREATE_NO_WINDOW | NORMAL_PRIORITY_CLASS: game mode lowers the app, never the encoder
     command.kill_on_drop(true).stderr(Stdio::null());
     command
 }

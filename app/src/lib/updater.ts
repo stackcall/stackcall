@@ -26,7 +26,9 @@ export function useUpdater(inCall: boolean, demo: boolean) {
 
   const runCheck = useCallback(async () => {
     if (demo) {
-      patch({ available: { version: '0.2.0', notes: '3 novidades, 1 correção' }, lastCheck: new Date() });
+      // Fake server only: offer the next minor so the banner shows a newer version than the installed one.
+      const [major, minor] = __APP_VERSION__.split('.').map(Number);
+      patch({ available: { version: `${major}.${minor + 1}.0`, notes: '3 novidades, 1 correção' }, lastCheck: new Date() });
       return;
     }
     if (!isTauri()) return;

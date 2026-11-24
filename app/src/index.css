@@ -1,28 +1,81 @@
 @import 'tailwindcss';
 
-/* Sala de Controle tokens (docs/design/prototipo/README.md). Purple only for live, selected or active. */
+/*
+  Padrão Pôster (skill padrao-pessoal, origem Fivestack). Papel claro com grade, tinta preta,
+  janelas de 1 px com barra de título, vermelho só para ação, seleção e "no ar"; lima só para
+  dado. Claro é o padrão; escuro é opção (data-tema="escuro" no <html>, src/lib/tema.ts).
+  Fontes por @fontsource, só os pesos usados (src/main.tsx).
+*/
+
 @theme {
-  --color-bg: #0f1012;
-  --color-panel: #131417;
-  --color-surface: #17191c;
-  --color-raised: #1b1d21;
-  --color-line: #30333a;
-  --color-text: #d9dbe0;
-  --color-muted: #9ea2ab;
-  --color-faint: #8a8e97;
-  --color-live: #7c5cff;
-  --color-live-soft: #b9a8ff;
-  --color-active: #1c1833;
-  --color-active-strong: #221b3d;
-  --color-on-active: #e2dbff;
-  --color-danger-line: #5a2a33;
-  --color-danger-bg: #24151a;
-  --color-danger-text: #ffb3bd;
-  --font-sans: 'Barlow', system-ui, sans-serif;
-  --font-cond: 'Barlow Condensed', 'Barlow', sans-serif;
-  --radius-ctl: 6px;
+  --font-sans: 'Hanken Grotesk', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font-display: 'Anton', 'Hanken Grotesk', system-ui, sans-serif;
+  --font-pincel: 'Permanent Marker', 'Hanken Grotesk', cursive;
+
+  --color-fundo: #f4f4f1;
+  --color-superficie: #ffffff;
+  --color-superficie-alta: #ededea;
+  --color-superficie-topo: #e2e2dd;
+  --color-borda: #dcdcd6;
+  --color-texto: #111111;
+  --color-texto-fraco: #4a4a46;
+  --color-destaque: #c8191f;
+  --color-destaque-forte: #a11218;
+  --color-destaque-fraco: #fdeaea;
+  --color-sobre-destaque: #ffffff;
+  --color-lima: #c8f03c;
+  --color-sobre-lima: #111111;
+  --color-perigo: #b42318;
+  --color-vitoria: #1a7f37;
+  --color-aviso: #9a6a00;
+  --color-palco: #101012;
+
+  --radius-pequeno: 2px;
 }
 
+@media screen {
+  html[data-tema='escuro'] {
+    color-scheme: dark;
+    --color-fundo: #0e0e10;
+    --color-superficie: #18181b;
+    --color-superficie-alta: #222226;
+    --color-superficie-topo: #2c2c31;
+    --color-borda: #34343a;
+    --color-texto: #f4f4f1;
+    --color-texto-fraco: #b3b3ab;
+    --color-destaque: #ff5a5f;
+    --color-destaque-forte: #ff7c80;
+    --color-destaque-fraco: #3b1517;
+    --color-sobre-destaque: #111111;
+    --color-perigo: #ff7a6b;
+    --color-vitoria: #4fca72;
+    --color-aviso: #e9b949;
+    --grade-papel: #1c1c20;
+  }
+}
+
+/* Perfil com tema "Noite": o cartão fica escuro para quem vê, em qualquer tema. */
+.tema-noite {
+  color-scheme: dark;
+  --color-superficie: #18181b;
+  --color-superficie-alta: #222226;
+  --color-superficie-topo: #2c2c31;
+  --color-borda: #34343a;
+  --color-texto: #f4f4f1;
+  --color-texto-fraco: #b3b3ab;
+}
+/* Perfil com tema "Lima": fundo lima, tinta preta. */
+.tema-lima {
+  --color-superficie: #c8f03c;
+  --color-superficie-alta: #b8e02c;
+  --color-superficie-topo: #a8d01c;
+  --color-borda: #111111;
+  --color-texto: #111111;
+  --color-texto-fraco: #2b3300;
+}
+
+@layer base {
 html,
 body,
 #root {
@@ -30,82 +83,254 @@ body,
   margin: 0;
 }
 
-body {
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-family: var(--font-sans);
-  font-size: 14px;
+html {
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background-color: var(--color-fundo);
+  /* Grade de 40 px: textura do papel. */
+  background-image: linear-gradient(var(--grade-papel, #e7e7e2) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grade-papel, #e7e7e2) 1px, transparent 1px);
+  background-size: 40px 40px;
+  color: var(--color-texto);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* Anton só tem um peso: sem negrito falso, sempre em caixa alta. */
+h1,
+h2,
+.font-display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-synthesis: none;
+  text-transform: uppercase;
+  letter-spacing: 0.005em;
+  line-height: 0.95;
+  margin: 0;
+}
+.font-pincel {
+  font-family: var(--font-pincel);
+  text-transform: none;
+}
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+::selection {
+  background: var(--color-lima);
+  color: var(--color-sobre-lima);
 }
 
 button {
+  font: inherit;
+  color: inherit;
   cursor: pointer;
 }
 button:disabled {
   cursor: not-allowed;
 }
 
+* {
+  scrollbar-color: color-mix(in oklab, var(--color-texto-fraco) 45%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
 :focus-visible {
-  outline: 2px solid var(--color-live-soft);
+  outline: 2px solid var(--color-destaque);
   outline-offset: 2px;
 }
-
-a {
-  color: #b9a8ff;
-}
-a:hover {
-  color: #d8ceff;
 }
 
-/* Condensed caps label used across the prototype. */
-@utility label-caps {
-  font-family: var(--font-cond);
+/* Rótulo de metadado: mono, caixa alta. Só quando carrega dado. */
+@utility rotulo {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-texto-fraco);
+}
+
+/* Janela: borda de tinta de 1 px, canto reto, sem sombra. */
+@utility janela {
+  background: var(--color-superficie);
+  border: 1px solid var(--color-texto);
+}
+
+/* Barra de título: tinta; .barra-lima para dados; .barra-ar para "no ar". */
+@utility barra {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 10px;
+  background: var(--color-texto);
+  color: var(--color-superficie);
+  font-family: var(--font-mono);
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
+  white-space: nowrap;
+}
+@utility barra-lima {
+  background: var(--color-lima);
+  color: var(--color-sobre-lima);
+}
+@utility barra-ar {
+  background: var(--color-destaque);
+  color: var(--color-sobre-destaque);
 }
 
+/* Botão: secundário (branco que inverte), .btn-prim (vermelho), .btn-fant (sem borda). 44 px de alvo. */
 @utility btn {
-  height: 44px;
-  padding: 0 16px;
-  border-radius: var(--radius-ctl);
-  border: 1px solid var(--color-line);
-  background: var(--color-raised);
-  color: var(--color-text);
-  font-family: var(--font-cond);
-  font-weight: 600;
-  font-size: 15px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
   gap: 8px;
-}
-
-@utility btn-primary {
-  border-color: var(--color-live);
-  background: var(--color-live);
-  color: var(--color-bg);
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--radius-pequeno);
+  border: 1px solid var(--color-texto);
+  background: var(--color-superficie);
+  color: var(--color-texto);
+  font-size: 14px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  white-space: nowrap;
+  user-select: none;
+  transition: background-color 140ms cubic-bezier(0.22, 1, 0.36, 1), color 140ms, transform 140ms;
+  &:hover:not(:disabled) {
+    background: var(--color-texto);
+    color: var(--color-superficie);
+  }
+  &:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+  &:disabled {
+    opacity: 0.45;
+  }
+}
+@utility btn-prim {
+  background: var(--color-destaque);
+  color: var(--color-sobre-destaque);
+  &:hover:not(:disabled) {
+    background: var(--color-destaque-forte);
+    color: var(--color-sobre-destaque);
+  }
+}
+@utility btn-fant {
+  border-color: transparent;
+  background: transparent;
+  color: var(--color-texto-fraco);
+  &:hover:not(:disabled) {
+    background: var(--color-superficie-alta);
+    color: var(--color-texto);
+  }
+}
+@utility btn-icone {
+  width: 44px;
+  padding: 0;
+}
+@utility btn-lg {
+  min-height: 48px;
+  padding: 0 20px;
+  font-size: 15px;
+}
+/* Estado desligado (mic mudo, fone desligado): texto diz o estado, a cor só reforça. */
+@utility btn-off {
+  background: var(--color-destaque-fraco);
+  color: var(--color-perigo);
+  border-color: var(--color-perigo);
 }
 
-@utility field {
+/* Abas segmentadas: trilho com borda de tinta, ativa em tinta (nunca vermelho). */
+@utility abas {
+  display: inline-flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--color-texto);
+  background: var(--color-superficie);
+  & > button {
+    min-height: 44px;
+    padding: 0 14px;
+    border: 0;
+    background: transparent;
+    color: var(--color-texto-fraco);
+    font-size: 13px;
+    font-weight: 700;
+  }
+  & > button + button {
+    border-left: 1px solid var(--color-texto);
+  }
+  & > button[aria-selected='true'],
+  & > button[aria-pressed='true'] {
+    background: var(--color-texto);
+    color: var(--color-superficie);
+  }
+  & > button:hover:not([aria-selected='true']):not([aria-pressed='true']):not(:disabled) {
+    background: var(--color-superficie-alta);
+    color: var(--color-texto);
+  }
+}
+
+/* Campo: borda de tinta, 2 px de canto, foco em destaque. */
+@utility campo {
   width: 100%;
   box-sizing: border-box;
-  height: 42px;
-  border-radius: var(--radius-ctl);
-  border: 1px solid var(--color-line);
-  background: var(--color-surface);
-  color: var(--color-text);
+  min-height: 44px;
   padding: 0 12px;
+  border: 1px solid var(--color-texto);
+  border-radius: var(--radius-pequeno);
+  background: var(--color-superficie);
+  color: var(--color-texto);
   font: inherit;
+  font-size: 15px;
+  caret-color: var(--color-destaque);
+  &:focus-visible {
+    outline: 2px solid var(--color-destaque);
+    outline-offset: 0;
+  }
+  &[aria-invalid='true'] {
+    border-color: var(--color-perigo);
+  }
+}
+
+/* Skeleton: a única exceção de gradiente, junto com a grade do papel. */
+@keyframes brilho-skeleton {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+.skeleton {
+  border-radius: var(--radius-pequeno);
+  background-image: linear-gradient(90deg, var(--color-superficie-alta) 0%, var(--color-superficie-topo) 50%, var(--color-superficie-alta) 100%);
+  background-size: 200% 100%;
+  animation: brilho-skeleton 1.4s ease-in-out infinite;
+}
+
+/* Janela fora da tela ou modo jogo: nada se mexe (src/lib/leveza.ts). */
+html[data-parado] *,
+html[data-parado] *::before,
+html[data-parado] *::after {
+  animation-play-state: paused !important;
+  transition: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  * {
-    transition: none !important;
-    animation: none !important;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

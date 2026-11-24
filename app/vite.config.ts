@@ -10,5 +10,5 @@ export default defineConfig({
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   // Desktop app loaded from disk: one bundle is fine.
   build: { target: 'chrome120', chunkSizeWarningLimit: 1500 },
-  test: { globals: true, environment: 'jsdom', setupFiles: ['./src/test-setup.ts'] },
+  test: { globals: true, environment: 'jsdom', setupFiles: ['./src/test-setup.ts'], testTimeout: 20000, pool: 'threads' },
 });

@@ -1,6 +1,5 @@
 import type { Codec, Preset, PresetCard } from '../lib/presets';
 import type { CaptureSource } from '../lib/sidecar';
-import type { RoomId } from '../lib/config';
 
 /** Anything that can render into a media element (a LiveKit Track). */
 export type Attachable = {
@@ -9,6 +8,7 @@ export type Attachable = {
 };
 
 export type Person = {
+  /** LiveKit identity = user id on the porteiro. */
   id: string;
   name: string;
   isLocal: boolean;
@@ -31,10 +31,15 @@ export type Stream = {
   info: string;
 };
 
-export type ChatMessage = { id: string; who: string; at: Date; text: string; mine: boolean };
+/** Real numbers of the watched screen, from WebRTC stats. */
+export type StreamStats = { height: number; fps: number; codec: string; mbps: number | null };
+
+/** `hora` is formatted once when the message arrives, never per render. */
+export type ChatMessage = { id: string; who: string; hora: string; text: string; mine: boolean };
+export const horaDe = (d: Date) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
 export type RoomModel = {
-  room: RoomId;
+  room: string;
   state: 'connecting' | 'connected' | 'reconnecting' | 'error';
   error?: string;
   people: Person[];
@@ -45,6 +50,9 @@ export type RoomModel = {
   cameraOn: boolean;
   micError?: string;
   streamError?: string;
+  /** Round trip to the media server in ms (ICE candidate pair), null until measured. */
+  ping: number | null;
+  stageStats: StreamStats | null;
 };
 
 export type RoomActions = {
@@ -60,12 +68,3 @@ export type RoomActions = {
   clearStreamError?(): void;
   stopLive(): void;
 };
-
-/** Stable pastel per name, from the prototype palette. */
-const COLORS = ['#c9bcff', '#b9e3d4', '#f2d3a8', '#c4d4f5', '#f5c4d6', '#d8e6a8'];
-export function colorFor(name: string) {
-  let h = 0;
-  for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return COLORS[h % COLORS.length];
-}
-export const initials = (name: string) => name.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() || '?';
