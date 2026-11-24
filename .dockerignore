@@ -5,3 +5,7 @@
 !server/Cargo.toml
 !server/src/
 !server/src/**
+!core/
+!core/Cargo.toml
+!core/src/
+!core/src/**

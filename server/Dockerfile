@@ -4,6 +4,9 @@ WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY server/Cargo.toml server/Cargo.toml
 COPY server/src server/src
+# core is a workspace member: cargo needs its manifest to load the workspace (it is not compiled here).
+COPY core/Cargo.toml core/Cargo.toml
+COPY core/src core/src
 RUN cargo build --locked --release -p porteiro
 
 # Debian 12 Bookworm Slim
