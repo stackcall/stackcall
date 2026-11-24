@@ -439,6 +439,7 @@ impl GraphicsCaptureApiHandler for Capture {
                         args.fps,
                         self.kbps,
                         gpu.as_ref().map(gpu::Converter::output_pool),
+                        encoder::Tuning { cbr: args.cbr },
                     )?;
                     Ok::<_, anyhow::Error>(Session {
                         name,

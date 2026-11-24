@@ -69,12 +69,28 @@ impl Drop for Options {
     }
 }
 
+#[derive(Clone, Copy, Default)]
+pub struct Tuning {
+    pub cbr: bool,
+}
+
+fn configure_bitrate(video: &mut AVCodecContext, kbps: u32, cbr: bool) {
+    video.bit_rate = bits_per_second(kbps) as i64;
+    if cbr {
+        video.rc_max_rate = video.bit_rate;
+        // 100 ms leaves room for keyframes and QSV's whole-kilobyte buffer units.
+        video.rc_buffer_size = (video.bit_rate / 10) as i32;
+        video.rc_initial_buffer_occupancy = video.rc_buffer_size / 2;
+    }
+}
+
 pub fn open(
     name: &str,
     res: Resolution,
     fps: u32,
     kbps: u32,
     hardware: Option<&crate::gpu::Frames>,
+    tuning: Tuning,
 ) -> Result<Session> {
     let c_name = CString::new(name)?;
     let codec = unsafe { media::avcodec_find_encoder_by_name(c_name.as_ptr()) };
@@ -98,8 +114,20 @@ pub fn open(
     };
     video.gop_size = (2 * fps) as i32;
     video.max_b_frames = 0;
-    video.bit_rate = bits_per_second(kbps) as i64;
+    configure_bitrate(video, kbps, tuning.cbr);
     let mut options = Options::default();
+    if tuning.cbr {
+        if name.ends_with("nvenc") {
+            options.set("rc", "cbr")?;
+            options.set("rc-lookahead", "0")?;
+        } else if name.ends_with("amf") {
+            options.set("rc", "cbr")?;
+            options.set("preanalysis", "0")?;
+        } else {
+            options.set("look_ahead_depth", "0")?;
+            options.set("low_delay_brc", "1")?;
+        }
+    }
     if name.starts_with("h264") {
         let profile = if name.ends_with("_amf") {
             "constrained_baseline"
@@ -108,7 +136,7 @@ pub fn open(
         };
         options.set("profile", profile)?;
     }
-    let tuning: &[(&str, &str)] = if name.ends_with("nvenc") {
+    let backend_options: &[(&str, &str)] = if name.ends_with("nvenc") {
         &[
             ("preset", "p1"),
             ("tune", "ull"),
@@ -125,7 +153,7 @@ pub fn open(
             ("forced_idr", "1"),
         ]
     };
-    for (key, value) in tuning {
+    for (key, value) in backend_options {
         options.set(key, value)?;
     }
     check(unsafe { media::avcodec_open2(session.0, codec, &mut options.0) })

@@ -114,7 +114,7 @@ pub fn run(options: ProbeOptions) -> Result<Report> {
 }
 
 fn measure(name: &str, res: Resolution, fps: u32, kbps: u32, seconds: u32) -> Result<Outcome> {
-    let mut session = encoder::open(name, res, fps, kbps, None)?;
+    let mut session = encoder::open(name, res, fps, kbps, None, encoder::Tuning::default())?;
     let (width, height) = res.dimensions();
     let mut frames: Vec<_> = (0..4)
         .map(|phase| {
