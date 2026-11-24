@@ -109,10 +109,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: app/src-tauri
+          workspaces: |
+            app/src-tauri
+            . -> ${{ runner.temp }}/sc-target
 
       - run: npm ci
         working-directory: app
+
+      - name: Preparar FFmpeg LGPL e compilar o sidecar x64
+        run: ./scripts/preparar-ffmpeg.ps1
 
       - name: Compilar NSIS e preparar a release
         id: tauri
@@ -145,6 +150,8 @@ jobs:
           if ($installer.Count -ne 1 -or "$($installer[0]).sig" -notin $paths) {
             throw 'A build precisa gerar o instalador NSIS x64 com a assinatura do updater.'
           }
+          $bytes = (Get-Item -LiteralPath $installer[0]).Length
+          "Instalador NSIS: $bytes bytes ($([Math]::Round($bytes / 1MB, 2)) MiB)" >> $env:GITHUB_STEP_SUMMARY
 
       - name: Validar manifesto e anexar changelog ao rascunho
         if: github.event_name == 'push'
