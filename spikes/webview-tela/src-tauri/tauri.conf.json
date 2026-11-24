@@ -1,0 +1,15 @@
+{
+  "productName": "Stackcall P6",
+  "version": "0.1.0",
+  "identifier": "com.stackcall.spike.webview",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1426",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [{ "title": "Stackcall P6", "width": 900, "height": 850 }]
+  },
+  "bundle": { "active": false }
+}
