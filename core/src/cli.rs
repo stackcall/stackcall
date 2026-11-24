@@ -45,6 +45,8 @@ pub struct Publish {
     pub audio_pid: Option<u32>,
     #[arg(long)]
     pub cpu_path: bool,
+    #[arg(long, help = "Reuse BGRA-to-NV12 scaling state on the CPU path")]
+    pub cache_cpu_scaler: bool,
     #[arg(long, value_parser = clap::value_parser!(u64).range(1..))]
     pub duration: Option<u64>,
 }
