@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import { isTauri } from '@tauri-apps/api/core';
 import { CATEGORIES, countOf, formatDate, loadChangelog, type Version } from '../lib/changelog';
 import type { useUpdater } from '../lib/updater';
 import { updateButtonLabel } from '../components/UpdateBanner';
+import { testMachine } from '../lib/sidecar';
 
 type Updater = ReturnType<typeof useUpdater>;
 
@@ -23,6 +25,8 @@ const hhmm = (d: Date) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minut
 
 export function Settings({ updater, inCall, onClose, onNotes }: { updater: Updater; inCall: boolean; onClose(): void; onNotes(): void }) {
   const [history, setHistory] = useState<Version[]>([]);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState('');
   useEffect(() => void loadChangelog().then(setHistory), []);
   const current = history.find((v) => v.version === updater.current);
   const busy = updater.status === 'downloading' || updater.status === 'installing';
@@ -95,6 +99,24 @@ export function Settings({ updater, inCall, onClose, onNotes }: { updater: Updat
             </select>
           </label>
         </section>
+
+        {isTauri() && (
+          <section className="flex items-center gap-4 rounded-[6px] border border-line bg-panel px-5 py-3.5">
+            <button type="button" disabled={testing} className="btn" onClick={async () => {
+              setTesting(true);
+              setTestResult('');
+              try {
+                const { trials } = await testMachine(true);
+                setTestResult(trials.some((trial) => trial.ok) ? 'Teste da GPU concluído.' : 'Nenhum codificador de hardware disponível.');
+              } catch (error) {
+                setTestResult(String(error));
+              } finally {
+                setTesting(false);
+              }
+            }}>{testing ? 'Testando GPU…' : 'Refazer teste da GPU'}</button>
+            <span role="status" className="text-muted">{testResult}</span>
+          </section>
+        )}
 
         <section className="flex flex-col gap-2">
           <span className="label-caps text-[13px] text-muted">Histórico de versões</span>

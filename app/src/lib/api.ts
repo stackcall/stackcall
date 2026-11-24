@@ -26,6 +26,9 @@ export async function requestToken(server: string, convite: string, nome: string
     throw new ApiError(0, 'Servidor fora do ar ou endereço errado.');
   }
   if (!response.ok) {
+    if (response.status === 400 && nome.endsWith(':tela')) {
+      throw new ApiError(400, 'O porteiro da sala ainda não aceita a transmissão pelo núcleo.');
+    }
     throw new ApiError(response.status, TOKEN_ERRORS[response.status] ?? `Erro do servidor (${response.status}).`);
   }
   const body = (await response.json()) as Partial<TokenResponse>;

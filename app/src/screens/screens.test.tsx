@@ -67,7 +67,7 @@ test('demo room: tabs, stage, watch, chat, mute and update banner', async () => 
 
   await userEvent.click(screen.getByRole('button', { name: 'Entrar no ar' }));
   const dialog = await screen.findByRole('dialog', { name: 'Entrar no ar' });
-  expect(within(dialog).getAllByText('Chega na v0.2 com o núcleo próprio.')).toHaveLength(2);
+  expect(within(dialog).getAllByText('O modo de reserva suporta até 1080p60.')).toHaveLength(2);
 });
 
 test('go live shows locked 4K and recommends 1080p60 in demo', async () => {
@@ -77,7 +77,7 @@ test('go live shows locked 4K and recommends 1080p60 in demo', async () => {
   expect(cards).toHaveLength(6);
   expect(cards.filter((c) => c.hasAttribute('disabled'))).toHaveLength(3);
   expect(screen.getByRole('button', { pressed: true })).toHaveTextContent('1080p60 FPSESCOLHIDO');
-  expect(screen.getAllByText('Chega na v0.2 com o núcleo próprio.')).toHaveLength(2);
+  expect(screen.getAllByText('O modo de reserva suporta até 1080p60.')).toHaveLength(2);
 });
 
 test('settings shows version, stable channel and history', async () => {

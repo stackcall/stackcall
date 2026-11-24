@@ -31,6 +31,7 @@ export function RoomView({ model, demo, session, room, onRoom, onSettings, onLea
   model: RoomModel & RoomActions; demo: boolean; onRetry(): void;
 }) {
   const [goLive, setGoLive] = useState(() => demo && demoScreen() === 'ar');
+  const [fallback, setFallback] = useState(false);
   const [ping, setPing] = useState<number | null>(demo ? 142 : null);
   const [stageId, setStageId] = useState<string | null>(null);
   const upload = demo ? 100 : Number(store.get('uploadMbps')) || null;
@@ -93,6 +94,16 @@ export function RoomView({ model, demo, session, room, onRoom, onSettings, onLea
         <Chat room={roomLabel} chat={model.chat} onSend={model.sendChat} />
       </div>
 
+      {model.streamError && !goLive && (
+        <div role="alert" className="flex items-center gap-3 px-5 py-2 text-danger-text">
+          <span>{model.streamError}</span>
+          <button type="button" className="btn" disabled={model.state !== 'connected'} onClick={() => {
+            model.clearStreamError?.();
+            setFallback(true);
+            setGoLive(true);
+          }}>Transmitir pelo WebView2</button>
+        </div>
+      )}
       <footer className="flex h-[72px] shrink-0 items-center gap-2.5 border-t border-line bg-panel px-5">
         <button type="button" className="btn" aria-pressed={!model.micOn} onClick={model.toggleMic}>
           {model.micOn ? 'Mic aberto' : 'Mudo'}
@@ -122,14 +133,20 @@ export function RoomView({ model, demo, session, room, onRoom, onSettings, onLea
       {goLive && (
         <GoLive
           demo={demo}
+          fallback={fallback}
           server={session.server}
           roomLabel={roomLabel}
           viewers={Math.max(0, model.people.length - 1)}
-          onCancel={() => setGoLive(false)}
+          onCancel={() => { setGoLive(false); setFallback(false); }}
           onStart={async (track, preset, codec) => {
             await model.goLive(track, preset, codec);
             setGoLive(false);
+            setFallback(false);
           }}
+          onNativeStart={model.goLiveNative && (async (...args) => {
+            await model.goLiveNative!(...args);
+            setGoLive(false);
+          })}
         />
       )}
     </div>
