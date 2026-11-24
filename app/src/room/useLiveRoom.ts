@@ -26,6 +26,7 @@ const MIC_ERROR = 'Microfone indisponível. Confira a permissão do Windows e o 
 
 export function useLiveRoom(session: Session, roomId: RoomId): RoomModel & RoomActions {
   const roomRef = useRef<Room | null>(null);
+  const screenAccess = useRef<{ url: string; token: string; expires: number } | null>(null);
   const [, setTick] = useState(0);
   const rerender = useCallback(() => setTick((t) => t + 1), []);
   const [state, setState] = useState<RoomModel['state']>('connecting');
@@ -173,10 +174,12 @@ export function useLiveRoom(session: Session, roomId: RoomId): RoomModel & RoomA
 
     (async () => {
       try {
-        const { url, token } = await requestToken(session.server, session.invite, session.name, roomId);
+        const requestedAt = Date.now();
+        const { url, token, screen_token } = await requestToken(session.server, session.invite, session.name, roomId);
         if (closed) return;
         await room.connect(url, token, { autoSubscribe: false });
         if (closed) return void room.disconnect();
+        screenAccess.current = { url, token: screen_token, expires: requestedAt + 3600_000 };
         room.remoteParticipants.forEach((p) => {
           applyVolume(p);
           p.trackPublications.forEach((pub) => subscribeDefault(pub, p));
@@ -200,6 +203,7 @@ export function useLiveRoom(session: Session, roomId: RoomId): RoomModel & RoomA
     const levels = setInterval(rerender, 150); // audio meters
     return () => {
       closed = true;
+      screenAccess.current = null;
       clearInterval(levels);
       live.current?.track.stop();
       live.current = null;
@@ -242,7 +246,7 @@ export function useLiveRoom(session: Session, roomId: RoomId): RoomModel & RoomA
 
   const streams: Stream[] = [...screenByOwner].map(([id, p]) => {
     const owner = people.find((p) => p.id === id) ?? {
-      id, name: id, isLocal: false, speaking: false, muted: true, level: 0, volume: volumes.current.get(id) ?? 1, live: true,
+      id, name: p.name || id, isLocal: false, speaking: false, muted: true, level: 0, volume: volumes.current.get(id) ?? 1, live: true,
     };
     const pub = p.getTrackPublication(Track.Source.ScreenShare)!;
     const dims = pub.dimensions;
@@ -339,17 +343,17 @@ export function useLiveRoom(session: Session, roomId: RoomId): RoomModel & RoomA
       rerender();
     },
     goLiveNative: async (source, preset, codec, audio) => {
-      if (!room || !lp || !preset.trial) throw new Error('Sem conexão com a sala ou preset indisponível.');
+      const access = screenAccess.current;
+      if (!room || !lp || !access || !preset.trial) throw new Error('Sem conexão com a sala ou preset indisponível.');
+      if (Date.now() >= access.expires) throw new Error('O token de transmissão expirou. Entre novamente na sala.');
       const id = crypto.randomUUID();
-      const { url, token } = await requestToken(session.server, session.invite, session.name + SCREEN_SUFFIX, roomId);
-      if (roomRef.current !== room) throw new Error('A sala mudou. Escolha a fonte novamente.');
       native.current = { id, info: streamInfo(preset, codec) };
       setStreamError(undefined);
       try {
         await invoke('iniciar_transmissao', { args: {
           id, source: source.id, resolution: resolutionOf(preset), fps: preset.fps, codec,
           encoder: preset.trial.encoder.split('_')[1], kbps: Math.round(preset.mbps[codec] * 1000),
-          audio_pid: audio ? source.pid : null, url, token,
+          audio_pid: audio ? source.pid : null, url: access.url, token: access.token,
         } });
         if (roomRef.current !== room) {
           await stopTransmission(id);

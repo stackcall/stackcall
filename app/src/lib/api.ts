@@ -1,4 +1,4 @@
-export type TokenResponse = { url: string; token: string };
+export type TokenResponse = { url: string; token: string; screen_token: string };
 
 const base = (server: string) => server.trim().replace(/\/+$/, '');
 
@@ -9,7 +9,7 @@ export class ApiError extends Error {
 }
 
 const TOKEN_ERRORS: Record<number, string> = {
-  400: 'Nome inválido. Use letras sem acento, números, - ou _ (até 32).',
+  400: 'Nome inválido ou sala indisponível.',
   401: 'Convite não confere.',
   429: 'Muitas tentativas. Espere um minuto.',
 };
@@ -26,13 +26,10 @@ export async function requestToken(server: string, convite: string, nome: string
     throw new ApiError(0, 'Servidor fora do ar ou endereço errado.');
   }
   if (!response.ok) {
-    if (response.status === 400 && nome.endsWith(':tela')) {
-      throw new ApiError(400, 'O porteiro da sala ainda não aceita a transmissão pelo núcleo.');
-    }
     throw new ApiError(response.status, TOKEN_ERRORS[response.status] ?? `Erro do servidor (${response.status}).`);
   }
   const body = (await response.json()) as Partial<TokenResponse>;
-  if (typeof body.url !== 'string' || typeof body.token !== 'string') {
+  if (typeof body.url !== 'string' || typeof body.token !== 'string' || typeof body.screen_token !== 'string') {
     throw new ApiError(502, 'Resposta inesperada do servidor.');
   }
   return body as TokenResponse;

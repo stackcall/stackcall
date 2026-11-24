@@ -20,7 +20,7 @@ export function Login({ onEnter, onSettings }: { onEnter(session: Session): void
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!nameOk) return setError('Nome: letras sem acento, números, - ou _ (até 32).');
+    if (!nameOk) return setError('O nome deve ter de 1 a 32 caracteres, sem dois-pontos.');
     setBusy(true);
     setError(undefined);
     try {
@@ -45,9 +45,9 @@ export function Login({ onEnter, onSettings }: { onEnter(session: Session): void
         </div>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="nome" className="label-caps text-[13px] text-muted">Nome</label>
-          <input id="nome" className="field" value={name} onChange={(e) => setName(e.target.value)} autoComplete="nickname" maxLength={32} required aria-invalid={!!name && !nameOk} aria-describedby="nome-ajuda" />
+          <input id="nome" className="field" value={name} onChange={(e) => setName(e.target.value)} autoComplete="nickname" required aria-invalid={!!name && !nameOk} aria-describedby="nome-ajuda" />
           <span id="nome-ajuda" className={`text-[12px] ${name && !nameOk ? 'text-danger-text' : 'text-faint'}`}>
-            Letras sem acento, números, - ou _. É como os amigos veem você.
+            De 1 a 32 caracteres, sem dois-pontos. É como os amigos veem você.
           </span>
         </div>
         <div className="flex flex-col gap-1.5">
