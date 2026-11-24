@@ -1,77 +1,84 @@
-# Stackcall aberto: contas, grupos e self-host (v0.3)
+# Stackcall aberto: servidor do grupo, convites e self-host (v0.3)
 
-Decidido em 24/11/2026. Objetivo: qualquer pessoa baixa o app e entra sem digitar endereço de servidor nem código de convite. Quem quiser hospeda o próprio servidor com um comando, como no Fluxer. O código vira open source quando o repositório abrir.
+Decidido em 24/11/2026 e simplificado no mesmo dia, a pedido do Filippe: o Stackcall é para grupos pequenos de amigos, não uma rede social. Nada de banco de dados externo nem conta global.
 
-## Como a pessoa entra
+## Ideia central: um servidor = um grupo
 
-1. Instala o app. O app já vem apontando para a **instância oficial** (`https://stackcall.80-190-79-129.sslip.io`). Não existe campo "servidor" na tela de login.
-2. Tela de login com duas saídas:
-   - **Entrar com a Steam** (recomendado para a galera de jogo). OpenID 2.0 da Steam: não pede chave nem segredo, só a URL pública da instância. Nome e avatar vêm da Steam quando a instância tiver `STEAM_API_KEY` (opcional).
-   - **Criar conta com nome e senha.** Serve para quem não tem Steam e para instância em rede local sem internet. Senha com argon2id. Sem e-mail na v0.3.
-3. Depois de entrar: cria um grupo ou abre um link de convite.
+- Cada servidor Stackcall é **um grupo de amigos**. O nosso é o da VPS (`https://stackcall.80-190-79-129.sslip.io`): só entra quem o Filippe (ou quem ele autorizar) convidar.
+- Outra turma que quiser usar baixa o servidor e hospeda o dela (VPS, PC ou rede local), com um comando. Ela não entra no nosso, e nós não entramos no dela.
+- O app fala com vários servidores. Cada um aparece como um grupo na lateral, como "servidores" no Discord, só que cada um é de uma turma.
+- Os dados ficam num arquivo SQLite dentro do próprio servidor (é só um arquivo, sem serviço de banco). Backup = copiar o arquivo.
 
-O login abre o navegador do sistema e volta pelo deep link `stackcall://login?...` (padrão de app desktop; o WebView do app nunca vê a senha da Steam).
+## Como a pessoa entra (sem senha, sem digitar servidor)
 
-## Convites sem código digitado
+1. Alguém do grupo (por padrão, só o dono e os admins) gera um **link de convite** no app e manda no WhatsApp: `https://<servidor>/c/<codigo>`.
+2. A pessoa abre o link. A página tenta abrir `stackcall://entrar?servidor=<url>&codigo=<codigo>`; sem o app instalado, mostra o botão de baixar.
+3. O app abre, pergunta só o **nome** e entra. O servidor cria o usuário e devolve uma **sessão deste aparelho**, guardada no Credential Manager do Windows. Não existe senha.
+4. Na próxima vez, o app já entra sozinho.
 
-- Convite é um link: `https://<instancia>/c/<codigo>`. A página do link tenta abrir `stackcall://entrar?instancia=<url>&codigo=<codigo>` e, se o app não estiver instalado, mostra o botão de baixar.
-- No app, o deep link entra direto no grupo. Se a instância do link não for a oficial, o app pergunta "Entrar no servidor X?" e guarda a instância. É assim que alguém entra num servidor self-hosted sem digitar nada.
-- Convite tem dono, validade (padrão 7 dias), limite de usos (padrão 10) e pode ser revogado. Código com 128 bits de aleatoriedade, guardado só como hash.
-- "Colar link de convite" continua existindo na tela inicial, para quem recebeu o link no celular.
+Outro aparelho: no app logado, "Entrar em outro aparelho" gera um link de uso único válido por 10 minutos. Perdeu o PC: um admin gera um convite novo e remove o aparelho antigo.
 
-## Servidores (instâncias)
+Convite: 128 bits de aleatoriedade, guardado só como hash, validade padrão de 7 dias, limite de usos (padrão 1), revogável. Uso atômico (`UPDATE ... SET usos = usos + 1 WHERE id = ? AND usos < usos_max AND revogado = 0 AND expira_em > agora`).
 
-- Lista de instâncias no app: a oficial vem fixa; outras entram por deep link ou em Configurações > Avançado > "Adicionar servidor" (URL). Uma sessão por instância.
-- Cada instância informa em `GET /api/instancia`: nome, versão, modo de cadastro (`aberto`, `convite`, `fechado`), se aceita Steam, versão mínima do app.
-- **Instância oficial começa em modo `convite`**: só cria conta quem chegou por um link de convite. Protege a VPS (banda) até medir o uso real. Muda para `aberto` com uma variável.
+"Colar link de convite" fica na tela inicial do app, para quem recebeu o link no celular.
 
-## Modelo de dados (SQLite no porteiro)
+## Quem controla o acesso
 
-| Tabela | Campos principais |
+| Papel | Pode |
 |---|---|
-| `usuarios` | id, nome_exibicao, steam_id (único, opcional), senha_hash (opcional), avatar_url, criado_em, papel_instancia (`admin`/`membro`) |
-| `sessoes` | id, usuario_id, token_hash, criado_em, expira_em, ultimo_uso, nome_aparelho |
-| `grupos` | id, nome, dono_id, criado_em |
-| `membros` | grupo_id, usuario_id, papel (`dono`/`admin`/`membro`), entrou_em |
-| `salas` | id, grupo_id, nome, ordem |
-| `convites` | id, grupo_id, criado_por, codigo_hash, expira_em, usos_max, usos, revogado |
-| `mensagens` | já existe ou entra aqui: id, sala_id, usuario_id, texto, criado_em |
+| Dono | Tudo; é o primeiro usuário (o script de instalação imprime o convite dele) |
+| Admin | Gerar e revogar convites, remover pessoas e aparelhos, criar e renomear salas |
+| Membro | Falar, transmitir, assistir, conversar, editar o próprio perfil |
 
-O primeiro usuário da instância vira `admin`. Uso de convite é atômico (`UPDATE ... SET usos = usos + 1 WHERE id = ? AND usos < usos_max AND NOT revogado AND expira_em > now`).
+Opção do servidor: "membros também podem convidar" (desligada por padrão). Remover alguém revoga todas as sessões dele na hora e derruba da sala.
 
-## API (contrato entre porteiro e app)
+## Amigos (como no Fivestack)
 
-Autenticação por `Authorization: Bearer <sessao>`. Sessão de 30 dias, renovada no uso, guardada no cofre do sistema pelo app (Tauri: `keyring`/Credential Manager), nunca em `localStorage`.
+Cada pessoa tem a **própria lista de amigos** dentro do servidor: você adiciona 8, outro adiciona 4. A lista serve para: aparecer em cima na lista de pessoas, ver quando o amigo entra numa sala e (depois) mensagem direta. Adicionar amigo não dá acesso a nada: quem decide quem entra no servidor é o convite.
 
-| Método e rota | Faz |
+v0.3 entrega a lista (adicionar, remover, ver online). Mensagem direta fica para a v0.4.
+
+## Dados (SQLite no porteiro)
+
+| Tabela | Campos |
 |---|---|
-| `GET /api/instancia` | Dados públicos da instância |
-| `GET /api/auth/steam/iniciar?retorno=stackcall` | Redireciona para a Steam |
-| `GET /api/auth/steam/retorno` | Confere a assinatura OpenID com a Steam, cria ou acha o usuário e redireciona para `stackcall://login?sessao=<token-de-uso-unico>` |
-| `POST /api/auth/troca` | Troca o token de uso único (60 s) pela sessão. O token nunca fica na URL depois disso |
-| `POST /api/auth/cadastro` | nome + senha (+ código de convite se a instância exigir) |
-| `POST /api/auth/entrar` | nome + senha |
-| `POST /api/auth/sair` | Revoga a sessão |
-| `GET /api/eu` | Usuário e grupos |
-| `POST /api/grupos` · `GET /api/grupos/:id` | Cria / lê (só membro) |
-| `POST /api/grupos/:id/salas` · `PATCH`/`DELETE` | Dono e admin |
-| `POST /api/grupos/:id/convites` · `DELETE /api/convites/:id` | Cria / revoga |
-| `GET /api/convites/:codigo` | Prévia pública: nome do grupo e quem convidou |
-| `POST /api/convites/:codigo/aceitar` | Entra no grupo |
-| `POST /api/salas/:id/token` | Devolve o token LiveKit da pessoa e o da tela (`<identity>:tela`, só `screen_share` e `screen_share_audio`, 1 h). Identity = id do usuário; sala LiveKit = id da sala. Só membro do grupo |
+| `usuarios` | id, nome, papel (`dono`/`admin`/`membro`), avatar, banner, bio, tema_perfil, cor, criado_em, removido_em |
+| `sessoes` | id, usuario_id, token_hash, nome_aparelho, criado_em, ultimo_uso |
+| `convites` | id, criado_por, codigo_hash, expira_em, usos_max, usos, revogado |
+| `logins_aparelho` | id, usuario_id, codigo_hash, expira_em, usado |
+| `amizades` | usuario_id, amigo_id, criado_em |
+| `salas` | id, nome, ordem |
+| `mensagens` | id, sala_id, usuario_id, texto, criado_em |
+| `config` | chave, valor (nome do servidor, membros_convidam) |
+
+## API
+
+Autenticação por `Authorization: Bearer <sessao>` (token aleatório; o servidor guarda só o hash). Rate limit por IP (/64 no IPv6): 10/min em convite e login de aparelho, 30/min no resto.
+
+| Rota | Faz |
+|---|---|
+| `GET /api/servidor` | Nome, versão, versão mínima do app (público) |
+| `GET /api/convites/:codigo` | Prévia pública: nome do servidor e quem convidou |
+| `POST /api/convites/:codigo/aceitar` | Body `{nome, aparelho}` → `{sessao, usuario}` |
+| `POST /api/aparelhos/link` · `POST /api/aparelhos/entrar` | Gera link de outro aparelho / entra com ele |
+| `POST /api/sair` | Revoga a sessão atual |
+| `GET /api/eu` · `PATCH /api/eu/perfil` · `PUT /api/eu/avatar` · `PUT /api/eu/banner` | Eu e meu perfil |
+| `GET /api/pessoas` | Membros com presença e se é amigo |
+| `POST /api/amigos/:id` · `DELETE /api/amigos/:id` | Lista de amigos |
+| `GET /api/salas` · `POST`/`PATCH`/`DELETE` (admin) | Salas |
+| `POST /api/salas/:id/token` | Token LiveKit (identity = id do usuário, sala = id da sala) e token da tela (`<identity>:tela`, só `screen_share` e `screen_share_audio`, 1 h) |
+| `POST /api/convites` · `GET /api/convites` · `DELETE /api/convites/:id` (admin) | Convites |
+| `DELETE /api/pessoas/:id` · `DELETE /api/pessoas/:id/aparelhos` (admin) | Remover pessoa ou aparelhos |
+| `GET /media/<hash>.webp` | Avatar e banner |
 | `/api/rtt`, `/api/upload-test`, `/api/versao-minima-app` | Continuam |
+| `GET /c/<codigo>` | Página do convite (HTML simples) |
 
-Toda rota com `:id` confere se o usuário é membro do grupo dono do objeto (sem IDOR). Rate limit por IP (/64 no IPv6) nas rotas de auth e convite: 10/min em `entrar`/`cadastro`, 30/min no resto.
-
-O convite único atual (`CONVITE` no `.env`) some. Migração: na primeira subida da v0.3, o porteiro cria o grupo "Galera" e um convite de 30 dias para o dono colar no app novo.
+Migração do nosso servidor: na primeira subida da v0.3, o `CONVITE` antigo sai e o porteiro imprime no log um convite de dono (uso único, 7 dias). O Filippe entra com ele e gera os convites dos amigos.
 
 ## Perfil personalizável (como no Fivestack)
 
-- Foto de perfil, banner, bio curta (160 caracteres), tema do perfil e cor de destaque.
-- Temas do perfil iguais aos do Fivestack: **Papel** (padrão, segue o tema de quem vê), **Noite** e **Lima**. O tema vale no cartão de perfil e no canal da pessoa na mesa.
-- Upload: o app recorta e reduz antes de enviar (foto 256×256, banner 1200×400, WebP). O porteiro aceita só PNG, JPEG ou WebP, confere o tipo pelo conteúdo (não pela extensão), recusa SVG, limita a 1 MB, regrava a imagem (remove metadados e EXIF) e serve com `Cache-Control` longo e nome por hash.
-- Rotas: `PATCH /api/eu/perfil`, `PUT /api/eu/avatar`, `PUT /api/eu/banner`, `GET /media/<hash>.webp`. Usuário só altera o próprio perfil.
-- Avatar com Steam: usa o da Steam até a pessoa enviar outro.
+- Foto, banner, bio (160 caracteres), tema do perfil (**Papel**, **Noite**, **Lima**) e cor de destaque. O tema vale no cartão de perfil e no canal da pessoa na mesa.
+- O app recorta e reduz antes de enviar (foto 256×256, banner 1200×400, WebP). O porteiro aceita só PNG, JPEG ou WebP pelo conteúdo, recusa SVG, limita a 1 MB, regrava a imagem sem metadados e serve com cache longo e nome por hash. Cada pessoa só altera o próprio perfil.
 
 ## Leve como regra (não pesar o jogo)
 
@@ -84,17 +91,17 @@ O app compete com o CS pela máquina. Ele usa Tauri: interface no WebView2 que o
 | Transmitindo 1080p60 | Encode na GPU (NVENC/AMF/QSV); CPU do app < 5 %; o núcleo Rust só existe enquanto transmite |
 | Assistindo | Decodificação por hardware; só decodifica a tela que está visível |
 
-Regras de implementação:
-1. Sem laço de consulta (polling) na interface; tudo por evento. Ping real vem das estatísticas do WebRTC a cada 2 s, não por requisição HTTP.
-2. Janela minimizada ou na bandeja: para animações, para de desenhar vídeo, para os medidores de nível.
-3. **Modo jogo**: quando um jogo em tela cheia está em primeiro plano, o app para tudo que é visual e baixa a prioridade do próprio processo. A voz continua.
+Regras:
+1. Sem laço de consulta (polling) na interface; tudo por evento. Ping real pelas estatísticas do WebRTC a cada 2 s.
+2. Janela minimizada ou na bandeja: para animações, vídeo e medidores.
+3. **Modo jogo**: com um jogo em tela cheia em primeiro plano, o app para tudo que é visual e baixa a prioridade do próprio processo. A voz continua.
 4. Animação só com `transform` e `opacity`; com movimento reduzido, nenhuma.
-5. Imagens pequenas e em cache (perfil em WebP); lista de mensagens virtualizada; nada de biblioteca grande para coisa pequena.
-6. Script `scripts/medir-leveza.ps1` mede CPU e memória por 60 s em cada situação da tabela e grava em `docs/medidas/`. A release só sai com as metas batidas ou com o desvio explicado nas notas.
+5. Imagens pequenas e em cache; lista de mensagens virtualizada; nada de biblioteca grande para coisa pequena.
+6. `scripts/medir-leveza.ps1` mede CPU e memória por 60 s e grava em `docs/medidas/`.
 
 ## Ícone
 
-`docs/marca/icone.svg`: mesmo desenho do ícone do Fivestack (quadrado arredondado com barras inclinadas empilhadas), em tinta `#111`, barras papel, a do meio lima (quem fala) e a de baixo vermelha (no ar). Gera todos os tamanhos com `npx tauri icon docs/marca/icone.svg` e vale para o app, o atalho e o instalador NSIS.
+`docs/marca/icone.svg`: mesmo desenho do ícone do Fivestack (quadrado arredondado com barras inclinadas empilhadas), em tinta `#111`, barras papel, a do meio lima (quem fala) e a de baixo vermelha (no ar). `npx tauri icon` gera os tamanhos do app, do atalho e do instalador NSIS.
 
 ## Self-host em um comando
 
@@ -102,29 +109,28 @@ Regras de implementação:
 curl -fsSL https://raw.githubusercontent.com/stackcall/stackcall/main/infra/instalar.sh | bash
 ```
 
-O script (lido antes de rodar, documentado no README):
+O script (leia antes de rodar; está documentado no README):
 1. Confere Docker e Docker Compose.
 2. Pergunta o domínio; sem domínio, usa `<ip>.sslip.io`.
 3. Gera chave e segredo do LiveKit e o `.env` com permissão 600.
 4. Sobe `livekit`, `porteiro` e `caddy` (TLS automático). Mostra as portas a abrir: 443/tcp, 7881/tcp, 7882/udp, 3478/udp.
-5. Imprime o link de convite do primeiro admin.
+5. Imprime o link de convite do dono.
 
-Também roda na própria máquina (Windows com Docker Desktop ou Linux) para jogar em LAN: modo `--local` sem TLS, só IP da rede.
+Windows (`infra/instalar.ps1`, Docker Desktop): modo local para jogar em rede de casa, sem TLS, pelo IP da rede.
 
-## Licença e abertura
+## Licença
 
-- Recomendado: **AGPL-3.0**, como o Fluxer. Quem hospedar uma versão modificada para outras pessoas precisa publicar o código. Alternativa: MIT (mais solta). A decisão é do Filippe antes de abrir o repositório; SignPath aceita as duas.
-- Antes de abrir: gitleaks no histórico inteiro (feito em 24/11, só falso positivo), revisar `docs/` por dado pessoal, e trocar os segredos que já passaram por máquina de desenvolvimento.
+**AGPL-3.0** (decidido em 24/11/2026; arquivo `LICENSE`). Motivo: é um servidor que outras pessoas vão hospedar. A AGPL obriga quem oferecer uma versão modificada a outras pessoas pela rede a publicar o código, então ninguém fecha o projeto e vende como serviço. Para quem só baixa e usa com os amigos, não muda nada. O Fluxer usa a mesma. SignPath (assinatura grátis do instalador) aceita.
+
+Antes de abrir o repositório: gitleaks no histórico inteiro (feito em 24/11, só falso positivo), revisar `docs/` por dado pessoal, trocar os segredos que já passaram por máquina de desenvolvimento.
 
 ## Riscos
 
-- **Banda da VPS oficial**: 200 Mbit/s compartilhados com o Fivestack. Modo `convite` e limite de 100 Mbit/s no app seguram por enquanto.
-- **Conteúdo e moderação**: serviço público de vídeo ao vivo no Brasil tem obrigações (ECA Digital, ANPD, Marco Civil). Instância oficial fica fechada por convite até ter: denúncia, banimento por admin, termos de uso e política de privacidade. Isto não é parecer jurídico.
-- **Steam fora do ar**: o login por nome e senha continua funcionando.
+- **Banda da VPS**: 200 Mbit/s compartilhados com o Fivestack. Servidor só por convite e limite de 100 Mbit/s no app seguram.
+- **Conteúdo**: nosso servidor é fechado por convite, sem cadastro público. Cada self-host responde pelo próprio servidor. Isto não é parecer jurídico.
 
 ## Ordem de entrega
 
-1. Porteiro: contas, sessões, grupos, salas, convites, Steam, perfil e mídia, `/api/instancia`, migração (thread Codex).
-2. App: login novo, deep links, lista de instâncias, grupos e salas reais, perfil, modo jogo, ícone e o design Pôster (skill `padrao-pessoal`; thread Claude).
-3. `infra/instalar.sh` e README de self-host (thread Codex, depois do 1).
-4. Release v0.3.0.
+1. Porteiro: o modelo acima, migração, `infra/instalar.sh` (thread Codex).
+2. App: convite por link e deep link, lista de servidores, amigos, perfil, modo jogo, ícone e o design Pôster (skill `padrao-pessoal`; thread Claude).
+3. Release v0.3.0.
