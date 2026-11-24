@@ -21,33 +21,32 @@ Commits seguem o padrão Conventional Commits. O tipo do commit define a categor
 | `perf:` ou `improve:` | Melhoria | `perf: menos CPU ao assistir 4K` |
 | `fix:` | Correção | `fix: som do jogo cortava ao trocar de janela` |
 | `style:`, `refactor:` com efeito visível, `ui:` | Ajuste | `ui: botão de sair maior` |
-| `chore:`, `ci:`, `docs:`, `test:` | Não aparece para o usuário | `ci: cache do cargo` |
+| `chore:`, `ci:`, `docs:`, `test:`, `build:` | Não aparece para o usuário | `ci: cache do cargo` |
 
 - Uma linha `BREAKING CHANGE:` no corpo do commit marca mudança que exige versão nova de todos (ver seção 5).
 - O changelog sai sozinho dos commits com o **git-cliff** (Rust, licença MIT), configurado em `cliff.toml` com as categorias acima, em português.
 - Saídas geradas a cada versão:
-  - `CHANGELOG.md` no repositório.
-  - `changelog.json` publicado junto da versão, que o app lê para montar a tela "Novidades".
-- O Filippe pode reescrever as linhas antes de publicar: o texto final da versão fica em `docs/release-notes/vX.Y.Z.md`, e esse arquivo vence o texto gerado.
+  - `CHANGELOG.md` no repositório, atualizado no PR da versão.
+  - `changelog.json` publicado junto da versão. É uma lista da versão mais nova para a mais antiga. Cada entrada tem `version` (sem `v`), `date` (AAAA-MM-DD) e `categories`. Cada categoria tem `name` e `items`, com `message` e o booleano `breaking` em cada item.
+- O texto em `docs/release-notes/vX.Y.Z.md`, quando presente, vai para a página da versão e para as notas do updater. O histórico categorizado é gerado pelos commits.
 
 ## 3. Como uma versão sai (CI)
 
 Workflow do GitHub Actions disparado por tag `v*`:
 
-1. Confere que a versão da tag bate com a do `tauri.conf.json`.
-2. Compila o instalador Windows (NSIS) do Tauri.
-3. Assina o pacote de atualização com a chave do updater (`TAURI_SIGNING_PRIVATE_KEY`, segredo do GitHub). Essa assinatura é do updater do Tauri e não depende do certificado de código.
-4. Gera `changelog.json` e o manifesto `latest.json` (versão, data, notas, URL e assinatura do pacote).
-5. Envia instalador, pacote, `latest.json` e `changelog.json` para a VPS, na pasta servida pelo Caddy em `https://stackcall.80-190-79-129.sslip.io/updates/`.
-6. Cria a release no GitHub (privada) com os mesmos arquivos, como cópia de segurança.
+1. Confere a versão da tag nos três arquivos do app.
+2. Gera as notas da versão e o histórico `changelog.json`.
+3. Compila o instalador Windows (NSIS) e assina o pacote com a chave do updater. A assinatura do Tauri é independente do certificado de código do Windows.
+4. Anexa o instalador, a assinatura, o manifesto `latest.json` e o `changelog.json` ao rascunho em `stackcall/releases`.
+5. Publica o rascunho com as notas depois de validar os anexos.
 
-Por que a VPS e não as releases do GitHub: o repositório é privado, e o updater do app não consegue baixar de release privada sem um token. Um token embutido no app vazaria. A VPS serve os arquivos sem expor nada do repositório.
+O repositório público `stackcall/releases` permite que o app baixe a atualização sem autenticação. O código continua no repositório privado `stackcall/stackcall`.
 
 Custo do CI: o GitHub dá 2.000 minutos por mês para repositório privado, e o runner Windows conta em dobro. Uma build do Tauri leva perto de 10 a 15 minutos, então cabem cerca de 60 versões por mês. Isso não foi medido.
 
 ## 4. Atualização dentro do app
 
-Plugin oficial `tauri-plugin-updater`, apontado para `…/updates/latest.json`.
+O plugin `tauri-plugin-updater` consulta [o manifesto da versão estável](https://github.com/stackcall/releases/releases/latest/download/latest.json).
 
 | Momento | O que acontece |
 |---|---|
@@ -58,8 +57,8 @@ Plugin oficial `tauri-plugin-updater`, apontado para `…/updates/latest.json`.
 | Depois de atualizar | Abre uma vez a tela "Novidades" com as notas daquela versão. |
 | Configurações → Sobre e atualizações | Versão atual, canal, data da última checagem, botão **Procurar atualização** e o histórico completo do changelog. |
 
-- **Canais:** `estável` (todos) e `teste` (o Filippe e quem quiser testar antes). Cada canal tem o seu `latest.json`.
-- **Voltar uma versão:** o servidor guarda as últimas versões. Para desfazer uma versão ruim, o `latest.json` volta a apontar para a anterior com número maior de correção (por exemplo, `0.4.1` com o conteúdo da `0.3.2`).
+- **Canais:** `estável` usa a última release estável do GitHub. Tags como `v0.2.0-teste.1` publicam uma pré-release com o próprio `latest.json`, base para o futuro canal `teste`.
+- **Voltar uma versão:** publique uma correção com o conteúdo da versão que funcionava e com número maior (por exemplo, `0.4.1` com o conteúdo da `0.3.2`).
 - **Download pelo updater:** o arquivo baixado pelo próprio app não recebe a marca de "baixado da internet", então o aviso do SmartScreen normalmente não reaparece a cada versão. O Smart App Control continua avaliando o executável. Isso precisa ser confirmado na fase 0.
 
 ## 5. Compatibilidade entre app e servidor
@@ -73,6 +72,6 @@ Plugin oficial `tauri-plugin-updater`, apontado para `…/updates/latest.json`.
 | Segredo | Onde fica | Se perder |
 |---|---|---|
 | Chave privada do updater (e a senha dela) | Bitwarden + segredo do GitHub Actions | Ninguém recebe atualização: todos precisam reinstalar à mão |
-| Chave SSH de deploy para a VPS | Segredo do GitHub Actions | Gerar outra |
+| `RELEASES_TOKEN` | Segredo do GitHub Actions. Token fino com `Contents: read and write` apenas em `stackcall/releases` | Gerar outro |
 
 A chave do updater é gerada uma vez (`tauri signer generate`), no dia da primeira versão, e vai para o Bitwarden no mesmo dia.

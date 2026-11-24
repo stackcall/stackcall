@@ -7,6 +7,7 @@ use axum::{
     response::Response,
     routing::{get, post},
 };
+use futures_util::StreamExt;
 use livekit_api::access_token::{AccessToken, VideoGrants};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -18,7 +19,6 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use futures_util::StreamExt;
 use subtle::ConstantTimeEq;
 use tower_http::cors::CorsLayer;
 
@@ -29,7 +29,11 @@ const TOKEN_LIMIT: u8 = 10;
 const UPLOAD_LIMIT: u8 = 60;
 const UPLOAD_MAX_BYTES: usize = 16 * 1024 * 1024;
 // Origins of the Tauri app on Windows (release and `tauri dev`).
-const APP_ORIGINS: [&str; 3] = ["http://tauri.localhost", "tauri://localhost", "http://127.0.0.1:1420"];
+const APP_ORIGINS: [&str; 3] = [
+    "http://tauri.localhost",
+    "tauri://localhost",
+    "http://127.0.0.1:1420",
+];
 
 type Attempts = Mutex<HashMap<IpAddr, (Instant, u8)>>;
 
@@ -104,7 +108,11 @@ async fn limit_token(
     request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    allow(&config.attempts, client_ip(&config, peer, &request)?, TOKEN_LIMIT)?;
+    allow(
+        &config.attempts,
+        client_ip(&config, peer, &request)?,
+        TOKEN_LIMIT,
+    )?;
     Ok(next.run(request).await)
 }
 
@@ -114,7 +122,11 @@ async fn limit_upload(
     request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    allow(&config.uploads, client_ip(&config, peer, &request)?, UPLOAD_LIMIT)?;
+    allow(
+        &config.uploads,
+        client_ip(&config, peer, &request)?,
+        UPLOAD_LIMIT,
+    )?;
     Ok(next.run(request).await)
 }
 
@@ -130,7 +142,9 @@ async fn upload_test(body: Body) -> Result<Json<serde_json::Value>, StatusCode> 
             return Err(StatusCode::PAYLOAD_TOO_LARGE);
         }
     }
-    Ok(Json(json!({"bytes": bytes, "ms": start.elapsed().as_millis() as u64})))
+    Ok(Json(
+        json!({"bytes": bytes, "ms": start.elapsed().as_millis() as u64}),
+    ))
 }
 
 async fn token(
@@ -176,7 +190,8 @@ fn app(config: Arc<Config>) -> Router {
         )
         .route(
             "/api/upload-test",
-            post(upload_test).route_layer(middleware::from_fn_with_state(config.clone(), limit_upload)),
+            post(upload_test)
+                .route_layer(middleware::from_fn_with_state(config.clone(), limit_upload)),
         )
         .route("/api/rtt", get(|| async { StatusCode::NO_CONTENT }))
         .route(
@@ -317,9 +332,9 @@ mod tests {
             let mut request = Request::post("/api/upload-test")
                 .body(Body::from(vec![0u8; size]))
                 .unwrap();
-            request
-                .extensions_mut()
-                .insert(ConnectInfo("192.0.2.30:1234".parse::<SocketAddr>().unwrap()));
+            request.extensions_mut().insert(ConnectInfo(
+                "192.0.2.30:1234".parse::<SocketAddr>().unwrap(),
+            ));
             let response = router().oneshot(request).await.unwrap();
             assert_eq!(response.status(), expected);
             if expected == StatusCode::OK {
@@ -332,7 +347,10 @@ mod tests {
 
     #[tokio::test]
     async fn answers_cors_preflight_for_the_app_only() {
-        for (origin, allowed) in [("http://tauri.localhost", true), ("https://evil.example", false)] {
+        for (origin, allowed) in [
+            ("http://tauri.localhost", true),
+            ("https://evil.example", false),
+        ] {
             let request = Request::options("/api/token")
                 .header("origin", origin)
                 .header("access-control-request-method", "POST")
@@ -341,7 +359,10 @@ mod tests {
                 .unwrap();
             let response = router().oneshot(request).await.unwrap();
             let header = response.headers().get("access-control-allow-origin");
-            assert_eq!(header.map(|h| h.to_str().unwrap()), allowed.then_some(origin));
+            assert_eq!(
+                header.map(|h| h.to_str().unwrap()),
+                allowed.then_some(origin)
+            );
         }
     }
 
