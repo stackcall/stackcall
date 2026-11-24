@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Sala de Controle: novidades da versão</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&amp;family=Barlow+Condensed:wght@500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0a0b0c}
+a{color:#b9a8ff}a:hover{color:#d8ceff}
+button{font:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; justify-content: center; background: #0f1012; color: #d9dbe0; font-family: 'Barlow', system-ui, sans-serif; font-size: 15px; overflow: hidden">
+  <div style="width: 880px; padding: 48px 0; display: flex; flex-direction: column; gap: 28px">
+    <header style="display: flex; flex-direction: column; gap: 10px">
+      <span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0.1em; color: #cbbdff">ATUALIZADO · 0.3.2 → 0.4.0</span>
+      <h1 style="margin: 0; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 44px; letter-spacing: 0.02em; line-height: 1.05">O que mudou na 0.4.0</h1>
+      <span style="color: #9ea2ab">Publicada hoje, 24/11/2026 · canal estável</span>
+      <div style="display: flex; gap: 8px; margin-top: 4px">
+        <sc-for list="{{counts}}" as="c" hint-placeholder-count="4">
+          <span style="height: 30px; padding: 0 12px; display: flex; align-items: center; gap: 8px; border-radius: 4px; border: 1px solid #30333a; background: #131417; font-size: 13px"><span style="width: 8px; height: 8px; border-radius: 2px; background: {{c.dot}}"></span>{{c.n}} {{c.label}}</span>
+        </sc-for>
+      </div>
+    </header>
+
+    <sc-for list="{{groups}}" as="g" hint-placeholder-count="4">
+      <section style="display: flex; flex-direction: column; gap: 10px">
+        <h2 style="margin: 0; display: flex; align-items: center; gap: 10px; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: 0.08em; color: {{g.color}}"><span style="width: 10px; height: 10px; border-radius: 2px; background: {{g.dot}}"></span>{{g.title}}</h2>
+        <sc-for list="{{g.items}}" as="i" hint-placeholder-count="2">
+          <div style="display: flex; flex-direction: column; gap: 4px; padding: 14px 18px; border-radius: 6px; border: 1px solid #30333a; background: #131417">
+            <b style="font-weight: 600">{{i.title}}</b>
+            <span style="color: #b4b8c0; line-height: 1.5">{{i.text}}</span>
+          </div>
+        </sc-for>
+      </section>
+    </sc-for>
+
+    <footer style="margin-top: auto; display: flex; align-items: center; gap: 12px">
+      <a href="Atualizacoes.dc.html">Ver todas as versões</a>
+      <a href="Controle.dc.html" style="margin-left: auto; height: 46px; padding: 0 24px; display: flex; align-items: center; border-radius: 6px; background: #7c5cff; color: #0f1012; text-decoration: none; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 17px; letter-spacing: 0.06em">VOLTAR PARA A SALA</a>
+    </footer>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const C = {
+      nov: { label: 'novidades', title: 'NOVIDADES', dot: '#7c5cff', color: '#cbbdff' },
+      mel: { label: 'melhoria', title: 'MELHORIAS', dot: '#7fb8a4', color: '#a9d6c6' },
+      cor: { label: 'correções', title: 'CORREÇÕES', dot: '#d9a35b', color: '#e8c08c' },
+      aju: { label: 'ajuste', title: 'AJUSTES', dot: '#8a8e97', color: '#b4b8c0' }
+    };
+    const groups = [
+      { ...C.nov, items: [
+        { title: 'Push-to-talk', text: 'Escolha uma tecla para falar só enquanto ela estiver apertada. Funciona com o jogo em tela cheia.' },
+        { title: 'Janela solta da transmissão', text: 'Tire a transmissão de um amigo para uma janela pequena por cima do jogo.' },
+        { title: 'Transmissão em 1440p 60', text: 'Liberada para placas que passam no teste e uploads acima de 26 Mbps.' }
+      ] },
+      { ...C.mel, items: [ { title: 'Menos uso de CPU ao assistir 4K', text: 'A decodificação agora usa a placa de vídeo de quem assiste.' } ] },
+      { ...C.cor, items: [
+        { title: 'Som do jogo cortava ao trocar de janela', text: 'A captura agora segue o processo do jogo, não a janela.' },
+        { title: 'Contador de quem assiste travava em 0', text: 'Atualiza assim que alguém começa ou para de assistir.' }
+      ] },
+      { ...C.aju, items: [ { title: 'Botão de sair mais fácil de achar', text: 'Ficou no canto da barra, separado dos outros.' } ] }
+    ];
+    return { groups, counts: groups.map((g) => ({ n: g.items.length, label: g.label, dot: g.dot })) };
+  }
+}
+</script>
+</body>
+</html>
