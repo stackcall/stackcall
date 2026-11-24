@@ -40,7 +40,9 @@ fn mostrar(app: &AppHandle) {
 pub fn run() {
     tauri::Builder::default()
         // First plugin: a second launch (deep link from the browser) focuses this one and forwards the URL.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| mostrar(app)))
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            mostrar(app)
+        }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -68,7 +70,12 @@ pub fn run() {
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
                         mostrar(tray.app_handle());
                     }
                 })

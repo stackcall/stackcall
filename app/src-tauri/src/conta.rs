@@ -44,7 +44,9 @@ fn rota_valida(rota: &str) -> bool {
     rota.starts_with("/api/")
         && !rota.contains("..")
         && !rota.contains("//")
-        && !rota.chars().any(|c| c == '\\' || c == '#' || c == '@' || c.is_whitespace() || c.is_control())
+        && !rota
+            .chars()
+            .any(|c| c == '\\' || c == '#' || c == '@' || c.is_whitespace() || c.is_control())
 }
 
 fn entrada(origem: &str) -> Result<keyring::Entry, String> {
@@ -110,7 +112,9 @@ pub async fn api(chamada: Chamada) -> Result<Resposta, String> {
     }
     if let Some(bytes) = chamada.bytes {
         let tipo = chamada.tipo.unwrap_or_default();
-        if !matches!(tipo.as_str(), "image/webp" | "image/png" | "image/jpeg") || bytes.len() > 1024 * 1024 {
+        if !matches!(tipo.as_str(), "image/webp" | "image/png" | "image/jpeg")
+            || bytes.len() > 1024 * 1024
+        {
             return Err("Imagem recusada: use PNG, JPEG ou WebP de até 1 MB.".into());
         }
         request = request.header("content-type", tipo).body(bytes);
@@ -130,7 +134,9 @@ pub async fn api(chamada: Chamada) -> Result<Resposta, String> {
     // Accepting an invite or a device link returns `sessao`: keep it in the vault, hide it from the WebView.
     if let Some(nova) = corpo.as_object_mut().and_then(|o| o.remove("sessao")) {
         if let (Some(nova), true) = (nova.as_str(), (200..300).contains(&status)) {
-            entrada(&origem)?.set_password(nova).map_err(|e| e.to_string())?;
+            entrada(&origem)?
+                .set_password(nova)
+                .map_err(|e| e.to_string())?;
         }
     }
     if chamada.rota == "/api/sair" || (status == 401 && token.is_some()) {
@@ -145,8 +151,14 @@ mod tests {
 
     #[test]
     fn aceita_https_e_http_so_na_rede_local() {
-        assert_eq!(origem("https://stackcall.example.test/").unwrap(), "https://stackcall.example.test");
-        assert_eq!(origem("http://192.168.0.10:8080").unwrap(), "http://192.168.0.10:8080");
+        assert_eq!(
+            origem("https://stackcall.example.test/").unwrap(),
+            "https://stackcall.example.test"
+        );
+        assert_eq!(
+            origem("http://192.168.0.10:8080").unwrap(),
+            "http://192.168.0.10:8080"
+        );
         assert!(origem("http://localhost:3000").is_ok());
         assert!(origem("http://example.test").is_err());
         assert!(origem("http://8.8.8.8").is_err());

@@ -16,14 +16,20 @@ pub fn modo_jogo_atual() -> bool {
 #[cfg(windows)]
 fn jogo_em_tela_cheia() -> bool {
     use windows_sys::Win32::UI::Shell::{
-        SHQueryUserNotificationState, QUNS_BUSY, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN,
+        SHQueryUserNotificationState, QUNS_BUSY, QUNS_PRESENTATION_MODE,
+        QUNS_RUNNING_D3D_FULL_SCREEN,
     };
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetForegroundWindow, GetWindowThreadProcessId,
+    };
     let mut estado = 0;
     // SAFETY: plain Win32 queries with valid out pointers.
     unsafe {
         if SHQueryUserNotificationState(&mut estado) != 0
-            || !matches!(estado, QUNS_BUSY | QUNS_RUNNING_D3D_FULL_SCREEN | QUNS_PRESENTATION_MODE)
+            || !matches!(
+                estado,
+                QUNS_BUSY | QUNS_RUNNING_D3D_FULL_SCREEN | QUNS_PRESENTATION_MODE
+            )
         {
             return false;
         }
@@ -46,7 +52,14 @@ fn prioridade(baixa: bool) {
     };
     // SAFETY: pseudo handle of the current process.
     unsafe {
-        SetPriorityClass(GetCurrentProcess(), if baixa { BELOW_NORMAL_PRIORITY_CLASS } else { NORMAL_PRIORITY_CLASS });
+        SetPriorityClass(
+            GetCurrentProcess(),
+            if baixa {
+                BELOW_NORMAL_PRIORITY_CLASS
+            } else {
+                NORMAL_PRIORITY_CLASS
+            },
+        );
     }
 }
 
