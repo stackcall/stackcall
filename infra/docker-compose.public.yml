@@ -1,0 +1,4 @@
+services:
+  livekit:
+    ports:
+      - "3478:3478/udp"
