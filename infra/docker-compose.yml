@@ -30,6 +30,7 @@ services:
       LIVEKIT_PUBLIC_URL: ${LIVEKIT_PUBLIC_URL:?configure LIVEKIT_PUBLIC_URL}
       STACKCALL_CONVITE_DEV: ${STACKCALL_CONVITE_DEV:?configure STACKCALL_CONVITE_DEV}
       SALAS_PERMITIDAS: ${SALAS_PERMITIDAS:-geral}
+      MODO_CADASTRO: ${MODO_CADASTRO:-convite}
       PORTEIRO_DB: /data/stackcall.sqlite3
       PORTEIRO_ADDR: ${PORTEIRO_ADDR:-0.0.0.0:8100}
       PORTEIRO_TRUSTED_PROXY: ${PORTEIRO_TRUSTED_PROXY:-172.31.240.1}
@@ -43,7 +44,7 @@ services:
     pids_limit: 64
     volumes:
       - porteiro-data:/data
-    mem_limit: 64m
+    mem_limit: 128m
     restart: unless-stopped
 
 networks:

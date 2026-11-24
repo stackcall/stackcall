@@ -1,3 +1,7 @@
+use crate::Config;
+use axum::http::StatusCode;
+use std::sync::Arc;
+
 use rusqlite::{Connection, TransactionBehavior};
 use std::{path::Path, time::Duration};
 
@@ -40,4 +44,20 @@ mod tests {
                 .is_err()
         );
     }
+}
+
+pub fn internal(_: impl std::fmt::Debug) -> StatusCode {
+    StatusCode::INTERNAL_SERVER_ERROR
+}
+
+pub async fn run<T: Send + 'static>(
+    config: Arc<Config>,
+    work: impl FnOnce(&mut Connection) -> Result<T, StatusCode> + Send + 'static,
+) -> Result<T, StatusCode> {
+    tokio::task::spawn_blocking(move || {
+        let mut db = config.db.lock().map_err(internal)?;
+        work(&mut db)
+    })
+    .await
+    .map_err(internal)?
 }

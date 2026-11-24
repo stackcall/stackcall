@@ -61,6 +61,8 @@ Autenticação por `Authorization: Bearer <sessao>`. Sessão de 30 dias, renovad
 | `POST /api/salas/:id/token` | Devolve o token LiveKit da pessoa e o da tela (`<identity>:tela`, só `screen_share` e `screen_share_audio`, 1 h). Identity = id do usuário; sala LiveKit = id da sala. Só membro do grupo |
 | `/api/rtt`, `/api/upload-test`, `/api/versao-minima-app` | Continuam |
 
+Cadastro e entrada recebem JSON com `nome`, `senha` e `nome_aparelho` opcional. Cadastro também aceita `codigo`. O nome de login ignora maiúsculas e minúsculas, a senha tem de 8 a 256 bytes e a sessão volta como `{sessao, expira_em}`. `GET /api/eu` retorna `{usuario, grupos}`. Os horários da API são segundos Unix.
+
 Toda rota com `:id` confere se o usuário é membro do grupo dono do objeto (sem IDOR). Rate limit por IP (/64 no IPv6) nas rotas de auth e convite: 10/min em `entrar`/`cadastro`, 30/min no resto.
 
 O convite único atual (`CONVITE` no `.env`) some. Migração: na primeira subida da v0.3, o porteiro cria o grupo "Galera" e um convite de 30 dias para o dono colar no app novo.

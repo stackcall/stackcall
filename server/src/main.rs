@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod api_tests;
+mod auth;
 mod db;
 
 use axum::{
@@ -47,7 +50,9 @@ struct Attempts {
 }
 
 struct Config {
-    _db: Mutex<rusqlite::Connection>,
+    db: Mutex<rusqlite::Connection>,
+    registration: auth::Registration,
+    password_jobs: Arc<tokio::sync::Semaphore>,
     key: String,
     secret: String,
     url: String,
@@ -245,6 +250,7 @@ async fn token(
 
 fn app(config: Arc<Config>) -> Router {
     Router::new()
+        .merge(auth::routes())
         .route(
             "/api/token",
             post(token).route_layer(middleware::from_fn_with_state(config.clone(), limit_token)),
@@ -268,7 +274,7 @@ fn app(config: Arc<Config>) -> Router {
             CorsLayer::new()
                 .allow_origin(APP_ORIGINS.map(HeaderValue::from_static))
                 .allow_methods([Method::GET, Method::POST])
-                .allow_headers([header::CONTENT_TYPE]),
+                .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]),
         )
         .with_state(config)
 }
@@ -303,10 +309,14 @@ async fn main() -> std::io::Result<()> {
         "configure SALAS_PERMITIDAS"
     );
     let config = Arc::new(Config {
-        _db: Mutex::new(
+        db: Mutex::new(
             db::open(env::var("PORTEIRO_DB").unwrap_or_else(|_| "stackcall.sqlite3".into()))
                 .map_err(std::io::Error::other)?,
         ),
+        registration: auth::Registration::parse(
+            &env::var("MODO_CADASTRO").unwrap_or_else(|_| "convite".into()),
+        ),
+        password_jobs: Arc::new(tokio::sync::Semaphore::new(2)),
         key: required("LIVEKIT_API_KEY"),
         secret: required("LIVEKIT_API_SECRET"),
         url: required("LIVEKIT_PUBLIC_URL"),
@@ -350,17 +360,7 @@ mod tests {
     }
 
     fn router() -> Router {
-        app(Arc::new(Config {
-            _db: Mutex::new(db::open(":memory:").unwrap()),
-            key: "test_key".into(),
-            secret: "test_secret".into(),
-            url: "wss://example.test/rtc".into(),
-            invite_hash: Sha256::digest(b"test_invite").into(),
-            rooms: vec!["geral".into()],
-            trusted_proxy: Some("127.0.0.1".parse().unwrap()),
-            attempts: Mutex::default(),
-            uploads: Mutex::default(),
-        }))
+        app(api_tests::config(auth::Registration::Open))
     }
 
     async fn request(
