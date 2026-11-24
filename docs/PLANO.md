@@ -128,7 +128,9 @@ O teste refaz sozinho quando o driver da placa muda, e o usuário pode refazer p
 
 ## 4. Interface
 
-As referências visuais do Filippe chegam depois; esta parte define a estrutura e o que copiar como ideia. O visual final passa por uma rodada de design (skill impeccable) antes de programar as telas.
+**Direção visual escolhida em 24/11: Sala de Controle** (mesa de corte de TV e multiview do OBS, escuro neutro com roxo só no que está no ar). Protótipo das telas no canvas "Stackcall: direções visuais". Componentes, cores, botões e fontes serão ajustados depois.
+
+Atualização dentro do app, versão e changelog: ver [VERSIONAMENTO.md](VERSIONAMENTO.md).
 
 ### 4.1 Layout principal
 
@@ -180,7 +182,7 @@ Se a P2 falhar, a alternativa é codificar por software no próprio LiveKit Rust
 
 ### Fase 1: MVP (cerca de 2 semanas)
 
-- Instalador Tauri com atualização automática (chave do updater guardada no Bitwarden).
+- Instalador Tauri com atualização dentro do app, versão SemVer, changelog por categoria e CI de release ([VERSIONAMENTO.md](VERSIONAMENTO.md)). Chave do updater guardada no Bitwarden.
 - Entrada por convite. Conta com usuário e senha.
 - Salas de voz fixas, voz do microfone, anel de quem fala, volume por pessoa.
 - Go Live com H.264 e AV1, seletor de qualidade com o teste da seção 3.3 e som do jogo.

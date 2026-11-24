@@ -34,6 +34,7 @@ O código é privado agora e vai ser aberto depois. Por isso:
 
 ## Fluxo
 
+- Commits no padrão Conventional Commits (`feat:`, `fix:`, `perf:`, `ui:`, `chore:`...). O tipo vira a categoria do changelog que o usuário lê no app; regras em `docs/VERSIONAMENTO.md`.
 - Uma issue, uma branch, um PR. Nada direto na `main`.
 - Commit e push ao fim de cada tarefa.
 - Não afirme que algo funciona sem ter executado.

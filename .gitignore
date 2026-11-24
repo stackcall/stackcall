@@ -21,6 +21,9 @@ app/src-tauri/gen/
 *.sqlite
 *.db
 
+# Arquivos de trabalho do impeccable (páginas de decisão, capturas)
+.impeccable/
+
 # Sistema e editores
 .DS_Store
 Thumbs.db
