@@ -2,6 +2,12 @@
 
 Stackcall é o app de voz e transmissão de tela do nosso grupo. Você precisa de um convite para entrar.
 
+- Salas de voz com volume por pessoa.
+- Transmissão de tela com o som do jogo, de 720p até 4K, de acordo com a sua placa de vídeo.
+- Atualização com um clique, dentro do próprio app.
+
+Precisa de Windows 10 (build 20348 ou mais novo) ou Windows 11.
+
 ## [Baixar para Windows](https://github.com/stackcall/releases/releases/latest)
 
 Na página da última versão, abra a seção **Assets** e baixe o arquivo que termina em `-setup.exe`.
