@@ -167,6 +167,7 @@ export function useLiveRoom(session: Session, roomId: RoomId): RoomModel & RoomA
       .on(RoomEvent.Reconnected, () => setState('connected'))
       .on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {
         if (closed) return;
+        screenAccess.current = null;
         if (native.current) void stopTransmission(native.current.id).catch(() => undefined);
         setState('error');
         setError(`A conexão com a sala caiu${reason !== undefined ? ` (motivo ${reason})` : ''}. Troque de aba para tentar de novo.`);

@@ -19,6 +19,7 @@ export async function requestToken(server: string, convite: string, nome: string
   try {
     response = await fetch(base(server) + '/api/token', {
       method: 'POST',
+      redirect: 'error',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ convite, nome, sala }),
     });

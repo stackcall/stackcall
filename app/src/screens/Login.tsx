@@ -7,7 +7,6 @@ import type { Session } from '../room/useLiveRoom';
 export function Login({ onEnter, onSettings }: { onEnter(session: Session): void; onSettings(): void }) {
   const [name, setName] = useState(() => store.get('nome') ?? '');
   const [invite, setInvite] = useState('');
-  const [server, setServer] = useState(() => store.get('servidor') ?? DEFAULT_SERVER);
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -24,11 +23,10 @@ export function Login({ onEnter, onSettings }: { onEnter(session: Session): void
     setBusy(true);
     setError(undefined);
     try {
-      await requestToken(server, invite, name, 'geral'); // checks the invite before entering
+      await requestToken(DEFAULT_SERVER, invite, name, 'geral'); // checks the invite before entering
       store.set('nome', name);
-      store.set('servidor', server.trim());
       await (remember ? inviteVault.save(invite) : inviteVault.clear());
-      onEnter({ server: server.trim(), name, invite });
+      onEnter({ server: DEFAULT_SERVER, name, invite });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -53,10 +51,6 @@ export function Login({ onEnter, onSettings }: { onEnter(session: Session): void
         <div className="flex flex-col gap-1.5">
           <label htmlFor="convite" className="label-caps text-[13px] text-muted">Convite</label>
           <input id="convite" className="field" type="password" value={invite} onChange={(e) => setInvite(e.target.value)} autoComplete="off" required />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="servidor" className="label-caps text-[13px] text-muted">Servidor</label>
-          <input id="servidor" className="field" type="url" value={server} onChange={(e) => setServer(e.target.value)} required />
         </div>
         <label className="flex items-center gap-2.5 text-[13px] text-muted">
           <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="size-[18px] accent-live" />
