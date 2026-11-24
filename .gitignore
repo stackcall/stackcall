@@ -31,3 +31,7 @@ Thumbs.db
 .idea/
 .vscode/
 *.dll
+
+# Banco local do porteiro
+stackcall.sqlite3
+stackcall.sqlite3-*

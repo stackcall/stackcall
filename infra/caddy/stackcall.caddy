@@ -19,7 +19,8 @@ stackcall.80-190-79-129.sslip.io {
 		reverse_proxy 127.0.0.1:7880
 	}
 
-	handle /api/* {
+	@api path /api/* /c/* /media/*
+	handle @api {
 		reverse_proxy 127.0.0.1:8100 {
 			header_up X-Forwarded-For {http.request.remote.host}
 		}
