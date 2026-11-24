@@ -7,7 +7,6 @@ import type { Session } from '../room/useLiveRoom';
 export function Login({ onEnter, onSettings }: { onEnter(session: Session): void; onSettings(): void }) {
   const [name, setName] = useState(() => store.get('nome') ?? '');
   const [invite, setInvite] = useState('');
-  const [server, setServer] = useState(() => store.get('servidor') ?? DEFAULT_SERVER);
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -20,15 +19,14 @@ export function Login({ onEnter, onSettings }: { onEnter(session: Session): void
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!nameOk) return setError('Nome: letras sem acento, números, - ou _ (até 32).');
+    if (!nameOk) return setError('O nome deve ter de 1 a 32 caracteres, sem dois-pontos.');
     setBusy(true);
     setError(undefined);
     try {
-      await requestToken(server, invite, name, 'geral'); // checks the invite before entering
+      await requestToken(DEFAULT_SERVER, invite, name, 'geral'); // checks the invite before entering
       store.set('nome', name);
-      store.set('servidor', server.trim());
       await (remember ? inviteVault.save(invite) : inviteVault.clear());
-      onEnter({ server: server.trim(), name, invite });
+      onEnter({ server: DEFAULT_SERVER, name, invite });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -45,18 +43,14 @@ export function Login({ onEnter, onSettings }: { onEnter(session: Session): void
         </div>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="nome" className="label-caps text-[13px] text-muted">Nome</label>
-          <input id="nome" className="field" value={name} onChange={(e) => setName(e.target.value)} autoComplete="nickname" maxLength={32} required aria-invalid={!!name && !nameOk} aria-describedby="nome-ajuda" />
+          <input id="nome" className="field" value={name} onChange={(e) => setName(e.target.value)} autoComplete="nickname" required aria-invalid={!!name && !nameOk} aria-describedby="nome-ajuda" />
           <span id="nome-ajuda" className={`text-[12px] ${name && !nameOk ? 'text-danger-text' : 'text-faint'}`}>
-            Letras sem acento, números, - ou _. É como os amigos veem você.
+            De 1 a 32 caracteres, sem dois-pontos. É como os amigos veem você.
           </span>
         </div>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="convite" className="label-caps text-[13px] text-muted">Convite</label>
           <input id="convite" className="field" type="password" value={invite} onChange={(e) => setInvite(e.target.value)} autoComplete="off" required />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="servidor" className="label-caps text-[13px] text-muted">Servidor</label>
-          <input id="servidor" className="field" type="url" value={server} onChange={(e) => setServer(e.target.value)} required />
         </div>
         <label className="flex items-center gap-2.5 text-[13px] text-muted">
           <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="size-[18px] accent-live" />

@@ -71,7 +71,9 @@ O plugin `tauri-plugin-updater` consulta [o manifesto da versão estável](https
 
 | Segredo | Onde fica | Se perder |
 |---|---|---|
-| Chave privada do updater (e a senha dela) | Bitwarden + segredo do GitHub Actions | Ninguém recebe atualização: todos precisam reinstalar à mão |
-| `RELEASES_TOKEN` | Segredo do GitHub Actions. Token fino com `Contents: read and write` apenas em `stackcall/releases` | Gerar outro |
+| Chave privada do updater (e a senha dela) | Bitwarden e ambiente `release` do GitHub Actions | Ninguém recebe atualização: todos precisam reinstalar à mão |
+| `RELEASES_TOKEN` | Ambiente `release` do GitHub Actions. Token fino com `Contents: read and write` apenas em `stackcall/releases` | Gerar outro |
 
 A chave do updater é gerada uma vez (`tauri signer generate`), no dia da primeira versão, e vai para o Bitwarden no mesmo dia.
+
+No GitHub, restrinja o ambiente `release` a tags `v*`, configure um revisor obrigatório e mantenha os segredos da release nesse ambiente. O disparo manual gera um instalador NSIS para teste. O push de tag envia o instalador ao job de publicação, que o assina e publica os arquivos do updater.

@@ -12,6 +12,7 @@ use tokio::{
 const EVENT: &str = "stackcall-stream";
 const UNAVAILABLE: &str = "O núcleo de transmissão não está disponível nesta máquina.";
 const CACHE_VERSION: u32 = 1;
+const LIVEKIT_HOST: &str = "stackcall.80-190-79-129.sslip.io";
 
 #[derive(Default)]
 pub struct Sidecar {
@@ -119,6 +120,33 @@ pub struct Publish {
     token: String,
 }
 
+fn valid_livekit_url(value: &str) -> bool {
+    if !(value.starts_with("https://") || value.starts_with("wss://"))
+        || value
+            .chars()
+            .any(|ch| ch.is_control() || ch.is_whitespace())
+    {
+        return false;
+    }
+    tauri::Url::parse(value).is_ok_and(|url| {
+        url.host_str() == Some(LIVEKIT_HOST)
+            && url.port_or_known_default() == Some(443)
+            && url.username().is_empty()
+            && url.password().is_none()
+    })
+}
+
+fn valid_capture_source(value: &str) -> bool {
+    match value.split_once(':') {
+        Some(("hmonitor", handle)) => handle.parse::<usize>().is_ok_and(|handle| handle > 0),
+        Some(("hwnd", identity)) => identity.split_once(':').is_some_and(|(handle, pid)| {
+            handle.parse::<usize>().is_ok_and(|handle| handle > 0)
+                && pid.parse::<u32>().is_ok_and(|pid| pid > 0)
+        }),
+        _ => false,
+    }
+}
+
 #[tauri::command]
 pub async fn iniciar_transmissao(
     app: AppHandle,
@@ -130,6 +158,9 @@ pub async fn iniciar_transmissao(
         || !matches!(args.codec.as_str(), "h264" | "av1")
         || !matches!(args.encoder.as_str(), "nvenc" | "amf" | "qsv")
         || !(1..=100_000).contains(&args.kbps)
+        || !valid_livekit_url(&args.url)
+        || !valid_capture_source(&args.source)
+        || args.audio_pid == Some(0)
         || args.token.is_empty()
         || args.token.contains(['\r', '\n'])
     {
@@ -293,4 +324,42 @@ pub async fn mudar_bitrate(
         .send(json!({"cmd":"bitrate", "kbps": kbps}))
         .await
         .map_err(|_| "O núcleo parou de responder.".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{valid_capture_source, valid_livekit_url, LIVEKIT_HOST};
+
+    #[test]
+    fn accepts_only_secure_urls_of_the_configured_livekit() {
+        for scheme in ["https", "wss"] {
+            assert!(valid_livekit_url(&format!("{scheme}://{LIVEKIT_HOST}/rtc")));
+        }
+        for url in [
+            format!("ws://{LIVEKIT_HOST}/rtc"),
+            format!("wss://{LIVEKIT_HOST}:444/rtc"),
+            format!("wss://{LIVEKIT_HOST}.example.test/rtc"),
+            format!("wss://{LIVEKIT_HOST}@example.test/rtc"),
+            format!("wss://name@{LIVEKIT_HOST}/rtc"),
+            format!("wss://{LIVEKIT_HOST}/rtc\n"),
+        ] {
+            assert!(!valid_livekit_url(&url));
+        }
+    }
+
+    #[test]
+    fn accepts_only_ids_returned_by_the_capture_picker() {
+        for source in ["hmonitor:1", "hwnd:123456:100"] {
+            assert!(valid_capture_source(source));
+        }
+        for source in [
+            "window:Game",
+            "hmonitor:0",
+            "hmonitor:1\n",
+            "hwnd:1:0",
+            "hwnd:1:2:3",
+        ] {
+            assert!(!valid_capture_source(source));
+        }
+    }
 }

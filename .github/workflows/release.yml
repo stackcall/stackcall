@@ -10,8 +10,7 @@ on:
         required: true
         type: string
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: release-${{ github.event_name }}-${{ github.ref }}
@@ -20,25 +19,15 @@ concurrency:
 jobs:
   windows:
     runs-on: windows-latest
+    permissions:
+      contents: read
     steps:
-      - name: Conferir segredos de release
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
-        run: |
-          $missing = @('TAURI_SIGNING_PRIVATE_KEY', 'TAURI_SIGNING_PRIVATE_KEY_PASSWORD', 'RELEASES_TOKEN') |
-            Where-Object { [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_)) }
-          if ($missing) {
-            throw "Cadastre os segredos do Stackcall no GitHub Actions: $($missing -join ', ')."
-          }
-
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
           cache: ${{ hashFiles('app/package-lock.json') != '' && 'npm' || '' }}
@@ -66,11 +55,13 @@ jobs:
           $archive = "$env:RUNNER_TEMP/git-cliff.zip"
           $url = "https://github.com/orhun/git-cliff/releases/download/v$env:CLIFF_VERSION/git-cliff-$env:CLIFF_VERSION-x86_64-pc-windows-msvc.zip"
           Invoke-WebRequest -Uri $url -OutFile $archive
+          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne '6ece2112b3f4af462190ecbea4aeb1315fff6af415629b597f84319073c31131') {
+            throw 'SHA-256 do git-cliff não confere.'
+          }
           Expand-Archive -LiteralPath $archive -DestinationPath $env:RUNNER_TEMP
           "$env:RUNNER_TEMP/git-cliff-$env:CLIFF_VERSION" >> $env:GITHUB_PATH
 
       - name: Gerar notas da versão
-        id: notes
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: |
@@ -89,10 +80,6 @@ jobs:
               'Sem mudanças listadas nesta versão.' | Set-Content -LiteralPath release-notes.md
             }
           }
-          $delimiter = [guid]::NewGuid().ToString()
-          "body<<$delimiter" >> $env:GITHUB_OUTPUT
-          Get-Content -LiteralPath release-notes.md -Raw >> $env:GITHUB_OUTPUT
-          $delimiter >> $env:GITHUB_OUTPUT
 
       - name: Gerar histórico para o app
         env:
@@ -106,8 +93,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/changelog-json.mjs cliff-context.json $env:RELEASE_TAG
 
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: |
             app/src-tauri
@@ -119,85 +108,106 @@ jobs:
       - name: Preparar FFmpeg LGPL e compilar o sidecar x64
         run: ./scripts/preparar-ffmpeg.ps1
 
-      - name: Compilar NSIS e preparar a release
-        id: tauri
-        uses: tauri-apps/tauri-action@v1
-        env:
-          GITHUB_TOKEN: ${{ github.event_name == 'push' && secrets.RELEASES_TOKEN || '' }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          projectPath: app
-          args: --bundles nsis
-          owner: stackcall
-          repo: releases
-          releaseCommitish: main
-          tagName: ${{ github.event_name == 'push' && steps.version.outputs.tag || '' }}
-          releaseName: Stackcall ${{ steps.version.outputs.tag }}
-          releaseBody: ${{ steps.notes.outputs.body }}
-          releaseDraft: true
-          prerelease: ${{ contains(steps.version.outputs.tag, '-') }}
-          uploadUpdaterJson: true
-          updaterJsonPreferNsis: true
-          uploadWorkflowArtifacts: ${{ github.event_name == 'workflow_dispatch' }}
+      - name: Compilar instalador NSIS sem assinatura
+        working-directory: app
+        run: |
+          '{"bundle":{"createUpdaterArtifacts":false}}' | Set-Content -Encoding ascii src-tauri/release.conf.json
+          npm run tauri build -- --bundles nsis --config src-tauri/release.conf.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $installers = @(Get-ChildItem -File src-tauri/target/release/bundle/nsis/*_x64-setup.exe)
+          if ($installers.Count -ne 1) { throw 'A build precisa gerar um instalador NSIS x64.' }
+          $bytes = $installers[0].Length
+          "Instalador NSIS: $bytes bytes ($([Math]::Round($bytes / 1MB, 2)) MiB)" >> $env:GITHUB_STEP_SUMMARY
 
       - name: Conferir DLLs do sidecar
         run: ./scripts/verificar-dlls-sidecar.ps1
 
-      - name: Conferir instalador e assinatura
-        env:
-          ARTIFACT_PATHS: ${{ steps.tauri.outputs.artifactPaths }}
-        run: |
-          $paths = $env:ARTIFACT_PATHS | ConvertFrom-Json
-          $installer = @($paths | Where-Object { $_ -like '*_x64-setup.exe' })
-          if ($installer.Count -ne 1 -or "$($installer[0]).sig" -notin $paths) {
-            throw 'A build precisa gerar o instalador NSIS x64 com a assinatura do updater.'
-          }
-          $bytes = (Get-Item -LiteralPath $installer[0]).Length
-          "Instalador NSIS: $bytes bytes ($([Math]::Round($bytes / 1MB, 2)) MiB)" >> $env:GITHUB_STEP_SUMMARY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: stackcall-nsis
+          if-no-files-found: error
+          path: |
+            app/src-tauri/target/release/bundle/nsis/*_x64-setup.exe
+            release-notes.md
+            changelog.json
 
-      - name: Validar manifesto e anexar changelog ao rascunho
-        if: github.event_name == 'push'
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: windows
+    runs-on: windows-latest
+    environment: release
+    permissions: {}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: stackcall-nsis
+          path: ${{ runner.temp }}/nsis
+
+      - name: Instalar o assinador do Tauri
+        run: |
+          $archive = "$env:RUNNER_TEMP/tauri-cli.zip"
+          $url = 'https://github.com/tauri-apps/tauri/releases/download/tauri-cli-v2.12.6/cargo-tauri-x86_64-pc-windows-msvc.zip'
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne '39636fa68bc00f13dd610fb57688f292e93742978cc35395f2f1be7c540b88a1') {
+            throw 'SHA-256 do assinador do Tauri não confere.'
+          }
+          Expand-Archive -LiteralPath $archive -DestinationPath "$env:RUNNER_TEMP/tauri-cli"
+
+      - name: Assinar o instalador
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if (!$env:TAURI_SIGNING_PRIVATE_KEY -or !$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD) {
+            throw 'Configure a chave e a senha de assinatura no ambiente release.'
+          }
+          $installers = @(Get-ChildItem -LiteralPath "$env:RUNNER_TEMP/nsis" -Recurse -File -Filter '*_x64-setup.exe')
+          if ($installers.Count -ne 1) { throw 'Esperado um instalador NSIS x64.' }
+          $installer = $installers[0]
+          & "$env:RUNNER_TEMP/tauri-cli/cargo-tauri.exe" tauri signer sign --app-version $env:GITHUB_REF_NAME.Substring(1) $installer.FullName
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path -LiteralPath "$($installer.FullName).sig" -PathType Leaf)) {
+            throw 'A assinatura do instalador não foi gerada.'
+          }
+
+      - name: Publicar instalador, manifesto e changelog
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
-          RELEASE_ID: ${{ steps.tauri.outputs.releaseId }}
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: |
-          $release = gh api "repos/stackcall/releases/releases/$env:RELEASE_ID" | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (!$release.draft -or $release.tag_name -cne $env:RELEASE_TAG) {
-            throw 'O rascunho retornado pelo Tauri não corresponde à tag.'
-          }
-          $assets = @($release.assets | Where-Object state -EQ uploaded)
-          if ('latest.json' -notin $assets.name) {
-            throw 'O manifesto latest.json não foi anexado ao rascunho.'
-          }
-          $manifest = Get-Content -LiteralPath latest.json -Raw | ConvertFrom-Json
-          $platform = $manifest.platforms.'windows-x86_64'
-          $installer = @($assets | Where-Object name -Like '*_x64-setup.exe')
-          if ($manifest.version -cne $env:RELEASE_TAG.Substring(1) -or
-              !$platform.signature -or $installer.Count -ne 1 -or
-              $platform.url -notin @($installer[0].url, $installer[0].browser_download_url)) {
-            throw 'O manifesto precisa apontar para o instalador x64 assinado desta versão.'
-          }
-          $existing = $release.assets | Where-Object name -CEQ 'changelog.json'
-          if ($existing) {
-            gh api "repos/stackcall/releases/releases/assets/$($existing.id)" --method DELETE --silent
+          if (!$env:GH_TOKEN) { throw 'Configure RELEASES_TOKEN no ambiente release.' }
+          $repo = 'stackcall/releases'
+          $tag = $env:GITHUB_REF_NAME
+          $inputDir = "$env:RUNNER_TEMP/nsis"
+          $installer = Get-ChildItem -LiteralPath $inputDir -Recurse -File -Filter '*_x64-setup.exe'
+          $notes = Join-Path $inputDir 'release-notes.md'
+          $changelog = Join-Path $inputDir 'changelog.json'
+          $signature = (Get-Content -LiteralPath "$($installer.FullName).sig" -Raw).Trim()
+          if (!$signature) { throw 'A assinatura do instalador está vazia.' }
+          $manifest = Join-Path $env:RUNNER_TEMP 'latest.json'
+          @{
+            version = $tag.Substring(1)
+            notes = Get-Content -LiteralPath $notes -Raw
+            pub_date = [DateTimeOffset]::UtcNow.ToString('o')
+            platforms = @{
+              'windows-x86_64' = @{
+                url = "https://github.com/$repo/releases/download/$([Uri]::EscapeDataString($tag))/$([Uri]::EscapeDataString($installer.Name))"
+                signature = $signature
+              }
+            }
+          } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifest -Encoding utf8
+
+          $existing = gh release view $tag --repo $repo --json isDraft,tagName
+          if ($LASTEXITCODE -eq 0) {
+            $release = $existing | ConvertFrom-Json
+            if (!$release.isDraft -or $release.tagName -cne $tag) {
+              throw 'A versão já está publicada ou o rascunho tem outra tag.'
+            }
+          } else {
+            $options = @()
+            if ($tag.Contains('-')) { $options += '--prerelease' }
+            gh release create $tag --repo $repo --target main --draft --title "Stackcall $tag" --notes-file $notes @options
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
-          $uploadUrl = "https://uploads.github.com/repos/stackcall/releases/releases/$env:RELEASE_ID/assets?name=changelog.json"
-          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json' }
-          $asset = Invoke-RestMethod -Uri $uploadUrl -Method Post -Headers $headers `
-            -ContentType 'application/json' -InFile changelog.json
-          if ($asset.state -ne 'uploaded') { throw 'O changelog.json não foi anexado ao rascunho.' }
-
-      - name: Publicar o rascunho com as notas
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
-          RELEASE_ID: ${{ steps.tauri.outputs.releaseId }}
-          PRERELEASE: ${{ contains(steps.version.outputs.tag, '-') }}
-        run: |
-          $latest = if ($env:PRERELEASE -eq 'true') { 'false' } else { 'legacy' }
-          gh api "repos/stackcall/releases/releases/$env:RELEASE_ID" --method PATCH --silent `
-            -F draft=false -F "prerelease=$env:PRERELEASE" -f "make_latest=$latest" -F 'body=@release-notes.md'
+          gh release upload $tag $installer.FullName "$($installer.FullName).sig" $manifest $changelog --repo $repo --clobber
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          gh release edit $tag --repo $repo --draft=false --notes-file $notes
