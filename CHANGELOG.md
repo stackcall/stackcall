@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.1
+
+### Correções
+
+- A transmissão pela placa de vídeo não abria por falta de um arquivo do FFmpeg
+
 ## v0.1.0
 
 ### Novidades

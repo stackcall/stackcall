@@ -5,7 +5,7 @@ use crate::media::{
     check,
 };
 use anyhow::{Context, Result, ensure};
-use ffmpeg_next::ffi::{
+use ffmpeg_sys_next::{
     AV_HWFRAME_MAP_READ, AVBufferRef, AVD3D11VADeviceContext, AVD3D11VAFramesContext,
     AVHWDeviceContext, AVHWDeviceType, AVHWFramesContext, AVPixelFormat,
 };
