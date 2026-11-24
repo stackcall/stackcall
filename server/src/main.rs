@@ -24,7 +24,6 @@ use tower_http::cors::CorsLayer;
 
 const WINDOW: Duration = Duration::from_secs(60);
 const TOKEN_TTL: Duration = Duration::from_secs(3600);
-const SCREEN_TOKEN_TTL: Duration = Duration::from_secs(300);
 const TOKEN_LIMIT: u8 = 10;
 // The app's upload test sends a series of growing blocks for about 5 seconds.
 const UPLOAD_LIMIT: u8 = 60;
@@ -169,11 +168,7 @@ async fn token(
 
     let token = AccessToken::with_api_key(&config.key, &config.secret)
         .with_identity(&input.nome)
-        .with_ttl(if screen_owner.is_some() {
-            SCREEN_TOKEN_TTL
-        } else {
-            TOKEN_TTL
-        })
+        .with_ttl(TOKEN_TTL)
         .with_grants(VideoGrants {
             room_join: true,
             room: input.sala,
@@ -344,7 +339,7 @@ mod tests {
             .verify(body["token"].as_str().unwrap())
             .unwrap();
         assert_eq!(claims.sub, "Pessoa_1:tela");
-        assert_eq!(claims.exp - claims.nbf, 300);
+        assert_eq!(claims.exp - claims.nbf, 3600);
         assert_eq!(claims.video.room, "sala-1");
         assert!(claims.video.room_join);
         assert_eq!(claims.video.can_publish, Some(true));
