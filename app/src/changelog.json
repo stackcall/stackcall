@@ -1,0 +1,16 @@
+{
+  "versions": [
+    {
+      "version": "0.1.0",
+      "date": "2026-11-24",
+      "items": [
+        { "category": "novidades", "title": "Salas de voz fixas", "text": "Geral, CS, Filme e Madrugada. Troque de sala pelas abas no topo." },
+        { "category": "novidades", "title": "Voz com mesa de som", "text": "Mudo, fone, indicador de quem fala e volume de 0 a 200% para cada pessoa." },
+        { "category": "novidades", "title": "Entrar no ar", "text": "Transmita uma tela ou janela em até 1080p 60. Quem assiste escolhe clicar em Assistir." },
+        { "category": "novidades", "title": "Chat da sala", "text": "Mensagens para quem está na sala agora. Ainda não há histórico." },
+        { "category": "novidades", "title": "Atualização dentro do app", "text": "O app avisa quando sai versão nova e instala com um clique, ou quando você sair da sala." },
+        { "category": "ajustes", "title": "Som do jogo e 4K", "text": "Ficam para a v0.2, com o núcleo próprio de transmissão." }
+      ]
+    }
+  ]
+}
