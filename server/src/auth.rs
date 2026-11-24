@@ -14,7 +14,7 @@ use std::{fmt::Write, sync::Arc};
 pub struct User {
     pub id: String,
     pub role: String,
-    token_hash: [u8; 32],
+    pub(crate) token_hash: [u8; 32],
 }
 
 impl User {

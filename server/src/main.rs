@@ -1,6 +1,9 @@
 mod auth;
 mod db;
 mod invites;
+mod livekit;
+mod people;
+mod rooms;
 
 use axum::{
     Json, Router,
@@ -42,6 +45,7 @@ struct Attempts {
 }
 
 struct Config {
+    livekit: livekit::LiveKit,
     server_name: String,
     public_url: Url,
     members_can_invite: bool,
@@ -192,6 +196,8 @@ fn app(config: Arc<Config>) -> Router {
     Router::new()
         .merge(auth::routes())
         .merge(invites::routes())
+        .merge(rooms::routes())
+        .merge(people::routes())
         .route(
             "/api/upload-test",
             post(upload_test)
@@ -241,11 +247,27 @@ fn origin(value: &str) -> std::io::Result<Url> {
     Ok(url)
 }
 
+fn required(name: &str) -> std::io::Result<String> {
+    env::var(name)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| std::io::Error::other(format!("configure {name}")))
+}
+
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let address = env::var("PORTEIRO_ADDR").unwrap_or_else(|_| "127.0.0.1:8100".into());
     let public_url =
         origin(&env::var("SERVIDOR_URL").unwrap_or_else(|_| "http://localhost:8100".into()))?;
+    let livekit = livekit::LiveKit::new(
+        required("LIVEKIT_API_KEY")?,
+        required("LIVEKIT_API_SECRET")?,
+        required("LIVEKIT_PUBLIC_URL")?,
+        origin(
+            &env::var("LIVEKIT_INTERNAL_URL").unwrap_or_else(|_| "http://127.0.0.1:7880".into()),
+        )?,
+    )
+    .map_err(std::io::Error::other)?;
     let mut conn = db::open(env::var("PORTEIRO_DB").unwrap_or_else(|_| "stackcall.sqlite3".into()))
         .map_err(std::io::Error::other)?;
     let configured_name = env::var("SERVIDOR_NOME").ok();
@@ -280,6 +302,7 @@ async fn main() -> std::io::Result<()> {
         );
     }
     let config = Arc::new(Config {
+        livekit,
         server_name,
         public_url,
         members_can_invite,

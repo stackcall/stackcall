@@ -79,6 +79,12 @@ A prévia devolve `{servidor, convidado_por}`. Convites vencidos, revogados ou e
 
 A origem dos links vem de `SERVIDOR_URL`. `SERVIDOR_NOME` e `MEMBROS_CONVIDAM` configuram o nome e a permissão de convite. `GET /api/servidor` devolve `{nome, versao, versao_minima_app, membros_convidam}`. No log, o link inicial aparece na linha `Convite do dono: <url>`.
 
+`GET /api/salas` retorna uma lista de `{id, nome, ordem}`. Envie `nome` e `ordem` opcional ao criar. Para editar ou excluir use `/api/salas/:id`. Os tokens voltam como `{url, token, screen_token}`.
+
+`GET /api/pessoas` retorna uma lista de perfis com `amigo` e `online` para quem consulta. Online significa estar conectado a uma sala do LiveKit. Adicionar ou remover um amigo retorna 204 e só afeta a própria lista.
+
+A remoção revoga sessões, códigos de aparelho e convites da pessoa e desconecta voz e tela. O dono não pode ser removido e administradores só gerenciam outros usuários com papel de membro. Ao revogar os próprios aparelhos, o dono ou admin mantém a sessão atual. Se o LiveKit estiver indisponível, a remoção devolve 502 após revogar o acesso. Repetir o DELETE tenta desconectar novamente. Em self-host, um JWT do LiveKit já emitido pode autenticar até expirar.
+
 Migração do nosso servidor: na primeira subida da v0.3, o `CONVITE` antigo sai e o porteiro imprime no log um convite de dono (uso único, 7 dias). O Filippe entra com ele e gera os convites dos amigos.
 
 ## Perfil personalizável (como no Fivestack)

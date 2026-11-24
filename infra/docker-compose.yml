@@ -3,6 +3,9 @@ services:
     # LiveKit Server v1.13.11
     image: livekit/livekit-server@sha256:25cd902de7cacbd5f1f779f6a6ac1eae20ba8f56b0935934ce6b0ab80d1e3d20
     command: ["--config", "/etc/livekit.yaml"]
+    networks:
+      porteiro:
+        ipv4_address: 172.31.240.4
     environment:
       LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?configure LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET:?configure LIVEKIT_API_SECRET}"
     volumes:
@@ -27,6 +30,7 @@ services:
     environment:
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?configure LIVEKIT_API_KEY}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?configure LIVEKIT_API_SECRET}
+      LIVEKIT_INTERNAL_URL: http://livekit:7880
       LIVEKIT_PUBLIC_URL: ${LIVEKIT_PUBLIC_URL:?configure LIVEKIT_PUBLIC_URL}
       PORTEIRO_DB: /data/stackcall.sqlite3
       SERVIDOR_URL: ${SERVIDOR_URL:-http://localhost:8100}
