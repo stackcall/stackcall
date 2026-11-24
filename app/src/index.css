@@ -1,0 +1,111 @@
+@import 'tailwindcss';
+
+/* Sala de Controle tokens (docs/design/prototipo/README.md). Purple only for live, selected or active. */
+@theme {
+  --color-bg: #0f1012;
+  --color-panel: #131417;
+  --color-surface: #17191c;
+  --color-raised: #1b1d21;
+  --color-line: #30333a;
+  --color-text: #d9dbe0;
+  --color-muted: #9ea2ab;
+  --color-faint: #8a8e97;
+  --color-live: #7c5cff;
+  --color-live-soft: #b9a8ff;
+  --color-active: #1c1833;
+  --color-active-strong: #221b3d;
+  --color-on-active: #e2dbff;
+  --color-danger-line: #5a2a33;
+  --color-danger-bg: #24151a;
+  --color-danger-text: #ffb3bd;
+  --font-sans: 'Barlow', system-ui, sans-serif;
+  --font-cond: 'Barlow Condensed', 'Barlow', sans-serif;
+  --radius-ctl: 6px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-live-soft);
+  outline-offset: 2px;
+}
+
+a {
+  color: #b9a8ff;
+}
+a:hover {
+  color: #d8ceff;
+}
+
+/* Condensed caps label used across the prototype. */
+@utility label-caps {
+  font-family: var(--font-cond);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+@utility btn {
+  height: 44px;
+  padding: 0 16px;
+  border-radius: var(--radius-ctl);
+  border: 1px solid var(--color-line);
+  background: var(--color-raised);
+  color: var(--color-text);
+  font-family: var(--font-cond);
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+@utility btn-primary {
+  border-color: var(--color-live);
+  background: var(--color-live);
+  color: var(--color-bg);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+@utility field {
+  width: 100%;
+  box-sizing: border-box;
+  height: 42px;
+  border-radius: var(--radius-ctl);
+  border: 1px solid var(--color-line);
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 0 12px;
+  font: inherit;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
