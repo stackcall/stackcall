@@ -1,5 +1,36 @@
 [
   {
+    "version": "0.3.0",
+    "date": "2026-11-24",
+    "categories": [
+      {
+        "name": "Novidades",
+        "items": [
+          { "message": "Visual novo no padrão Pôster: tema claro por padrão e escuro como opção", "breaking": false },
+          { "message": "Entrar é só abrir o link de convite e digitar o nome: sem senha e sem digitar servidor", "breaking": true },
+          { "message": "Cada servidor é um grupo; o dono e os admins geram convites e podem remover pessoas", "breaking": false },
+          { "message": "Mesa de canais com medidor de voz, status e volume próprio", "breaking": false },
+          { "message": "Lista de amigos e perfil com foto, banner, bio e tema", "breaking": false },
+          { "message": "Entrar em outro aparelho com um link de uso único", "breaking": false },
+          { "message": "Modo jogo: com jogo em tela cheia, o app para o visual e baixa a prioridade", "breaking": false },
+          { "message": "Ícone novo, também no instalador", "breaking": false }
+        ]
+      },
+      {
+        "name": "Correções",
+        "items": [
+          { "message": "Ping mostrado agora é o real da conexão de voz", "breaking": false }
+        ]
+      },
+      {
+        "name": "Melhorias",
+        "items": [
+          { "message": "Correções de segurança no servidor e no app", "breaking": false }
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.2.1",
     "date": "2026-11-24",
     "categories": [

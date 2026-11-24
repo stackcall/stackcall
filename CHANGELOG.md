@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.3.0
+
+### Novidades
+
+- Visual novo no padrão Pôster, tema claro por padrão e escuro como opção
+- Entrada por link de convite, sem senha e sem digitar servidor
+- Servidor do grupo com dono, admins, convites e remoção de pessoas
+- Mesa de canais, amigos, perfil personalizável e entrar em outro aparelho
+- Modo jogo e ícone novo
+
+### Correções
+
+- Ping real da conexão de voz
+
+### Melhorias
+
+- Correções de segurança no servidor e no app
+
 ## v0.2.1
 
 ### Correções
