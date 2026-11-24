@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Sala de Controle: sobre e atualizações</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&amp;family=Barlow+Condensed:wght@500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0a0b0c}
+a{color:#b9a8ff}a:hover{color:#d8ceff}
+button{font:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; flex-direction: column; background: #0f1012; color: #d9dbe0; font-family: 'Barlow', system-ui, sans-serif; font-size: 14px; overflow: hidden">
+
+  <div role="status" style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 0 24px; background: #1c1833; border-bottom: 1px solid #4b3d8f">
+    <span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 0.08em; padding: 3px 8px; border-radius: 4px; background: #7c5cff; color: #0f1012">NOVA VERSÃO</span>
+    <span><b style="font-weight: 600">Stackcall 0.4.0</b> está disponível · 3 novidades, 1 melhoria, 2 correções</span>
+    <a href="Novidades.dc.html" style="margin-left: auto">Ver novidades</a>
+    <span style="color: #b9adf0">Instala quando você sair da sala CS</span>
+  </div>
+
+  <div style="flex: 1; min-height: 0; display: grid; grid-template-columns: 280px minmax(0, 1fr)">
+    <nav aria-label="Configurações" style="border-right: 1px solid #30333a; background: #131417; padding: 20px 12px; display: flex; flex-direction: column; gap: 2px">
+      <span style="padding: 0 12px 12px; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 20px; letter-spacing: 0.04em">CONFIGURAÇÕES</span>
+      <sc-for list="{{menu}}" as="m" hint-placeholder-count="6">
+        <a href="#" style="height: 40px; padding: 0 12px; display: flex; align-items: center; border-radius: 6px; text-decoration: none; color: {{m.color}}; background: {{m.bg}}; border-left: 3px solid {{m.mark}}">{{m.label}}</a>
+      </sc-for>
+    </nav>
+
+    <main style="padding: 28px 40px; display: flex; flex-direction: column; gap: 20px; min-width: 0; overflow: hidden">
+      <h1 style="margin: 0; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 28px; letter-spacing: 0.03em">SOBRE E ATUALIZAÇÕES</h1>
+
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px">
+        <section style="border: 1px solid #30333a; border-radius: 6px; background: #131417; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+          <span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 0.08em; color: #9ea2ab">INSTALADO</span>
+          <div style="display: flex; align-items: baseline; gap: 12px"><b style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 44px; line-height: 1">0.3.2</b><span style="color: #9ea2ab">canal estável · 18/11/2026</span></div>
+          <span style="color: #9ea2ab">Última checagem: hoje, 21:12</span>
+          <button style="align-self: flex-start; height: 40px; padding: 0 16px; border-radius: 6px; border: 1px solid #30333a; background: #1b1d21; color: #d9dbe0">Procurar atualização</button>
+        </section>
+
+        <section style="border: 2px solid #7c5cff; border-radius: 6px; background: #17142a; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+          <span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 0.08em; color: #cbbdff">DISPONÍVEL</span>
+          <div style="display: flex; align-items: baseline; gap: 12px"><b style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 44px; line-height: 1">0.4.0</b><span style="color: #b9adf0">publicada hoje · 38 MB</span></div>
+          <span style="color: #c5c8ce; line-height: 1.45">Você está numa chamada. A atualização baixa agora e instala quando você sair da sala.</span>
+          <div style="display: flex; gap: 10px">
+            <button style="height: 44px; padding: 0 18px; border-radius: 6px; border: 1px solid #7c5cff; background: #7c5cff; color: #0f1012; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: 0.06em">ATUALIZAR AO SAIR DA SALA</button>
+            <a href="Novidades.dc.html" style="height: 44px; padding: 0 16px; display: flex; align-items: center; border-radius: 6px; border: 1px solid #4b3d8f; color: #d8ceff; text-decoration: none">Ver novidades</a>
+          </div>
+        </section>
+      </div>
+
+      <section style="border: 1px solid #30333a; border-radius: 6px; background: #131417">
+        <label style="display: flex; align-items: center; gap: 14px; padding: 14px 20px; border-bottom: 1px solid #30333a">
+          <span style="flex: 1; display: flex; flex-direction: column; gap: 2px"><b style="font-weight: 600">Procurar atualização sozinho</b><span style="color: #9ea2ab">Ao abrir o app e a cada 6 horas. Nunca interrompe uma chamada.</span></span>
+          <input type="checkbox" checked style="width: 20px; height: 20px; accent-color: #7c5cff">
+        </label>
+        <label style="display: flex; align-items: center; gap: 14px; padding: 14px 20px">
+          <span style="flex: 1; display: flex; flex-direction: column; gap: 2px"><b style="font-weight: 600">Canal</b><span style="color: #9ea2ab">Teste recebe as versões antes, para quem quer ajudar a achar erro.</span></span>
+          <select style="height: 40px; padding: 0 12px; border-radius: 6px; border: 1px solid #30333a; background: #1b1d21; color: #d9dbe0; font: inherit">
+            <option>Estável</option>
+            <option>Teste</option>
+          </select>
+        </label>
+      </section>
+
+      <section style="display: flex; flex-direction: column; gap: 8px; min-height: 0">
+        <span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 0.08em; color: #9ea2ab">HISTÓRICO DE VERSÕES</span>
+        <sc-for list="{{history}}" as="h" hint-placeholder-count="3">
+          <div style="display: grid; grid-template-columns: 90px 120px minmax(0, 1fr) 120px; align-items: center; gap: 16px; height: 44px; padding: 0 16px; border-radius: 6px; border: 1px solid #30333a; background: #131417">
+            <b style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 18px">{{h.v}}</b>
+            <span style="color: #9ea2ab">{{h.date}}</span>
+            <span style="color: #c5c8ce; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{h.summary}}</span>
+            <a href="Novidades.dc.html" style="text-align: right">Ver notas</a>
+          </div>
+        </sc-for>
+      </section>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const items = ['Áudio', 'Vídeo e transmissão', 'Atalhos', 'Conta e convites', 'Sobre e atualizações'];
+    return {
+      menu: items.map((l) => ({ label: l, color: l === 'Sobre e atualizações' ? '#e2dbff' : '#c5c8ce', bg: l === 'Sobre e atualizações' ? '#1c1833' : 'transparent', mark: l === 'Sobre e atualizações' ? '#7c5cff' : 'transparent' })),
+      history: [
+        { v: '0.3.2', date: '18/11/2026', summary: '2 correções: som do jogo cortava ao trocar de janela; ícone na bandeja' },
+        { v: '0.3.0', date: '12/11/2026', summary: '2 novidades: volume por pessoa, contador de quem assiste' },
+        { v: '0.2.0', date: '05/11/2026', summary: 'Primeira versão para os amigos' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
