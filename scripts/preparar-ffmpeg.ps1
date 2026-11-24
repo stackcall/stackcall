@@ -12,13 +12,27 @@ $archive = Join-Path $cache "$build.zip"
 $ffmpeg = Join-Path $cache $build
 $repo = Split-Path $PSScriptRoot -Parent
 
+function Get-Sha256([string]$Path) {
+    $file = [System.IO.File]::OpenRead($Path)
+    try {
+        $algorithm = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            [System.BitConverter]::ToString($algorithm.ComputeHash($file)).Replace('-', '')
+        } finally {
+            $algorithm.Dispose()
+        }
+    } finally {
+        $file.Dispose()
+    }
+}
+
 function Get-VerifiedFile($Uri, $Destination, $Hash) {
-    if ((Test-Path -LiteralPath $Destination) -and (Get-FileHash -LiteralPath $Destination).Hash -eq $Hash) { return }
+    if ((Test-Path -LiteralPath $Destination) -and (Get-Sha256 $Destination) -eq $Hash) { return }
     $download = "$Destination.$PID.download"
     try {
         curl.exe --fail --location --silent --show-error --retry 3 --output $download $Uri
         if ($LASTEXITCODE -ne 0) { throw "Falha no download: $Uri" }
-        if ((Get-FileHash -LiteralPath $download).Hash -ne $Hash) {
+        if ((Get-Sha256 $download) -ne $Hash) {
             throw "O SHA-256 diverge do valor fixado: $Uri"
         }
         Move-Item -LiteralPath $download -Destination $Destination -Force
