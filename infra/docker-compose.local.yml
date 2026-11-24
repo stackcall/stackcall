@@ -1,0 +1,5 @@
+services:
+  livekit:
+    ports: !override
+      - "${CADDY_BIND_IP:?configure o IP local}:7881:7881/tcp"
+      - "${CADDY_BIND_IP:?configure o IP local}:7882:7882/udp"

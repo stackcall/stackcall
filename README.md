@@ -4,7 +4,7 @@ App de voz e transmissão de tela para um grupo de amigos. Cliente desktop em Ta
 
 - Salas de voz, transmissão de tela de 720p30 a 4K60 conforme a placa de vídeo, som do jogo junto e chat.
 - Quem transmite codifica na própria GPU (NVENC, AMF ou Quick Sync); o servidor só repassa.
-- Entrada só por convite.
+- Contas com cadastro por convite por padrão.
 
 O plano e as fases do projeto estão em [docs/PLANO.md](docs/PLANO.md). As referências ficam em [docs/pesquisa/](docs/pesquisa/).
 
@@ -15,8 +15,8 @@ O plano e as fases do projeto estão em [docs/PLANO.md](docs/PLANO.md). As refer
 | `app/` | Cliente Tauri 2: interface React + Vite + TypeScript + Tailwind, voz e assistir pelo `livekit-client` |
 | `core/` | Núcleo Rust "Go Live": captura WGC, codificação na GPU pelo FFmpeg, som do jogo por process loopback, publicação pré-codificada no LiveKit |
 | `sonda/` | Processo separado que testa os codificadores da placa e devolve JSON |
-| `server/` | Porteiro em Rust com Axum. A prova atual valida convites e emite tokens do LiveKit |
-| `infra/` | Configuração do `livekit-server`, do Caddy e do Docker Compose da VPS |
+| `server/` | Porteiro em Rust com Axum e SQLite. Gerencia contas, grupos e tokens do LiveKit |
+| `infra/` | Compose, LiveKit, Caddy e instaladores de self-host |
 | `spikes/` | Provas técnicas isoladas |
 | `scripts/` | Versionamento, geração de changelog e medição de latência |
 | `releases-repo/` | README sincronizado com a página pública de downloads |
@@ -35,17 +35,36 @@ npm run tauri dev
 
 ### Porteiro
 
-Na raiz, configure o par de chaves do seu LiveKit, a URL pública e o convite de desenvolvimento no ambiente da sessão. Para um LiveKit rodando na mesma máquina, use `ws://localhost:7880` como URL.
+Na raiz, configure o par de chaves do seu LiveKit e sua URL pública no ambiente da sessão. Para um LiveKit rodando na mesma máquina, use `ws://localhost:7880` como URL.
 
 ```powershell
 $env:LIVEKIT_API_KEY = '<chave do LiveKit local>'
 $env:LIVEKIT_API_SECRET = '<segredo do LiveKit local>'
 $env:LIVEKIT_PUBLIC_URL = 'ws://localhost:7880'
-$env:STACKCALL_CONVITE_DEV = '<convite de desenvolvimento>'
 cargo run -p porteiro
 ```
 
-O porteiro escuta em `127.0.0.1:8100` por padrão. Para subir a infraestrutura junto, consulte o [guia de infraestrutura](infra/README.md).
+O porteiro escuta em `127.0.0.1:8100` por padrão, grava em `stackcall.sqlite3` e registra o convite inicial na primeira execução. Configure `PORTEIRO_DB` para guardar o banco em outro diretório. Para subir a infraestrutura junto, consulte o [guia de infraestrutura](infra/README.md).
+
+## Hospedar seu próprio servidor
+
+O instalador sobe LiveKit, porteiro e Caddy com Docker Compose v2.24.4 ou mais recente. O porteiro guarda contas, grupos e imagens num volume SQLite. Guarde esse volume e o arquivo de configuração privado ao atualizar a instalação.
+
+### Linux com acesso pela internet
+
+Confira [o script](infra/instalar.sh) antes de executá-lo. Quando o repositório estiver público, instale com:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/stackcall/stackcall/main/infra/instalar.sh | bash
+```
+
+Com acesso ao checkout, rode `bash infra/instalar.sh`. O script pede o domínio. Se você deixar em branco, usa o IPv4 público com `sslip.io`. Aponte o domínio próprio para o servidor e libere 443/tcp, 7881/tcp, 7882/udp e 3478/udp. O Caddy obtém o certificado em 443/tcp. O Linux precisa de OpenSSL. O comando remoto também precisa de Git.
+
+### Rede local
+
+Use `bash infra/instalar.sh --local` no Linux ou `.\infra\instalar.ps1` no Windows com Docker Desktop rodando contêineres Linux. O instalador tenta detectar o IPv4 da rede. Para escolher outro endereço, passe `--ip 192.168.1.20` no Linux ou `-Ip 192.168.1.20` no Windows. O modo local usa HTTP e login por nome e senha. Libere 8100/tcp, 7881/tcp e 7882/udp para os demais computadores na LAN.
+
+Abra o link do primeiro admin que o script mostra depois de subir. Ele vale por 30 dias e dá acesso ao grupo Galera. O padrão é permitir cadastro por convite. A configuração fica em `~/.config/stackcall/.env` no Linux (ou em `$XDG_CONFIG_HOME/stackcall/.env`) e em `%LOCALAPPDATA%\Stackcall\Servidor\.env` no Windows. Para mudar a política, edite `MODO_CADASTRO` para `aberto`, `convite` ou `fechado` e rode o instalador novamente. Consulte o [guia de infraestrutura](infra/README.md) para operar e fazer backup.
 
 ## Soltar uma versão
 

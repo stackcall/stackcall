@@ -6,7 +6,10 @@ services:
     environment:
       LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?configure LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET:?configure LIVEKIT_API_SECRET}"
     volumes:
-      - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
+      - type: bind
+        source: ${LIVEKIT_CONFIG:-./livekit/livekit.yaml}
+        target: /etc/livekit.yaml
+        read_only: true
     ports:
       - "127.0.0.1:7880:7880"
       - "7881:7881/tcp"
@@ -28,6 +31,7 @@ services:
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?configure LIVEKIT_API_KEY}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?configure LIVEKIT_API_SECRET}
       LIVEKIT_PUBLIC_URL: ${LIVEKIT_PUBLIC_URL:?configure LIVEKIT_PUBLIC_URL}
+      INSTANCIA_NOME: ${INSTANCIA_NOME:-Stackcall}
       INSTANCIA_URL: ${INSTANCIA_URL:-http://localhost:8100}
       STEAM_API_KEY: ${STEAM_API_KEY:-}
       MODO_CADASTRO: ${MODO_CADASTRO:-convite}

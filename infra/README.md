@@ -1,63 +1,28 @@
-﻿# Publicação da fase 0
+# Infraestrutura do Stackcall
 
-Execute na VPS após a aprovação do Filippe. Os comandos partem da raiz do checkout.
+Para uma instância nova, use [Hospedar seu próprio servidor](../README.md#hospedar-seu-próprio-servidor). O instalador gera as credenciais, guarda o `.env` fora do checkout e usa o Compose com Caddy. O volume `<projeto>_porteiro-data` contém o SQLite e as imagens. Para copiar o volume inteiro, pare o porteiro primeiro. Preserve também o `.env` privado e, no modo HTTPS, os volumes do Caddy.
 
-## Preparar chaves e portas
+## Instância com Caddy já instalado no host
 
-Gere as credenciais com a imagem fixada no Compose e um convite aleatório. Transfira os valores diretamente para o arquivo privado, sem registrá-los no terminal compartilhado ou no Git.
+Use apenas `docker-compose.yml`, que publica o porteiro e a sinalização do LiveKit em loopback. Configure as chaves existentes do LiveKit e defina `INSTANCIA_URL` com a origem HTTPS e `LIVEKIT_PUBLIC_URL` com o WebSocket público seguido de `/rtc`. Use `infra/.env.example` como referência. `INSTANCIA_NOME` personaliza o nome retornado ao app. `STEAM_API_KEY` é opcional e serve para importar nome e avatar da Steam.
 
-```sh
-docker compose -f infra/docker-compose.yml --env-file infra/.env.example run --rm --no-deps livekit generate-keys
-openssl rand -hex 32
-umask 077
-mkdir -p ~/.config/stackcall
-install -m 600 infra/.env.example ~/.config/stackcall/.env
-chmod 600 ~/.config/stackcall/.env
-```
+O [bloco do Caddy](caddy/stackcall.caddy) encaminha API, convites, mídia e sinalização. Ele sobrescreve `X-Forwarded-For` com o IP da conexão. Mantenha a rede privada `172.31.240.0/29` reservada para a instância e `PORTEIRO_TRUSTED_PROXY` apontado para o gateway `172.31.240.1`. No Compose do instalador, o proxy tem endereço próprio. Use Docker Engine 28 ou mais recente para o isolamento das portas publicadas em loopback.
 
-Edite `~/.config/stackcall/.env` e preencha `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` e `STACKCALL_CONVITE_DEV`. O Compose monta `LIVEKIT_KEYS` com o mesmo par usado pelo porteiro. Mantenha `PORTEIRO_ADDR=0.0.0.0:8100` no contêiner. A publicação no host é restrita a loopback e o porteiro confia no gateway da rede privada do Compose para receber o IP informado pelo Caddy. Reserve a sub-rede `172.31.240.0/29` para esse serviço.
-
-Confira as regras existentes antes de adicionar as que faltam.
+Da raiz do checkout, com o arquivo de configuração já preenchido:
 
 ```sh
-sudo ufw allow 443/tcp
-sudo ufw allow 7881/tcp
-sudo ufw allow 7882/udp
-sudo ufw allow 3478/udp
-```
-
-O Docker pode encaminhar portas publicadas antes das regras do UFW. Mantenha também a mesma lista no firewall do provedor, se houver. Use Docker Engine 28 ou mais recente para o isolamento das portas publicadas em loopback.
-
-## Subir e verificar
-
-Crie o diretório de atualizações e instale o bloco de configuração.
-
-```sh
-sudo install -d -m 0755 /srv/stackcall/updates
-sudo install -m 0644 infra/caddy/stackcall.caddy /etc/caddy/stackcall.caddy
-```
-
-Adicione `import /etc/caddy/stackcall.caddy` ao Caddyfile do host. Valide e recarregue. A emissão do certificado pode usar o desafio TLS-ALPN pela porta 443/tcp.
-
-```sh
-sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
-sudo systemctl reload caddy
-
 docker compose -p stackcall -f infra/docker-compose.yml --env-file ~/.config/stackcall/.env config --quiet
 docker compose -p stackcall -f infra/docker-compose.yml --env-file ~/.config/stackcall/.env up -d --build
-docker compose -p stackcall -f infra/docker-compose.yml --env-file ~/.config/stackcall/.env ps
-
-curl --fail --silent --show-error http://127.0.0.1:7880/
-curl --fail --silent --show-error https://stackcall.80-190-79-129.sslip.io/api/health
-curl --fail --silent --show-error --output /dev/null --write-out '%{http_code}\n' https://stackcall.80-190-79-129.sslip.io/api/rtt
+curl --fail --silent --show-error http://127.0.0.1:8100/api/instancia
 ```
 
-Espere `ok: true` na saúde do porteiro e HTTP 204 no RTT. Para P1, peça dois tokens em `POST /api/token` com o convite privado, nomes diferentes e a mesma sala. Use os tokens no LiveKit Meet e confirme voz nos dois sentidos. Para P5, execute `powershell -NoProfile -File scripts/medir-latencia.ps1 -Json` em duas ou três casas. A primeira amostra pode incluir DNS e TLS, e o cliente HTTP pode reutilizar a conexão nas amostras seguintes. Registre os resultados em `docs/fase0/resultados.md`.
+Após instalar ou migrar com o banco vazio, procure `Convite do primeiro admin` no log privado do porteiro. O link vence após 30 dias ou quando a primeira conta é criada. O grupo Galera e a sala Geral ficam no SQLite. A API do app está em [PLANO-ABERTO.md](../docs/PLANO-ABERTO.md#api-contrato-entre-porteiro-e-app).
 
-## Desfazer
+## Portas
 
-```sh
-docker compose -p stackcall -f infra/docker-compose.yml --env-file ~/.config/stackcall/.env down
-```
+| Modo | Portas publicadas |
+|---|---|
+| HTTPS | 443/tcp, 7881/tcp, 7882/udp, 3478/udp |
+| LAN | 8100/tcp, 7881/tcp, 7882/udp no IPv4 escolhido |
 
-Remova o `import` do Caddyfile, valide e recarregue o Caddy com os comandos acima. Remova o arquivo `/etc/caddy/stackcall.caddy`. Remova apenas as regras de firewall criadas para o Stackcall, por exemplo `sudo ufw delete allow 7881/tcp`, `sudo ufw delete allow 7882/udp` e `sudo ufw delete allow 3478/udp`. Preserve o acesso HTTPS compartilhado. Se a retirada for definitiva, remova o arquivo de credenciais privado e arquive os arquivos de atualização antes de retirar o diretório.
+O Docker pode encaminhar portas antes das regras do UFW. Em uma VPS, aplique também a lista no firewall do provedor, se houver. Ao parar a instância com `docker compose down`, mantenha os volumes para preservar contas, grupos, sessões e mídias.

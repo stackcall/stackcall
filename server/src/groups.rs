@@ -362,7 +362,7 @@ async fn invite_page(
 <title>Convite do Stackcall</title>
 <h1>Convite do Stackcall</h1>
 <p><a id="abrir" href="{link}">Abrir no Stackcall</a></p>
-<p><a href="https://github.com/stackcall/stackcall/releases/latest">Baixar o Stackcall</a></p>
+<p><a href="https://github.com/stackcall/releases/releases/latest">Baixar o Stackcall</a></p>
 <script nonce="{nonce}">window.location.href = document.getElementById("abrir").href;</script>
 </html>"#
     );

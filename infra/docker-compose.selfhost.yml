@@ -1,0 +1,39 @@
+services:
+  livekit:
+    ports: !override
+      - "7881:7881/tcp"
+      - "7882:7882/udp"
+      - "3478:3478/udp"
+
+  porteiro:
+    environment:
+      PORTEIRO_TRUSTED_PROXY: 172.31.240.2
+    ports: !reset []
+
+  caddy:
+    # Caddy 2.11 Alpine
+    image: caddy@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
+    environment:
+      INSTANCIA_URL: ${INSTANCIA_URL:?configure INSTANCIA_URL}
+    ports:
+      - "${CADDY_BIND_IP:-0.0.0.0}:${CADDY_PORT:-443}:${CADDY_PORT:-443}/tcp"
+    volumes:
+      - ./caddy/${CADDY_CONFIG:-selfhost.caddy}:/etc/caddy/Caddyfile:ro
+      - ./caddy/routes.caddy:/etc/caddy/routes.caddy:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      default:
+      porteiro:
+        ipv4_address: 172.31.240.2
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    pids_limit: 64
+    mem_limit: 64m
+    restart: unless-stopped
+
+volumes:
+  caddy-data:
+  caddy-config:
