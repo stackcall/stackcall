@@ -256,6 +256,16 @@ fn required(name: &str) -> String {
         .unwrap_or_else(|| panic!("configure {name}"))
 }
 
+fn invite_hash(invite: &str) -> std::io::Result<[u8; 32]> {
+    if invite == "example_invite" || invite.chars().count() < 20 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "configure STACKCALL_CONVITE_DEV com um convite próprio de pelo menos 20 caracteres",
+        ));
+    }
+    Ok(Sha256::digest(invite).into())
+}
+
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let address = env::var("PORTEIRO_ADDR").unwrap_or_else(|_| "127.0.0.1:8100".into());
@@ -272,7 +282,7 @@ async fn main() -> std::io::Result<()> {
         key: required("LIVEKIT_API_KEY"),
         secret: required("LIVEKIT_API_SECRET"),
         url: required("LIVEKIT_PUBLIC_URL"),
-        invite_hash: Sha256::digest(required("STACKCALL_CONVITE_DEV")).into(),
+        invite_hash: invite_hash(&required("STACKCALL_CONVITE_DEV"))?,
         rooms,
         // Gateway fixo da rede privada do Compose. Fora do Docker, o proxy usa loopback.
         trusted_proxy: if address == "0.0.0.0:8100" {
@@ -301,6 +311,17 @@ mod tests {
     };
     use livekit_api::access_token::TokenVerifier;
     use tower::ServiceExt;
+
+    #[test]
+    fn refuses_weak_invites_at_startup() {
+        for invite in ["example_invite", "0123456789012345678"] {
+            assert_eq!(
+                invite_hash(invite).unwrap_err().kind(),
+                std::io::ErrorKind::InvalidInput
+            );
+        }
+        assert!(invite_hash("01234567890123456789").is_ok());
+    }
 
     fn router() -> Router {
         app(Arc::new(Config {
