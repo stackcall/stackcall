@@ -7,6 +7,11 @@
     "core:default",
     "core:window:allow-set-fullscreen",
     "updater:default",
-    "process:allow-restart"
+    "process:allow-restart",
+    "deep-link:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://*" }, { "url": "http://localhost:*" }, { "url": "http://192.168.*" }, { "url": "http://10.*" }]
+    }
   ]
 }
