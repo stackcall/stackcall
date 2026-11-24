@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use ffmpeg_sys_next::{
     AV_PKT_FLAG_KEY, AVCodecContext, AVDictionary, AVERROR, AVERROR_EOF, AVPacket, AVRational,
 };
+use serde::{Deserialize, Serialize};
 use std::{ffi::CString, ptr};
 
 pub const CANDIDATES: [&str; 6] = [
@@ -31,7 +32,7 @@ pub fn candidates(codec: Codec, encoder: Encoder) -> impl Iterator<Item = &'stat
         .filter(move |name| name.starts_with(prefix) && name.ends_with(suffix))
 }
 
-pub struct Session(*mut AVCodecContext);
+pub struct Session(*mut AVCodecContext, Tuning);
 
 // The capture thread owns the encoder and never accesses it concurrently.
 unsafe impl Send for Session {}
@@ -43,6 +44,10 @@ impl Drop for Session {
 }
 
 impl Session {
+    pub fn tuning(&self) -> Tuning {
+        self.1
+    }
+
     pub fn update_qsv_bitrate(&mut self, kbps: u32, cbr: bool) -> bool {
         let video = unsafe { &mut *self.0 };
         let bitrate = bits_per_second(kbps) as i64;
@@ -87,6 +92,27 @@ impl Drop for Options {
 #[derive(Clone, Copy, Default)]
 pub struct Tuning {
     pub cbr: bool,
+    pub high_profile: bool,
+    pub nvenc_preset: NvencPreset,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum NvencPreset {
+    #[default]
+    P1,
+    P3,
+    P4,
+}
+
+impl NvencPreset {
+    fn option(self) -> &'static str {
+        match self {
+            Self::P1 => "p1",
+            Self::P3 => "p3",
+            Self::P4 => "p4",
+        }
+    }
 }
 
 fn configure_bitrate(video: &mut AVCodecContext, kbps: u32, cbr: bool) {
@@ -105,12 +131,50 @@ pub fn open(
     fps: u32,
     kbps: u32,
     hardware: Option<&crate::gpu::Frames>,
+    mut tuning: Tuning,
+) -> Result<Session> {
+    tuning.high_profile &= name.starts_with("h264");
+    if !name.ends_with("nvenc") {
+        tuning.nvenc_preset = NvencPreset::P1;
+    }
+    if tuning.nvenc_preset != NvencPreset::P1 {
+        if let Ok(session) = open_profile(name, res, fps, kbps, hardware, tuning) {
+            return Ok(session);
+        }
+        tuning.nvenc_preset = NvencPreset::P1;
+    }
+    open_profile(name, res, fps, kbps, hardware, tuning)
+}
+
+fn open_profile(
+    name: &str,
+    res: Resolution,
+    fps: u32,
+    kbps: u32,
+    hardware: Option<&crate::gpu::Frames>,
+    mut tuning: Tuning,
+) -> Result<Session> {
+    if tuning.high_profile {
+        if let Ok(session) = open_exact(name, res, fps, kbps, hardware, tuning) {
+            return Ok(session);
+        }
+        tuning.high_profile = false;
+    }
+    open_exact(name, res, fps, kbps, hardware, tuning)
+}
+
+fn open_exact(
+    name: &str,
+    res: Resolution,
+    fps: u32,
+    kbps: u32,
+    hardware: Option<&crate::gpu::Frames>,
     tuning: Tuning,
 ) -> Result<Session> {
     let c_name = CString::new(name)?;
     let codec = unsafe { media::avcodec_find_encoder_by_name(c_name.as_ptr()) };
     anyhow::ensure!(!codec.is_null(), "FFmpeg encoder {name} is unavailable");
-    let session = Session(unsafe { media::avcodec_alloc_context3(codec) });
+    let session = Session(unsafe { media::avcodec_alloc_context3(codec) }, tuning);
     let video = unsafe { session.0.as_mut() }.context("could not allocate FFmpeg encoder")?;
     let (width, height) = res.dimensions();
     video.width = width as i32;
@@ -144,7 +208,9 @@ pub fn open(
         }
     }
     if name.starts_with("h264") {
-        let profile = if name.ends_with("_amf") {
+        let profile = if tuning.high_profile {
+            "high"
+        } else if name.ends_with("_amf") {
             "constrained_baseline"
         } else {
             "baseline"
@@ -153,7 +219,7 @@ pub fn open(
     }
     let backend_options: &[(&str, &str)] = if name.ends_with("nvenc") {
         &[
-            ("preset", "p1"),
+            ("preset", tuning.nvenc_preset.option()),
             ("tune", "ull"),
             ("zerolatency", "1"),
             ("forced-idr", "1"),

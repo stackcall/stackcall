@@ -38,6 +38,7 @@ struct Setup {
     source: NativeVideoSource,
     stats: Arc<Mutex<Stats>>,
     requests: Arc<Requests>,
+    tuning: encoder::Tuning,
 }
 
 #[derive(Default)]
@@ -198,6 +199,19 @@ fn capture_interval_preserves_target_on_high_refresh_displays() {
 
 pub async fn run(args: Publish) -> Result<()> {
     media::init().context("Não foi possível carregar o FFmpeg")?;
+    let nvenc_preset = args
+        .nvenc_probe
+        .as_deref()
+        .map(|path| {
+            crate::probe::nvenc_recommendation(path, args.codec, args.res, args.fps, args.cbr)
+        })
+        .transpose()?
+        .unwrap_or_default();
+    let tuning = encoder::Tuning {
+        cbr: args.cbr,
+        high_profile: args.hardware_quality,
+        nvenc_preset,
+    };
     let (width, height) = args.res.dimensions();
     let (codec, source) = (
         match args.codec {
@@ -242,7 +256,7 @@ pub async fn run(args: Publish) -> Result<()> {
         ).await.context("O servidor recusou a publicação da tela")?;
         let stats = Arc::new(Mutex::new(Stats::default()));
         let requests = Arc::new(Requests::default());
-        let control = start_capture(Setup { args, source, stats: stats.clone(), requests: requests.clone() })
+        let control = start_capture(Setup { args, source, stats: stats.clone(), requests: requests.clone(), tuning })
             .context("Não foi possível iniciar a captura")?;
         let mut audio = crate::audio::Worker::default();
         let result = async {
@@ -552,7 +566,7 @@ impl Capture {
                 args.fps,
                 self.kbps,
                 conversion.gpu.as_ref().map(gpu::Converter::output_pool),
-                encoder::Tuning { cbr: args.cbr },
+                self.setup.tuning,
             )?;
             Ok::<_, anyhow::Error>(Session {
                 name,

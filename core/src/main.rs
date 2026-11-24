@@ -23,10 +23,9 @@ fn main() -> Result<()> {
     let args = cli::Cli::parse();
     #[cfg(windows)]
     match args.command {
-        cli::Command::Probe => println!(
-            "{}",
-            serde_json::to_string(&probe::run(probe::ProbeOptions { seconds: 5 })?)?
-        ),
+        cli::Command::Probe(options) => {
+            println!("{}", serde_json::to_string(&probe::run(options)?)?)
+        }
         cli::Command::Sources => println!("{}", serde_json::to_string(&sources::list()?)?),
         cli::Command::Publish(options) => {
             let controlled = options.control_stdin;
