@@ -14,6 +14,9 @@ import { iniciarLeveza } from './lib/leveza';
 import { App } from './App';
 
 aplicarTema();
+// Dev only: ?tema=escuro for review screenshots without touching the saved choice.
+const temaDev = import.meta.env.DEV ? new URLSearchParams(location.search).get('tema') : null;
+if (temaDev === 'claro' || temaDev === 'escuro') aplicarTema(temaDev);
 iniciarLeveza();
 
 createRoot(document.getElementById('root')!).render(

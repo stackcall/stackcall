@@ -75,6 +75,7 @@
   --color-texto-fraco: #2b3300;
 }
 
+@layer base {
 html,
 body,
 #root {
@@ -142,6 +143,7 @@ button:disabled {
 :focus-visible {
   outline: 2px solid var(--color-destaque);
   outline-offset: 2px;
+}
 }
 
 /* Rótulo de metadado: mono, caixa alta. Só quando carrega dado. */

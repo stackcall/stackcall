@@ -232,7 +232,7 @@ export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart, on
           </div>
           {chosen ? (
             <div className="grid grid-cols-[auto_minmax(0,1fr)] items-end gap-6 px-5 py-4">
-              <div className="relative pr-6">
+              <div className="relative pr-20">
                 <b className="font-display tabular-nums block text-[120px] leading-[0.95]">{fmtRes(chosen)}</b>
                 <span className="font-pincel absolute right-0 bottom-1 -rotate-6 text-[30px] text-destaque">{chosen.fps} fps</span>
               </div>
