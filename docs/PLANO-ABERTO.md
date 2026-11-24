@@ -69,7 +69,7 @@ Grupos e salas recebem `{nome}`. Salas também aceitam `ordem` e são editadas o
 
 Toda rota com `:id` confere se o usuário é membro do grupo dono do objeto (sem IDOR). Rate limit por IP (/64 no IPv6) nas rotas de auth e convite: 10/min em `entrar`/`cadastro`, 30/min no resto.
 
-O convite único atual (`CONVITE` no `.env`) some. Migração: na primeira subida da v0.3, o porteiro cria o grupo "Galera" e um convite de 30 dias para o dono colar no app novo.
+Na primeira subida da v0.3 com SQLite vazio, o porteiro cria o grupo Galera com a sala Geral e registra no log um link de uso único válido por 30 dias. O primeiro usuário é admin da instância e dono do grupo. Em modo `fechado`, só o convite inicial pode criar essa primeira conta. Em modo `aberto`, se o primeiro cadastro não usar o convite inicial, ele é revogado na mesma transação. Os dois tokens da sala voltam como `{url, token, screen_token}`.
 
 ## Perfil personalizável (como no Fivestack)
 

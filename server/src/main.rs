@@ -8,7 +8,7 @@ mod steam;
 use axum::{
     Json, Router,
     body::Body,
-    extract::{ConnectInfo, DefaultBodyLimit, Request, State},
+    extract::{ConnectInfo, DefaultBodyLimit, Path, Request, State},
     http::{HeaderValue, Method, StatusCode, header},
     middleware::{self, Next},
     response::Response,
@@ -16,10 +16,8 @@ use axum::{
 };
 use futures_util::StreamExt;
 use livekit_api::access_token::{AccessToken, VideoGrants};
-use rand::distr::{Alphanumeric, SampleString};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::json;
-use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, VecDeque},
     env,
@@ -27,7 +25,6 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use subtle::ConstantTimeEq;
 use tower_http::cors::CorsLayer;
 
 const WINDOW: Duration = Duration::from_secs(60);
@@ -60,18 +57,9 @@ struct Config {
     key: String,
     secret: String,
     url: String,
-    invite_hash: [u8; 32],
-    rooms: Vec<String>,
     trusted_proxy: Option<IpAddr>,
     attempts: Mutex<Attempts>,
     uploads: Mutex<Attempts>,
-}
-
-#[derive(Deserialize)]
-struct TokenRequest {
-    convite: String,
-    nome: String,
-    sala: String,
 }
 
 #[derive(Serialize)]
@@ -81,28 +69,9 @@ struct TokenResponse {
     screen_token: String,
 }
 
-fn valid_label(value: &str) -> bool {
-    (1..=32).contains(&value.len())
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
-}
-
 fn valid_name(value: &str) -> bool {
     (1..=32).contains(&value.chars().count())
         && !value.chars().any(|ch| ch.is_control() || ch == ':')
-}
-
-fn new_identity(name: &str) -> String {
-    let slug = name
-        .split(|ch: char| !ch.is_ascii_alphanumeric())
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join("-")
-        .to_ascii_lowercase();
-    let slug = if slug.is_empty() { "user" } else { &slug };
-    let suffix = Alphanumeric.sample_string(&mut rand::rng(), 6);
-    format!("{slug}-{suffix}")
 }
 
 fn client_ip(config: &Config, peer: SocketAddr, request: &Request) -> Result<IpAddr, StatusCode> {
@@ -179,7 +148,7 @@ async fn limit_upload(
 }
 
 /// Reads and discards the body, so the app can measure its upload speed.
-/// Streams instead of buffering: the container has 64 MB of memory.
+/// Streams instead of buffering: avoid allocating the entire upload.
 async fn upload_test(body: Body) -> Result<Json<serde_json::Value>, StatusCode> {
     let start = Instant::now();
     let bytes = tokio::time::timeout(UPLOAD_READ_TIMEOUT, async {
@@ -202,38 +171,36 @@ async fn upload_test(body: Body) -> Result<Json<serde_json::Value>, StatusCode> 
 
 async fn token(
     State(config): State<Arc<Config>>,
-    payload: Result<Json<TokenRequest>, axum::extract::rejection::JsonRejection>,
+    user: auth::User,
+    Path(room): Path<String>,
 ) -> Result<Json<TokenResponse>, StatusCode> {
-    let Json(input) = payload.map_err(|error| match error.status() {
-        StatusCode::PAYLOAD_TOO_LARGE => StatusCode::PAYLOAD_TOO_LARGE,
-        _ => StatusCode::BAD_REQUEST,
-    })?;
-
-    // TODO(fase1): substituir o convite compartilhado por contas e convites individuais.
-    let provided: [u8; 32] = Sha256::digest(input.convite.as_bytes()).into();
-    if !bool::from(provided.ct_eq(&config.invite_hash)) {
-        return Err(StatusCode::UNAUTHORIZED);
-    }
-    if !valid_name(&input.nome) || !config.rooms.contains(&input.sala) {
-        return Err(StatusCode::BAD_REQUEST);
-    }
-
-    let identity = new_identity(&input.nome);
+    let (name, room, identity) = db::run(config.clone(), move |conn| {
+        groups::room_role(conn, &room, &user)?;
+        let name = conn
+            .query_row(
+                "SELECT nome_exibicao FROM usuarios WHERE id = ?1",
+                [&user.id],
+                |row| row.get::<_, String>(0),
+            )
+            .map_err(db::internal)?;
+        Ok((name, room, user.id))
+    })
+    .await?;
     let grants = VideoGrants {
         room_join: true,
-        room: input.sala,
+        room,
         ..Default::default()
     };
     let token = AccessToken::with_api_key(&config.key, &config.secret)
         .with_identity(&identity)
-        .with_name(&input.nome)
+        .with_name(&name)
         .with_ttl(TOKEN_TTL)
         .with_grants(grants.clone())
         .to_jwt()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let screen_token = AccessToken::with_api_key(&config.key, &config.secret)
         .with_identity(&format!("{identity}:tela"))
-        .with_name(&input.nome)
+        .with_name(&name)
         .with_ttl(TOKEN_TTL)
         .with_grants(VideoGrants {
             can_publish: Some(true),
@@ -258,7 +225,7 @@ fn app(config: Arc<Config>) -> Router {
         .merge(steam::routes())
         .merge(groups::routes())
         .route(
-            "/api/token",
+            "/api/salas/{id}/token",
             post(token).route_layer(middleware::from_fn_with_state(config.clone(), limit_token)),
         )
         .route(
@@ -292,28 +259,9 @@ fn required(name: &str) -> String {
         .unwrap_or_else(|| panic!("configure {name}"))
 }
 
-fn invite_hash(invite: &str) -> std::io::Result<[u8; 32]> {
-    if invite == "example_invite" || invite.chars().count() < 20 {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "configure STACKCALL_CONVITE_DEV com um convite próprio de pelo menos 20 caracteres",
-        ));
-    }
-    Ok(Sha256::digest(invite).into())
-}
-
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let address = env::var("PORTEIRO_ADDR").unwrap_or_else(|_| "127.0.0.1:8100".into());
-    let rooms: Vec<_> = env::var("SALAS_PERMITIDAS")
-        .unwrap_or_else(|_| "geral".into())
-        .split(',')
-        .map(|room| room.trim().to_owned())
-        .collect();
-    assert!(
-        rooms.iter().all(|room| valid_label(room)),
-        "configure SALAS_PERMITIDAS"
-    );
     let public_url = url::Url::parse(
         &env::var("INSTANCIA_URL").unwrap_or_else(|_| "http://localhost:8100".into()),
     )
@@ -338,13 +286,12 @@ async fn main() -> std::io::Result<()> {
         })
         .transpose()
         .map_err(std::io::Error::other)?;
-    let config = Arc::new(Config {
+    let db = db::open(env::var("PORTEIRO_DB").unwrap_or_else(|_| "stackcall.sqlite3".into()))
+        .map_err(std::io::Error::other)?;
+    let mut config = Config {
         public_url,
         steam,
-        db: Mutex::new(
-            db::open(env::var("PORTEIRO_DB").unwrap_or_else(|_| "stackcall.sqlite3".into()))
-                .map_err(std::io::Error::other)?,
-        ),
+        db: Mutex::new(db),
         registration: auth::Registration::parse(
             &env::var("MODO_CADASTRO").unwrap_or_else(|_| "convite".into()),
         ),
@@ -352,16 +299,23 @@ async fn main() -> std::io::Result<()> {
         key: required("LIVEKIT_API_KEY"),
         secret: required("LIVEKIT_API_SECRET"),
         url: required("LIVEKIT_PUBLIC_URL"),
-        invite_hash: invite_hash(&required("STACKCALL_CONVITE_DEV"))?,
-        rooms,
         trusted_proxy: env::var("PORTEIRO_TRUSTED_PROXY").ok().map(|ip| {
             ip.parse()
                 .expect("configure PORTEIRO_TRUSTED_PROXY com um IP")
         }),
         attempts: Mutex::default(),
         uploads: Mutex::default(),
-    });
+    };
     let listener = tokio::net::TcpListener::bind(address).await?;
+    if let Some(code) = auth::bootstrap(config.db.get_mut().expect("new database lock"))
+        .map_err(std::io::Error::other)?
+    {
+        eprintln!(
+            "Convite do primeiro admin: {}",
+            groups::invite_url(&config.public_url, &code)
+        );
+    }
+    let config = Arc::new(config);
     eprintln!("Porteiro ouvindo em {}", listener.local_addr()?);
     axum::serve(
         listener,
@@ -377,163 +331,21 @@ mod tests {
         body::{Body, to_bytes},
         http::Request,
     };
-    use livekit_api::access_token::TokenVerifier;
     use tower::ServiceExt;
-
-    #[test]
-    fn refuses_weak_invites_at_startup() {
-        for invite in ["example_invite", "0123456789012345678"] {
-            assert_eq!(
-                invite_hash(invite).unwrap_err().kind(),
-                std::io::ErrorKind::InvalidInput
-            );
-        }
-        assert!(invite_hash("01234567890123456789").is_ok());
-    }
 
     fn router() -> Router {
         app(api_tests::config(auth::Registration::Open))
     }
 
-    async fn request(
-        router: Router,
-        invite: &str,
-        name: &str,
-        peer: &str,
-        forwarded: &str,
-    ) -> Response {
-        let mut request = Request::post("/api/token")
-            .header("content-type", "application/json")
+    async fn request(router: Router, peer: &str, forwarded: &str) -> Response {
+        let mut request = Request::post("/api/salas/geral/token")
             .header("x-forwarded-for", forwarded)
-            .body(Body::from(
-                json!({"convite": invite, "nome": name, "sala": "geral"}).to_string(),
-            ))
+            .body(Body::empty())
             .unwrap();
         request
             .extensions_mut()
             .insert(ConnectInfo(peer.parse::<SocketAddr>().unwrap()));
         router.oneshot(request).await.unwrap()
-    }
-
-    #[tokio::test]
-    async fn signs_distinct_room_tokens_for_the_same_display_name() {
-        let app = router();
-        let response = request(
-            app.clone(),
-            "test_invite",
-            "João Silva",
-            "127.0.0.1:1234",
-            "192.0.2.1",
-        )
-        .await;
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = to_bytes(response.into_body(), 4096).await.unwrap();
-        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(body["url"], "wss://example.test/rtc");
-        let claims = TokenVerifier::with_api_key("test_key", "test_secret")
-            .verify(body["token"].as_str().unwrap())
-            .unwrap();
-        assert_eq!(claims.name, "João Silva");
-        let suffix = claims.sub.strip_prefix("jo-o-silva-").unwrap();
-        assert_eq!(suffix.len(), 6);
-        assert!(suffix.bytes().all(|byte| byte.is_ascii_alphanumeric()));
-        assert_eq!(claims.video.room, "geral");
-        assert!(claims.video.room_join);
-        assert!(!claims.video.room_admin);
-        assert_eq!(claims.video.can_publish, None);
-        assert_eq!(claims.video.can_subscribe, None);
-        assert_eq!(claims.video.can_publish_data, None);
-        assert!(claims.video.can_publish_sources.is_empty());
-        assert_eq!(claims.exp - claims.nbf, 3600);
-
-        let response = request(
-            app,
-            "test_invite",
-            "João Silva",
-            "127.0.0.1:1234",
-            "192.0.2.1",
-        )
-        .await;
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = to_bytes(response.into_body(), 4096).await.unwrap();
-        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        let second = TokenVerifier::with_api_key("test_key", "test_secret")
-            .verify(body["token"].as_str().unwrap())
-            .unwrap();
-        assert_ne!(claims.sub, second.sub);
-    }
-
-    #[tokio::test]
-    async fn screen_token_can_only_publish_screen_video_and_audio() {
-        let response = request(
-            router(),
-            "test_invite",
-            "Pessoa_1",
-            "127.0.0.1:1234",
-            "192.0.2.1",
-        )
-        .await;
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = to_bytes(response.into_body(), 4096).await.unwrap();
-        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        let verifier = TokenVerifier::with_api_key("test_key", "test_secret");
-        let owner = verifier.verify(body["token"].as_str().unwrap()).unwrap();
-        let claims = verifier
-            .verify(body["screen_token"].as_str().unwrap())
-            .unwrap();
-        assert_eq!(claims.sub, format!("{}:tela", owner.sub));
-        assert_eq!(claims.name, "Pessoa_1");
-        assert_eq!(claims.exp - claims.nbf, 3600);
-        assert_eq!(claims.video.room, "geral");
-        assert!(claims.video.room_join);
-        assert_eq!(claims.video.can_publish, Some(true));
-        assert_eq!(claims.video.can_subscribe, Some(false));
-        assert_eq!(claims.video.can_publish_data, Some(false));
-        assert_eq!(
-            claims.video.can_publish_sources,
-            ["screen_share", "screen_share_audio"]
-        );
-    }
-
-    #[tokio::test]
-    async fn rejects_bad_invite_and_name() {
-        let app = router();
-        for (invite, name, expected) in [
-            ("wrong", "valid", StatusCode::UNAUTHORIZED),
-            ("test_invite", "", StatusCode::BAD_REQUEST),
-            (
-                "test_invite",
-                "abcdefghijklmnopqrstuvwxyz1234567",
-                StatusCode::BAD_REQUEST,
-            ),
-            ("test_invite", "invalid\nname", StatusCode::BAD_REQUEST),
-            ("test_invite", "Alice:tela", StatusCode::BAD_REQUEST),
-            ("test_invite", ":tela", StatusCode::BAD_REQUEST),
-            ("test_invite", "a:tela:tela", StatusCode::BAD_REQUEST),
-        ] {
-            let response = request(app.clone(), invite, name, "127.0.0.1:1234", "192.0.2.1").await;
-            assert_eq!(response.status(), expected);
-        }
-    }
-
-    #[tokio::test]
-    async fn rejects_unlisted_room_and_oversized_token_body() {
-        for (body, expected) in [
-            (
-                json!({"convite": "test_invite", "nome": "Alice", "sala": "restrita"}).to_string(),
-                StatusCode::BAD_REQUEST,
-            ),
-            (" ".repeat(4097), StatusCode::PAYLOAD_TOO_LARGE),
-        ] {
-            let mut request = Request::post("/api/token")
-                .header("content-type", "application/json")
-                .body(Body::from(body))
-                .unwrap();
-            request.extensions_mut().insert(ConnectInfo(
-                "192.0.2.30:1234".parse::<SocketAddr>().unwrap(),
-            ));
-            assert_eq!(router().oneshot(request).await.unwrap().status(), expected);
-        }
     }
 
     #[tokio::test]
@@ -579,7 +391,7 @@ mod tests {
             ("http://tauri.localhost", true),
             ("https://evil.example", false),
         ] {
-            let request = Request::options("/api/token")
+            let request = Request::options("/api/salas/geral/token")
                 .header("origin", origin)
                 .header("access-control-request-method", "POST")
                 .header("access-control-request-headers", "content-type")
@@ -598,14 +410,8 @@ mod tests {
     async fn only_the_proxy_can_supply_a_client_ip() {
         let app = router();
         for index in 1..=TOKEN_LIMIT + 1 {
-            let response = request(
-                app.clone(),
-                "wrong",
-                "valid",
-                "192.0.2.10:1234",
-                &format!("192.0.2.{index}"),
-            )
-            .await;
+            let response =
+                request(app.clone(), "192.0.2.10:1234", &format!("192.0.2.{index}")).await;
             let expected = if index <= TOKEN_LIMIT {
                 StatusCode::UNAUTHORIZED
             } else {
@@ -613,7 +419,7 @@ mod tests {
             };
             assert_eq!(response.status(), expected);
         }
-        let response = request(app, "wrong", "valid", "127.0.0.1:1234", "192.0.2.20").await;
+        let response = request(app, "127.0.0.1:1234", "192.0.2.20").await;
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
@@ -622,12 +428,12 @@ mod tests {
         let app = router();
         let proxy = "127.0.0.1:1234";
         for _ in 0..30 {
-            let result = request(app.clone(), "wrong", "Alice", proxy, "2001:db8:0:1::1").await;
+            let result = request(app.clone(), proxy, "2001:db8:0:1::1").await;
             assert_eq!(result.status(), StatusCode::UNAUTHORIZED);
         }
-        let result = request(app.clone(), "wrong", "Alice", proxy, "2001:db8:0:1::2").await;
+        let result = request(app.clone(), proxy, "2001:db8:0:1::2").await;
         assert_eq!(result.status(), StatusCode::TOO_MANY_REQUESTS);
-        let result = request(app, "wrong", "Alice", proxy, "2001:db8:0:2::1").await;
+        let result = request(app, proxy, "2001:db8:0:2::1").await;
         assert_eq!(result.status(), StatusCode::UNAUTHORIZED);
     }
 

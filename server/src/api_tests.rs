@@ -13,8 +13,6 @@ pub(super) fn config(registration: auth::Registration) -> Arc<Config> {
         key: "test_key".into(),
         secret: "test_secret".into(),
         url: "wss://example.test/rtc".into(),
-        invite_hash: Sha256::digest(b"test_invite").into(),
-        rooms: vec!["geral".into()],
         trusted_proxy: Some("127.0.0.1".parse().unwrap()),
         attempts: Mutex::default(),
         uploads: Mutex::default(),
@@ -306,4 +304,100 @@ async fn expired_and_revoked_invites_fail_identically() {
         response(expired["codigo"].as_str().unwrap()).await,
         (expected.clone(), expected)
     );
+}
+
+#[tokio::test]
+async fn initial_invite_owns_galera_once_even_in_closed_mode() {
+    let config = config(auth::Registration::Closed);
+    let code = {
+        let mut db = config.db.lock().unwrap();
+        let code = auth::bootstrap(&mut db).unwrap().unwrap();
+        assert!(auth::bootstrap(&mut db).unwrap().is_none());
+        code
+    };
+    let app = app(config);
+    let register = |name: &str| {
+        send(
+            app.clone(),
+            Method::POST,
+            "/api/auth/cadastro",
+            None,
+            json!({"nome": name, "senha": PASSWORD, "codigo": code}),
+        )
+    };
+    let (status, first) = register("Primeiro").await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (_, me) = send(
+        app.clone(),
+        Method::GET,
+        "/api/eu",
+        first["sessao"].as_str(),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(me["usuario"]["papel_instancia"], "admin");
+    assert_eq!(me["grupos"][0]["papel"], "dono");
+    assert_eq!(me["grupos"][0]["nome"], "Galera");
+    assert_eq!(register("Segundo").await.0, StatusCode::FORBIDDEN);
+}
+
+async fn create_room(router: Router, owner: &str, group: &str) -> String {
+    let (status, room) = send(
+        router,
+        Method::POST,
+        &format!("/api/grupos/{group}/salas"),
+        Some(owner),
+        json!({"nome": "Geral"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    room["id"].as_str().unwrap().to_owned()
+}
+
+#[tokio::test]
+async fn livekit_tokens_use_the_authenticated_user_and_room_ids() {
+    use livekit_api::access_token::TokenVerifier;
+
+    let app = app(config(auth::Registration::Open));
+    let owner = register(app.clone(), "Dono").await;
+    let (_, me) = send(
+        app.clone(),
+        Method::GET,
+        "/api/eu",
+        Some(&owner),
+        Value::Null,
+    )
+    .await;
+    let id = me["usuario"]["id"].as_str().unwrap();
+    let group = create_group(app.clone(), &owner).await;
+    let room = create_room(app.clone(), &owner, &group).await;
+    let (status, result) = send(
+        app,
+        Method::POST,
+        &format!("/api/salas/{room}/token"),
+        Some(&owner),
+        json!({"identity": "impostor", "sala": "outra"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let verifier = TokenVerifier::with_api_key("test_key", "test_secret");
+    let voice = verifier.verify(result["token"].as_str().unwrap()).unwrap();
+    let screen = verifier
+        .verify(result["screen_token"].as_str().unwrap())
+        .unwrap();
+    assert_eq!(voice.sub, id);
+    assert_eq!(voice.name, "Dono");
+    assert_eq!(voice.video.room, room);
+    assert!(voice.video.room_join);
+    assert!(!voice.video.room_admin);
+    assert_eq!(voice.exp - voice.nbf, 3600);
+    assert_eq!(screen.sub, format!("{id}:tela"));
+    assert_eq!(screen.video.room, room);
+    assert_eq!(screen.exp - screen.nbf, 3600);
+    assert_eq!(
+        screen.video.can_publish_sources,
+        ["screen_share", "screen_share_audio"]
+    );
+    assert_eq!(screen.video.can_subscribe, Some(false));
+    assert_eq!(screen.video.can_publish_data, Some(false));
 }

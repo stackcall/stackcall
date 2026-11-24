@@ -233,7 +233,8 @@ async fn callback(
         } else {
             mode.ensure_allowed(invite.is_some())?;
             let user = auth::id();
-            let role = if auth::first_user(&tx).map_err(db::internal)? { "admin" } else { "membro" };
+            let first = auth::first_user(&tx).map_err(db::internal)?;
+            let role = if first { "admin" } else { "membro" };
             let name = profile.as_ref().map(|p| p.personaname.trim()).filter(|name| valid_name(name))
                 .map_or_else(|| format!("Steam {steam_id}"), str::to_owned);
             let avatar = profile.and_then(|p| p.avatarfull).filter(|avatar| valid_avatar(avatar));
@@ -242,10 +243,7 @@ async fn callback(
                  VALUES (?1, ?2, ?3, ?4, unixepoch(), ?5)",
                 params![user, name, steam_id, avatar, role],
             ).map_err(db::internal)?;
-            if let Some(invite) = invite {
-                let group = auth::consume_invite(&tx, &invite)?;
-                auth::add_member(&tx, &group, &user, "membro").map_err(db::internal)?;
-            }
+            auth::admit_new_user(&tx, mode, &user, first, invite.as_deref())?;
             user
         };
         tx.execute("DELETE FROM steam_trocas WHERE expira_em <= unixepoch()", []).map_err(db::internal)?;

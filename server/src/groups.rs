@@ -331,7 +331,7 @@ async fn accept_invite(
         if is_member {
             return Err(StatusCode::CONFLICT);
         }
-        auth::consume_invite(&tx, &auth::hash(&code))?;
+        auth::consume_invite(&tx, &auth::hash(&code), false)?;
         auth::add_member(&tx, &group, &user.id, "membro").map_err(db::internal)?;
         tx.commit().map_err(db::internal)?;
         Ok(Json(json!({"grupo_id": group})))

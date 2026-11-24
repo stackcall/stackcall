@@ -38,8 +38,7 @@ impl Registration {
 
     pub fn ensure_allowed(self, has_code: bool) -> Result<(), StatusCode> {
         match self {
-            Self::Closed => Err(StatusCode::FORBIDDEN),
-            Self::Invite if !has_code => Err(StatusCode::FORBIDDEN),
+            Self::Invite | Self::Closed if !has_code => Err(StatusCode::FORBIDDEN),
             _ => Ok(()),
         }
     }
@@ -191,7 +190,16 @@ async fn register(
     if !valid_name(&name) || !(8..=256).contains(&input.senha.len()) {
         return Err(StatusCode::BAD_REQUEST);
     }
-    config.registration.ensure_allowed(input.codigo.is_some())?;
+    let mode = config.registration;
+    mode.ensure_allowed(input.codigo.is_some())?;
+    let invite = input
+        .codigo
+        .map(|code| {
+            is_hex(&code, 32)
+                .then(|| hash(&code))
+                .ok_or(StatusCode::NOT_FOUND)
+        })
+        .transpose()?;
     let device = device(input.nome_aparelho)?;
     let password = password_job(&config, move || {
         let salt = SaltString::encode_b64(&rand::random::<[u8; 16]>()).map_err(db::internal)?;
@@ -210,17 +218,14 @@ async fn register(
             return Err(StatusCode::CONFLICT);
         }
         let user_id = id();
-        let role = if first_user(&tx).map_err(db::internal)? { "admin" } else { "membro" };
+        let first = first_user(&tx).map_err(db::internal)?;
+        let role = if first { "admin" } else { "membro" };
         tx.execute(
             "INSERT INTO usuarios (id, nome_exibicao, nome_login, senha_hash, criado_em, papel_instancia)
              VALUES (?1, ?2, ?3, ?4, unixepoch(), ?5)",
             params![user_id, name, login, password, role],
         ).map_err(db::internal)?;
-        if let Some(code) = input.codigo {
-            if !is_hex(&code, 32) { return Err(StatusCode::NOT_FOUND); }
-            let group = consume_invite(&tx, &hash(&code))?;
-            add_member(&tx, &group, &user_id, "membro").map_err(db::internal)?;
-        }
+        admit_new_user(&tx, mode, &user_id, first, invite.as_ref().map(|hash| hash.as_slice()))?;
         let session = issue_session(&tx, &user_id, device).map_err(db::internal)?;
         tx.commit().map_err(db::internal)?;
         Ok(session)
@@ -303,13 +308,17 @@ pub fn user_json(conn: &Connection, id: &str) -> rusqlite::Result<Value> {
     )
 }
 
-pub fn consume_invite(tx: &Transaction<'_>, code_hash: &[u8]) -> Result<String, StatusCode> {
+pub fn consume_invite(
+    tx: &Transaction<'_>,
+    code_hash: &[u8],
+    allow_initial: bool,
+) -> Result<(String, bool), StatusCode> {
     tx.query_row(
         "UPDATE convites SET usos = usos + 1
          WHERE codigo_hash = ?1 AND NOT revogado AND usos < usos_max AND expira_em > unixepoch()
-         RETURNING grupo_id",
-        [code_hash],
-        |row| row.get(0),
+         AND (?2 OR NOT inicial) RETURNING grupo_id, inicial",
+        params![code_hash, allow_initial],
+        |row| Ok((row.get(0)?, row.get(1)?)),
     )
     .optional()
     .map_err(db::internal)?
@@ -321,5 +330,71 @@ pub fn add_member(conn: &Connection, group: &str, user: &str, role: &str) -> rus
         "INSERT INTO membros (grupo_id, usuario_id, papel, entrou_em) VALUES (?1, ?2, ?3, unixepoch())",
         params![group, user, role],
     )?;
+    Ok(())
+}
+
+pub fn bootstrap(conn: &mut Connection) -> rusqlite::Result<Option<String>> {
+    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let initialized: bool = tx.query_row(
+        "SELECT EXISTS (SELECT 1 FROM convites WHERE inicial)",
+        [],
+        |row| row.get(0),
+    )?;
+    if initialized || !first_user(&tx)? {
+        return Ok(None);
+    }
+    let group = id();
+    tx.execute(
+        "INSERT INTO grupos VALUES (?1, 'Galera', NULL, unixepoch())",
+        [&group],
+    )?;
+    tx.execute(
+        "INSERT INTO salas VALUES (?1, ?2, 'Geral', 0)",
+        params![id(), group],
+    )?;
+    let code = id();
+    tx.execute(
+        "INSERT INTO convites (id, grupo_id, codigo_hash, expira_em, usos_max, inicial)
+         VALUES (?1, ?2, ?3, unixepoch() + ?4, 1, 1)",
+        params![id(), group, hash(&code), SESSION_SECONDS],
+    )?;
+    tx.commit()?;
+    Ok(Some(code))
+}
+
+pub fn admit_new_user(
+    tx: &Transaction<'_>,
+    mode: Registration,
+    user: &str,
+    first: bool,
+    invite: Option<&[u8]>,
+) -> Result<(), StatusCode> {
+    mode.ensure_allowed(invite.is_some())?;
+    if mode == Registration::Closed && !first {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    if let Some(code_hash) = invite {
+        let (group, bootstrap) = consume_invite(tx, code_hash, first)?;
+        if mode == Registration::Closed && !bootstrap {
+            return Err(StatusCode::FORBIDDEN);
+        }
+        if !bootstrap {
+            add_member(tx, &group, user, "membro").map_err(db::internal)?;
+        }
+    }
+    if first {
+        let group: Option<String> = tx.query_row(
+            "UPDATE convites SET revogado = 1, criado_por = ?1 WHERE inicial RETURNING grupo_id",
+            [user], |row| row.get(0),
+        ).optional().map_err(db::internal)?;
+        if let Some(group) = group {
+            tx.execute(
+                "UPDATE grupos SET dono_id = ?1 WHERE id = ?2",
+                params![user, group],
+            )
+            .map_err(db::internal)?;
+            add_member(tx, &group, user, "dono").map_err(db::internal)?;
+        }
+    }
     Ok(())
 }
