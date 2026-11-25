@@ -39,6 +39,7 @@ pub fn pending_move(
     conn.query_row(
         "SELECT log.id, log.sala_id, log.destino_id, log.criado_em + 60
          FROM (SELECT * FROM moderacao_log WHERE usuario_id = ?1
+               AND acao IN ('mover', 'retirar')
                AND resultado IN ('ok', 'reconectar') ORDER BY id DESC LIMIT 1) log
          WHERE log.resultado = 'reconectar' AND log.criado_em + 60 > unixepoch()",
         [user],

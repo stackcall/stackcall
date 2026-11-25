@@ -203,6 +203,7 @@ async fn server_info(State(config): State<Arc<Config>>) -> Json<serde_json::Valu
         "versao": env!("CARGO_PKG_VERSION"),
         "versao_minima_app": MIN_APP_VERSION,
         "membros_convidam": config.members_can_invite,
+        "dorme": sleep::status(&config).await,
     }))
 }
 

@@ -34,6 +34,24 @@ pub struct Sleep {
     activity: Mutex<Activity>,
 }
 
+#[derive(Default, serde::Serialize)]
+pub struct Status {
+    ligado: bool,
+    minutos: Option<u64>,
+    dormindo: bool,
+}
+
+pub async fn status(config: &Config) -> Status {
+    let Some(sleep) = &config.sleep else {
+        return Status::default();
+    };
+    Status {
+        ligado: true,
+        minutos: Some(sleep.idle.as_secs() / 60),
+        dormindo: sleep.activity.lock().await.power == Power::Stopped,
+    }
+}
+
 impl Sleep {
     pub fn from_env() -> io::Result<Option<Self>> {
         let minutes = env::var("LIVEKIT_IDLE_MINUTES")
