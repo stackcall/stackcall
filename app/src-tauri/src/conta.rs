@@ -4,10 +4,12 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::net::IpAddr;
+use std::sync::Mutex;
 use std::time::Duration;
-use tauri::Url;
+use tauri::{AppHandle, Emitter, Url};
 
 const KEYRING_SERVICE: &str = "io.github.stackcall";
+static SESSIONS: Mutex<()> = Mutex::new(());
 
 /// The v0.2 invite lived here; v0.3 logs in with accounts, so it is removed once.
 pub fn limpar_convite_antigo() {
@@ -57,10 +59,21 @@ fn sessao(origem: &str) -> Option<String> {
     entrada(origem).ok()?.get_password().ok()
 }
 
-fn apagar_sessao(origem: &str) {
-    if let Ok(entry) = entrada(origem) {
-        let _ = entry.delete_credential();
-    }
+fn rota_autenticada(metodo: &str, path: &str) -> bool {
+    let segments: Vec<_> = path.trim_start_matches('/').split('/').collect();
+    matches!(
+        (metodo, segments.as_slice()),
+        ("GET", ["api", "eu" | "salas" | "pessoas" | "convites"])
+            | ("POST", ["api", "sair" | "salas" | "convites"])
+            | ("POST", ["api", "aparelhos", "link"])
+            | ("POST", ["api", "salas", _, "token"])
+            | ("POST" | "DELETE", ["api", "amigos", _])
+            | ("PATCH", ["api", "eu", "perfil"])
+            | ("PUT", ["api", "eu", "avatar" | "banner"])
+            | ("PATCH" | "DELETE", ["api", "salas", _])
+            | ("DELETE", ["api", "convites" | "pessoas", _])
+            | ("DELETE", ["api", "pessoas", _, "aparelhos"])
+    )
 }
 
 #[tauri::command]
@@ -86,7 +99,7 @@ pub struct Resposta {
 }
 
 #[tauri::command]
-pub async fn api(chamada: Chamada) -> Result<Resposta, String> {
+pub async fn api(app: AppHandle, chamada: Chamada) -> Result<Resposta, String> {
     let origem = origem(&chamada.servidor)?;
     if !rota_valida(&chamada.rota) {
         return Err("Rota inválida.".into());
@@ -105,7 +118,8 @@ pub async fn api(chamada: Chamada) -> Result<Resposta, String> {
         .timeout(Duration::from_secs(20))
         .build()
         .map_err(|e| e.to_string())?;
-    let mut request = client.request(metodo, format!("{origem}{}", chamada.rota));
+    let url = Url::parse(&format!("{origem}{}", chamada.rota)).map_err(|_| "Rota inválida.")?;
+    let mut request = client.request(metodo, url.clone());
     let token = sessao(&origem);
     if let Some(token) = &token {
         request = request.header("authorization", format!("Bearer {token}"));
@@ -128,26 +142,61 @@ pub async fn api(chamada: Chamada) -> Result<Resposta, String> {
         .await
         .map_err(|_| "Servidor fora do ar ou sem internet.".to_string())?;
     let status = response.status().as_u16();
+    let sucesso = (200..300).contains(&status);
+    let logout = chamada.metodo == "POST" && url.path() == "/api/sair";
+    let revogada = status == 401 && rota_autenticada(&chamada.metodo, url.path());
+    if let Some(token) = &token {
+        if revogada || (logout && sucesso) {
+            let _guard = SESSIONS.lock().map_err(|e| e.to_string())?;
+            let entry = entrada(&origem)?;
+            // A delayed response must not clear a session that was opened while it was in flight.
+            if entry.get_password().is_ok_and(|current| &current == token) {
+                entry.delete_credential().map_err(|e| e.to_string())?;
+                if revogada {
+                    let _ = app.emit("sessao-encerrada", serde_json::json!({ "origem": origem }));
+                }
+            }
+        }
+    }
     let bytes = response.bytes().await.map_err(|e| e.to_string())?;
     let mut corpo: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
 
     // Accepting an invite or a device link returns `sessao`: keep it in the vault, hide it from the WebView.
     if let Some(nova) = corpo.as_object_mut().and_then(|o| o.remove("sessao")) {
-        if let (Some(nova), true) = (nova.as_str(), (200..300).contains(&status)) {
+        if let (Some(nova), true) = (nova.as_str(), sucesso) {
+            let _guard = SESSIONS.lock().map_err(|e| e.to_string())?;
             entrada(&origem)?
                 .set_password(nova)
                 .map_err(|e| e.to_string())?;
         }
-    }
-    if chamada.rota == "/api/sair" || (status == 401 && token.is_some()) {
-        apagar_sessao(&origem);
     }
     Ok(Resposta { status, corpo })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{origem, rota_valida};
+    use super::{origem, rota_autenticada, rota_valida};
+
+    #[test]
+    fn so_rotas_autenticadas_podem_encerrar_sessao() {
+        for (metodo, rota) in [
+            ("POST", "/api/aparelhos/entrar"),
+            ("POST", "/api/convites/codigo/aceitar"),
+            ("GET", "/api/convites/codigo"),
+            ("GET", "/api/servidor"),
+            ("GET", "/api/desconhecida"),
+        ] {
+            assert!(!rota_autenticada(metodo, rota));
+        }
+        for (metodo, rota) in [
+            ("GET", "/api/eu"),
+            ("POST", "/api/aparelhos/link"),
+            ("POST", "/api/salas/geral/token"),
+            ("DELETE", "/api/convites/codigo"),
+        ] {
+            assert!(rota_autenticada(metodo, rota));
+        }
+    }
 
     #[test]
     fn aceita_https_e_http_so_na_rede_local() {
