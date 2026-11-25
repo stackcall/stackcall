@@ -1,5 +1,7 @@
 #[cfg(windows)]
 mod atalhos;
+#[cfg(windows)]
+mod clipes;
 mod conta;
 mod falantes;
 mod gsi;
@@ -161,6 +163,7 @@ pub fn run() {
             falantes::falantes_abrir,
             falantes::falantes_fechar,
             falantes::falantes_posicionar,
+            falantes::falantes_redimensionar,
             gsi::gsi_cs2_localizar,
             gsi::gsi_cs2_instalar,
             jogo::presenca_jogo_atual,
@@ -174,7 +177,11 @@ pub fn run() {
             sidecar::replay_definir,
             sidecar::replay_atual,
             sidecar::replay_microfone,
-            sidecar::replay_salvar
+            sidecar::replay_salvar,
+            #[cfg(windows)]
+            clipes::clipes_listar,
+            #[cfg(windows)]
+            clipes::clipes_apagar
         ])
         .build(tauri::generate_context!())
         .expect("failed to build Stackcall")

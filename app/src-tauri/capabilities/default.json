@@ -42,6 +42,7 @@
     "allow-falantes-abrir",
     "allow-falantes-fechar",
     "allow-falantes-posicionar",
+    "allow-falantes-redimensionar",
     "allow-gsi-cs2-localizar",
     "allow-gsi-cs2-instalar",
     "allow-presenca-jogo-atual",
@@ -54,6 +55,8 @@
     "allow-replay-definir",
     "allow-replay-atual",
     "allow-replay-microfone",
-    "allow-replay-salvar"
+    "allow-replay-salvar",
+    "allow-clipes-listar",
+    "allow-clipes-apagar"
   ]
 }

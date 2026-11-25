@@ -3833,6 +3833,7 @@ name = "stackcall"
 version = "0.4.1"
 dependencies = [
  "axum",
+ "dunce",
  "keyring",
  "reqwest",
  "serde",
@@ -3844,9 +3845,11 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
+ "tempfile",
  "tokio",
  "uuid",
  "webview2-com",
+ "windows",
  "windows-core",
  "windows-sys 0.61.2",
 ]
