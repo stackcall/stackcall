@@ -1,5 +1,19 @@
 [
   {
+    "version": "0.5.1",
+    "date": "2026-11-25",
+    "categories": [
+      {
+        "name": "Correções",
+        "items": [
+          { "message": "A janela \"quem fala\" não abria", "breaking": false },
+          { "message": "Os clipes agora abrem no player do Windows e saem com mais qualidade (H.264 High)", "breaking": false },
+          { "message": "A estimativa de memória do replay nas Configurações estava errada", "breaking": false }
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.5.0",
     "date": "2026-11-25",
     "categories": [

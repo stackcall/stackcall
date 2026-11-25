@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.1
+
+### Correções
+
+- A janela "quem fala" não abria
+- Os clipes agora abrem no player do Windows e saem com mais qualidade (H.264 High)
+- A estimativa de memória do replay nas Configurações estava errada
+
 ## v0.5.0
 
 ### Novidades
