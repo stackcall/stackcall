@@ -22,7 +22,7 @@
 <body>
 <!-- Alvos das telas (:target). Cada tela liga uma variação do mesmo DOM. -->
 <i id="sala" class="alvo"></i><i id="grade" class="alvo"></i><i id="menu-pessoa" class="alvo"></i>
-<i id="paleta" class="alvo"></i><i id="sons" class="alvo"></i><i id="clipes" class="alvo"></i>
+<i id="paleta" class="alvo"></i><i id="config-quemfala" class="alvo"></i><i id="clipes" class="alvo"></i>
 <i id="saguao" class="alvo"></i><i id="config-atalhos" class="alvo"></i><i id="config-clipes" class="alvo"></i>
 <i id="config-busca" class="alvo"></i><i id="quem-fala" class="alvo"></i>
 
@@ -32,7 +32,6 @@
     <symbol id="i-fone" viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3M4 15h4v6H4zM16 15h4v6h-4z"/></symbol>
     <symbol id="i-tela" viewBox="0 0 24 24"><path d="M3 4h18v12H3zM8 20h8M12 16v4"/></symbol>
     <symbol id="i-sair" viewBox="0 0 24 24"><path d="M14 4h6v16h-6M10 8l-4 4 4 4M6 12h10"/></symbol>
-    <symbol id="i-sons" viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></symbol>
     <symbol id="i-replay" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.6-5.9M4 3v5h5"/><path d="M12 9v4l3 2"/></symbol>
     <symbol id="i-mais" viewBox="0 0 24 24"><path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="3.4"/></symbol>
     <symbol id="i-busca" viewBox="0 0 24 24"><path d="M10 4a6 6 0 1 0 0 12 6 6 0 1 0 0-12zM15 15l5 5"/></symbol>
@@ -78,9 +77,9 @@
       <a class="aba-sala" href="#sala"><span class="ln1"><b>Cinema</b><i class="ponto"></i></span><span class="ln2">vazia</span></a>
       <a class="aba-sala" href="#sala"><span class="ln1"><b>Ranked</b><i class="ponto"></i></span><span class="ln2">vazia</span></a>
     </nav>
-    <a class="janela busca" href="#paleta"><svg class="ic"><use href="#i-busca"/></svg><span>Buscar sala, pessoa, ação ou ajuste</span><kbd>Ctrl K</kbd></a>
-    <a class="btn ic" href="#clipes" aria-label="Clipes" title="Clipes (Ctrl+Shift+C)"><svg class="ic"><use href="#i-filme"/></svg></a>
-    <a class="btn ic" href="#config-atalhos" aria-label="Configurações" title="Configurações (Ctrl+,)"><svg class="ic"><use href="#i-ajustes"/></svg></a>
+    <a class="janela busca" href="#paleta"><svg class="ic"><use href="#i-busca"/></svg><span>Buscar sala, pessoa, ação ou ajuste</span></a>
+    <a class="btn ic" href="#clipes" aria-label="Clipes" title="Clipes"><svg class="ic"><use href="#i-filme"/></svg></a>
+    <a class="btn ic" href="#config-atalhos" aria-label="Configurações" title="Configurações"><svg class="ic"><use href="#i-ajustes"/></svg></a>
     <span class="av av-g" style="--c:#c9d6f5" aria-label="Seu perfil">B</span>
   </header>
 
@@ -96,7 +95,7 @@
       <span class="faixa-acoes">
         <a class="btn sm" href="#saguao"><svg class="ic"><use href="#i-sino"/></svg>Chamar para jogar</a>
         <a class="btn sm" href="#sala"><svg class="ic"><use href="#i-link"/></svg>Convidar</a>
-        <a class="btn sm ic" href="#sala" aria-label="Menu da sala" title="Menu da sala: silenciar todos, sons, mapa do CS2"><svg class="ic"><use href="#i-mais"/></svg></a>
+        <a class="btn sm ic" href="#sala" aria-label="Menu da sala" title="Menu da sala: silenciar todos, mapa do CS2"><svg class="ic"><use href="#i-mais"/></svg></a>
       </span>
     </div>
 
@@ -114,8 +113,8 @@
               <span class="ctrl z">100%</span>
               <a class="ctrl" href="#sala" aria-label="Aumentar zoom"><svg class="ic"><use href="#i-mais-z"/></svg></a>
             </span>
-            <a class="ctrl" href="#sala" aria-label="Janela flutuante" title="Janela flutuante (P)"><svg class="ic"><use href="#i-pip"/></svg></a>
-            <a class="ctrl" href="#sala" aria-label="Tela cheia" title="Tela cheia (F)"><svg class="ic"><use href="#i-cheia"/></svg></a>
+            <a class="ctrl" href="#sala" aria-label="Janela flutuante" title="Janela flutuante"><svg class="ic"><use href="#i-pip"/></svg></a>
+            <a class="ctrl" href="#sala" aria-label="Tela cheia" title="Tela cheia"><svg class="ic"><use href="#i-cheia"/></svg></a>
             <a class="btn sm claro" href="#sala">Parar de assistir</a>
           </div>
         </div>
@@ -149,7 +148,6 @@
           <li><span class="av" style="--c:#f3c8d8">R</span><div><b>Rafa</b> <time>21:40</time><p>liguei 1080p60, tá liso aí?</p></div></li>
           <li class="sis"><svg class="ic s"><use href="#i-replay"/></svg><span><b>Rafa</b> salvou um clipe de 45 s</span><a href="#clipes">Ver</a></li>
           <li><span class="av" style="--c:#ead2a8">N</span><div><b>Nanda</b> <time>21:40</time><p>lisinho. dá pra ler o placar</p></div></li>
-          <li class="sis"><svg class="ic s"><use href="#i-sons"/></svg><span><b>Duda</b> tocou “buzina”</span></li>
           <li><span class="av" style="--c:#c9d6f5">D</span><div><b>Duda</b> <time>21:41</time><p>bora mais uma depois dessa?</p></div></li>
           <li><span class="av" style="--c:#c9d6f5">B</span><div><b>bronze</b> <time>21:41</time><p>bora, entro de awp</p></div></li>
         </ol>
@@ -163,11 +161,10 @@
       <div class="janela voce">
         <div class="barra"><span>Você · bronze</span><span class="barra-d"><span class="sem-split">Na voz · CS</span><span class="so-split">Na voz · CT</span><span class="rede r3" title="Ping 142 ms · perda 0,1%"><i></i><i></i><i></i></span>142 ms</span></div>
         <div class="voce-bt">
-          <a class="btn ic" href="#sala" aria-label="Microfone ligado" title="Microfone (Ctrl+Shift+M)"><svg class="ic"><use href="#i-mic"/></svg></a>
-          <a class="btn ic" href="#sala" aria-label="Som ligado" title="Som (Ctrl+Shift+D)"><svg class="ic"><use href="#i-fone"/></svg></a>
+          <a class="btn ic" href="#sala" aria-label="Microfone ligado" title="Microfone"><svg class="ic"><use href="#i-mic"/></svg></a>
+          <a class="btn ic" href="#sala" aria-label="Som ligado" title="Som"><svg class="ic"><use href="#i-fone"/></svg></a>
           <a class="btn prim cresce" href="#sala"><svg class="ic"><use href="#i-tela"/></svg>Transmitir</a>
-          <a class="btn ic" href="#sons" aria-label="Sons da sala" title="Sons da sala (Ctrl+Shift+S)"><svg class="ic"><use href="#i-sons"/></svg></a>
-          <a class="btn ic replay-on" href="#config-clipes" aria-label="Salvar clipe, replay ligado" title="Salvar clipe (Alt+F10)"><svg class="ic"><use href="#i-replay"/></svg></a>
+          <a class="btn ic replay-on" href="#config-clipes" aria-label="Salvar clipe, replay ligado" title="Salvar clipe"><svg class="ic"><use href="#i-replay"/></svg></a>
           <a class="btn ic" href="#paleta" aria-label="Mais" title="Mais: janela quem fala, teste de rede, internet ruim"><svg class="ic"><use href="#i-mais"/></svg></a>
           <a class="btn ic sair" href="#saguao" aria-label="Sair da sala"><svg class="ic"><use href="#i-sair"/></svg></a>
         </div>
@@ -228,8 +225,7 @@
       <div class="menu-vol"><svg class="ic s"><use href="#i-volume"/></svg><span class="trilho" style="--v:72%"><i></i></span><span class="mono">72%</span></div>
       <a role="menuitem" href="#menu-pessoa"><svg class="ic s"><use href="#i-pessoa"/></svg>Ver perfil</a>
       <a role="menuitem" href="#menu-pessoa"><svg class="ic s"><use href="#i-tela"/></svg>Assistir tela<kbd>clique duplo</kbd></a>
-      <a role="menuitem" href="#menu-pessoa"><svg class="ic s"><use href="#i-mudo"/></svg>Silenciar para mim<kbd>M</kbd></a>
-      <a role="menuitem" href="#menu-pessoa"><svg class="ic s"><use href="#i-sons"/></svg>Não ouvir os sons de Duda</a>
+      <a role="menuitem" href="#menu-pessoa"><svg class="ic s"><use href="#i-mudo"/></svg>Silenciar para mim</a>
       <div class="menu-sep"><svg class="ic s"><use href="#i-escudo"/></svg>Moderação · você é admin</div>
       <a role="menuitem" class="sub" href="#menu-pessoa"><svg class="ic s"><use href="#i-mover"/></svg>Mover para<svg class="ic s dir"><use href="#i-dir"/></svg></a>
       <a role="menuitem" href="#menu-pessoa"><svg class="ic s"><use href="#i-mic"/></svg>Silenciar na sala</a>
@@ -242,35 +238,14 @@
       <a role="menuitem" href="#menu-pessoa">Saguão<span class="rotulo">fora da voz</span></a>
     </div>
 
-    <!-- Soundboard -->
-    <div class="janela painel-sons" role="dialog" aria-label="Sons da sala CS">
-      <div class="barra"><span>Sons · CS</span><span>8 de 24 · <a class="lnk-b" href="#sala">fechar Esc</a></span></div>
-      <div class="sons-busca"><svg class="ic s"><use href="#i-busca"/></svg><span>Buscar som</span><span class="rotulo">tecla 1–8 com o painel aberto</span></div>
-      <div class="sons-grade">
-        <a class="som tocando" href="#sons" style="--p:40%"><b>buzina</b><span class="rotulo">1 · 1,2 s</span></a>
-        <a class="som" href="#sons"><b>ace!</b><span class="rotulo">2 · 2,0 s</span></a>
-        <a class="som" href="#sons"><b>boa noite</b><span class="rotulo">3 · 1,8 s</span></a>
-        <a class="som" href="#sons"><b>tchau</b><span class="rotulo">4 · 0,9 s</span></a>
-        <a class="som" href="#sons"><b>cadê o eco</b><span class="rotulo">5 · 2,4 s</span></a>
-        <a class="som" href="#sons"><b>tambor</b><span class="rotulo">6 · 1,1 s</span></a>
-        <a class="som" href="#sons"><b>palmas</b><span class="rotulo">7 · 3,0 s</span></a>
-        <a class="som espera" href="#sons"><b>vai, vai</b><span class="rotulo">8 · em 2 s</span></a>
-      </div>
-      <div class="sons-pe">
-        <span class="sons-vol"><span class="rotulo">Volume dos sons para você</span><span class="trilho" style="--v:60%"><i></i></span><span class="mono">60%</span></span>
-        <a class="btn sm" href="#sons"><svg class="ic"><use href="#i-envio"/></svg>Enviar som</a>
-      </div>
-      <p class="sons-nota">Todos na sala ouvem. Um som a cada 3 s por pessoa. Enviar: dono e admin, MP3 ou OGG até 5 s.</p>
-    </div>
-
-    <!-- Paleta Ctrl+K -->
+    <!-- Paleta de comandos -->
     <div class="veu"></div>
     <div class="janela paleta" role="dialog" aria-label="Comandos">
       <div class="paleta-campo"><svg class="ic"><use href="#i-busca"/></svg><span class="digitado">re</span><span class="cursor"></span><kbd>Esc</kbd></div>
       <div class="paleta-lista">
         <div class="grupo-p">Ações</div>
-        <a class="foco" href="#paleta"><svg class="ic s"><use href="#i-antena"/></svg><span>Modo internet ruim <em>· ligado</em></span><span class="rotulo">desligar</span><kbd>Ctrl Shift B</kbd></a>
-        <a href="#paleta"><svg class="ic s"><use href="#i-replay"/></svg><span>Desligar o replay</span><span class="rotulo">clipes</span><kbd>Alt F9</kbd></a>
+        <a class="foco" href="#paleta"><svg class="ic s"><use href="#i-antena"/></svg><span>Modo internet ruim <em>· ligado</em></span><span class="rotulo">desligar</span></a>
+        <a href="#paleta"><svg class="ic s"><use href="#i-replay"/></svg><span>Desligar o replay</span><span class="rotulo">clipes</span></a>
         <a href="#paleta"><svg class="ic s"><use href="#i-tela"/></svg><span>Refazer o teste de qualidade</span><span class="rotulo">transmitir</span></a>
         <div class="grupo-p">Salas e pessoas</div>
         <a href="#paleta"><svg class="ic s"><use href="#i-pessoa"/></svg><span>Léo <em>· <b>re</b>de ruim, 210 ms</em></span><span class="rotulo">na sala</span></a>
@@ -293,7 +268,7 @@
       <div class="cl-filtro">
         <span class="abas3"><a class="on" href="#clipes">Todos · 14</a><a href="#clipes">Meus · 9</a><a href="#clipes">Recebidos · 5</a></span>
         <span class="rotulo">Jogo</span><a class="btn sm" href="#clipes">Todos os jogos<svg class="ic s"><use href="#i-dir"/></svg></a>
-        <span class="rotulo cl-dica">Salvar agora: <kbd>Alt F10</kbd></span>
+        <span class="rotulo cl-dica">Salvar com uma tecla: <a class="lnk" href="#config-atalhos">definir atalho</a></span>
       </div>
       <div class="cl-grade">
         <a class="clip sel" href="#clipes"><span class="cena cena-cs mini"><span class="mira"></span></span><span class="dur">0:45</span><b>Clutch 1v3 no B</b><span class="rotulo">Rafa · CS2 · hoje 21:42</span></a>
@@ -385,19 +360,18 @@
 <div class="v-config">
   <nav class="cf-nav" aria-label="Configurações">
     <span class="rotulo">/ Configurações</span>
-    <div class="cf-busca"><svg class="ic s"><use href="#i-busca"/></svg><span class="cf-ph">Buscar ajuste</span><span class="cf-q">eco</span><kbd>Ctrl F</kbd></div>
+    <div class="cf-busca"><svg class="ic s"><use href="#i-busca"/></svg><span class="cf-ph">Buscar ajuste</span><span class="cf-q">eco</span></div>
     <div class="cf-g">Você</div>
     <a href="#config-atalhos">Perfil</a>
     <a href="#config-busca">Voz e rede</a>
     <a class="on-atalhos" href="#config-atalhos">Atalhos</a>
     <a class="on-clipes" href="#config-clipes">Clipes e replay</a>
     <a href="#config-atalhos">Sons e avisos</a>
-    <a href="#quem-fala">Janela quem fala</a>
+    <a class="on-quemfala" href="#config-quemfala">Janela quem fala</a>
     <a href="#config-atalhos">Aparência</a>
     <div class="cf-g">Servidor Galera <span class="tag-adm">admin</span></div>
     <a href="#config-atalhos">Geral e convites</a>
     <a href="#config-atalhos">Salas e mapa do CS2</a>
-    <a href="#config-atalhos">Sons da sala</a>
     <a href="#config-atalhos">Membros e cargos</a>
     <div class="cf-g">App</div>
     <a href="#config-atalhos">Servidores</a>
@@ -406,24 +380,43 @@
   </nav>
 
   <main class="cf-main cf-atalhos">
-    <div class="cf-cab"><span class="rotulo">/ Você · funcionam com o jogo na frente</span><h1>Atalhos</h1></div>
+    <div class="cf-cab"><span class="rotulo">/ Você · nenhum vem pronto</span><h1>Atalhos</h1></div>
     <div class="janela linha-c">
-      <div><b>Como o microfone abre</b><p>Apertar para falar evita que o som do teclado e da casa vaze.</p></div>
+      <div><b>Como o microfone abre</b><p>Apertar para falar evita que o som do teclado e da casa vaze. A tecla você escolhe abaixo.</p></div>
       <span class="seg"><a href="#config-atalhos">Voz livre</a><a class="on" href="#config-atalhos">Apertar para falar</a></span>
     </div>
     <div class="janela tab-at">
-      <div class="barra"><span>Atalho</span><span>Tecla · fora do app também</span></div>
+      <div class="barra"><span>Atalho</span><span>Só funciona o que você definir · os globais valem com o jogo na frente</span></div>
       <div class="at-g">Voz</div>
-      <div class="at"><b>Apertar para falar</b><span class="rotulo">solta 200 ms depois</span><span class="tecla"><kbd>Mouse 4</kbd></span><span class="glob on">global</span></div>
-      <div class="at"><b>Ligar ou desligar o microfone</b><span></span><span class="tecla"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>M</kbd></span><span class="glob on">global</span></div>
-      <div class="at"><b>Ligar ou desligar o som</b><span></span><span class="tecla"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>D</kbd></span><span class="glob on">global</span></div>
-      <div class="at gravando"><b>Modo internet ruim</b><span class="aviso-t">Aperte a nova tecla. <b>Alt+F10</b> já salva clipe: escolha outra ou troque as duas.</span><span class="tecla"><kbd class="pisca">…</kbd></span><a class="lnk" href="#config-atalhos">Cancelar</a></div>
-      <div class="at-g">Clipes e sala</div>
-      <div class="at"><b>Salvar clipe</b><span class="rotulo">últimos 60 s</span><span class="tecla"><kbd>Alt</kbd><kbd>F10</kbd></span><span class="glob on">global</span></div>
-      <div class="at"><b>Ligar ou desligar o replay</b><span></span><span class="tecla"><kbd>Alt</kbd><kbd>F9</kbd></span><span class="glob on">global</span></div>
-      <div class="at"><b>Abrir os sons da sala</b><span></span><span class="tecla"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>S</kbd></span><span class="glob">só no app</span></div>
-      <div class="at"><b>Mostrar a janela quem fala</b><span></span><span class="tecla"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>O</kbd></span><span class="glob on">global</span></div>
-      <div class="at"><b>Buscar e comandos</b><span></span><span class="tecla"><kbd>Ctrl</kbd><kbd>K</kbd></span><span class="glob">só no app</span></div>
+      <div class="at"><b>Apertar para falar</b><span class="rotulo">você definiu · global</span><span class="tecla"><kbd>Mouse 4</kbd></span><a class="lnk" href="#config-atalhos">Tirar</a></div>
+      <div class="at"><b>Ligar ou desligar o microfone</b><span class="rotulo">sugestão: Ctrl+Shift+M</span><span class="tecla"><span class="sem-at">sem atalho</span></span><a class="btn sm" href="#config-atalhos">Definir</a></div>
+      <div class="at"><b>Ligar ou desligar o som</b><span class="rotulo">sugestão: Ctrl+Shift+D</span><span class="tecla"><span class="sem-at">sem atalho</span></span><a class="btn sm" href="#config-atalhos">Definir</a></div>
+      <div class="at"><b>Modo internet ruim</b><span class="rotulo">sugestão: Ctrl+Shift+B</span><span class="tecla"><span class="sem-at">sem atalho</span></span><a class="btn sm" href="#config-atalhos">Definir</a></div>
+      <div class="at-g">Clipes e janelas</div>
+      <div class="at"><b>Salvar clipe</b><span class="rotulo">sugestão: Alt+F10 (o app da NVIDIA também usa)</span><span class="tecla"><span class="sem-at">sem atalho</span></span><a class="btn sm" href="#config-atalhos">Definir</a></div>
+      <div class="at"><b>Ligar ou desligar o replay</b><span class="rotulo">sugestão: Alt+F9</span><span class="tecla"><span class="sem-at">sem atalho</span></span><a class="btn sm" href="#config-atalhos">Definir</a></div>
+      <div class="at gravando"><b>Mostrar ou esconder a janela quem fala</b><span class="aviso-t"><b>Ctrl+Shift+O</b> já é usado por outro programa. Aperte outra tecla.</span><span class="tecla"><kbd class="pisca">…</kbd></span><a class="lnk" href="#config-atalhos">Cancelar</a></div>
+      <div class="at"><b>Abrir a busca e os comandos</b><span class="rotulo">sugestão: Ctrl+K · só com o app na frente</span><span class="tecla"><span class="sem-at">sem atalho</span></span><a class="btn sm" href="#config-atalhos">Definir</a></div>
+    </div>
+  </main>
+
+  <main class="cf-main cf-quemfala">
+    <div class="cf-cab"><span class="rotulo">/ Você · janela separada, sempre no topo</span><h1>Janela quem fala</h1></div>
+    <div class="qfc">
+      <div class="qfc-ajustes">
+        <div class="janela linha-c"><div><b>Mostrar a janela</b><p>Fica por cima do jogo em tela cheia sem borda. Nada entra no jogo.</p></div><span class="chave on" role="switch" aria-checked="true"><i></i>Ligada</span></div>
+        <div class="janela linha-c"><div><b>O que mostrar</b><p>Em “todos da sala”, quem fala acende em lima.</p></div><span class="seg"><a href="#config-quemfala">Só quem fala</a><a class="on" href="#config-quemfala">Todos da sala</a></span></div>
+        <div class="janela linha-c"><div><b>Opacidade</b><p>Mais baixa deixa ver o jogo por trás.</p></div><span class="opac"><span class="mono">20%</span><span class="trilho" style="--v:75%"><i></i></span><span class="mono">100%</span><b class="mono">80%</b></span></div>
+        <div class="janela linha-c"><div><b>Tamanho</b></div><span class="seg"><a href="#config-quemfala">Pequeno</a><a class="on" href="#config-quemfala">Médio</a><a href="#config-quemfala">Grande</a></span></div>
+        <div class="janela linha-c"><div><b>Posição</b><p>Escolha o canto ou arraste a janela por cima do jogo.</p></div>
+          <span class="pos-l"><span class="cantos" role="radiogroup" aria-label="Canto"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></span><a class="btn sm" href="#quem-fala">Arrastar com o mouse</a></span></div>
+        <div class="janela linha-c"><div><b>Atalho para mostrar e esconder</b><p>Nenhum vem pronto.</p></div><a class="btn sm" href="#config-atalhos">Definir em Atalhos</a></div>
+      </div>
+      <div class="janela qfc-previa"><div class="barra"><span>Prévia</span><span>todos · 80% · médio</span></div>
+        <div class="previa-tela"><div class="cena cena-cs"><span class="mira"></span></div>
+          <div class="qf mini" style="opacity:.8"><div class="qf-l fala"><span class="av" style="--c:#c9d6f5">D</span><b>Duda</b><span class="nv"></span></div><div class="qf-l"><span class="av" style="--c:#c9d6f5">L</span><b>Léo</b></div><div class="qf-l"><span class="av" style="--c:#ead2a8">N</span><b>Nanda</b></div></div></div>
+        <p class="previa-nota">Esquerda, no meio: longe do minimapa e do placar na maioria dos jogos.</p>
+      </div>
     </div>
   </main>
 
@@ -474,13 +467,13 @@
     <div class="qf-l mudo"><span class="av" style="--c:#ead2a8">N</span><b>Nanda</b><svg class="ic s"><use href="#i-mudo"/></svg></div>
     <div class="qf-pe">CS · 142 ms <span class="rec"><svg class="ic s"><use href="#i-replay"/></svg>replay</span></div>
   </div>
-  <div class="qf-legenda janela"><div class="barra"><span>Janela quem fala</span><span>sempre no topo · Ctrl+Shift+O</span></div><p>Janela separada, sem borda, por cima do jogo em janela sem borda ou em tela cheia sem borda. Não entra no jogo (nada de gancho). Arraste para qualquer canto; clique passa através.</p></div>
+  <div class="qf-legenda janela"><div class="barra"><span>Janela quem fala</span><span>todos · 80% · médio</span></div><p>Janela separada, sem borda, por cima do jogo em tela cheia sem borda. Não entra no jogo (nada de gancho). O clique passa através. O que mostra, a opacidade, o tamanho e a posição ficam em <a class="lnk" href="#config-quemfala">Configurações › Janela quem fala</a>.</p></div>
 </div>
 
 <!-- Navegação do protótipo (some com ?print) -->
 <nav class="proto" aria-label="Telas do protótipo">
   <b>v0.5</b>
-  <a href="#sala">Sala</a><a href="#grade">Grade</a><a href="#menu-pessoa">Menu</a><a href="#paleta">Ctrl K</a><a href="#sons">Sons</a><a href="#clipes">Clipes</a><a href="#saguao">Saguão</a><a href="#config-atalhos">Atalhos</a><a href="#config-clipes">Cfg clipes</a><a href="#config-busca">Busca</a><a href="#quem-fala">Quem fala</a>
+  <a href="#sala">Sala</a><a href="#grade">Grade</a><a href="#menu-pessoa">Menu</a><a href="#paleta">Comandos</a><a href="#clipes">Clipes</a><a href="#saguao">Saguão</a><a href="#config-atalhos">Atalhos</a><a href="#config-clipes">Cfg clipes</a><a href="#config-quemfala">Cfg quem fala</a><a href="#config-busca">Busca</a><a href="#quem-fala">Quem fala</a>
   <button type="button" onclick="trocarTema()">Tema</button>
 </nav>
 </body>

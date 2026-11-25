@@ -4,7 +4,7 @@ Arquitetura da interface para as funcionalidades da 0.5. Direção visual travad
 
 Pedido do Filippe: "com esse tanto de funcionalidades e configurações dentro do app, tem que pensar em uma interface que não fica poluída, fácil acesso às funcionalidades e configurações e também seja bonita".
 
-Decidido em 25/11/2026. Este documento não reabre as decisões D1 a D6 do `PLANO.md`.
+Decidido em 25/11/2026. Revisado no mesmo dia depois da revisão do Filippe: soundboard removido, janela quem fala configurável, nenhum atalho de fábrica. Este documento não reabre as decisões D1 a D6 do `PLANO.md`.
 
 ## 1. Princípios
 
@@ -15,35 +15,35 @@ A sala é a tela onde o grupo passa horas com um jogo ou um filme na frente. Ela
 | Camada | O que entra | Regra para entrar |
 |---|---|---|
 | **À vista** (sala) | Quem está, quem fala, quem está no ar, a tela assistida, a conversa, os seus botões de voz, aviso de replay, rede ruim de alguém | Muda durante a sessão **e** alguém precisa notar sem procurar |
-| **A um clique** | Menu da pessoa (clique direito), menu da sala (⋯), painel de sons, quem me ouve, controles da tela assistida, galeria de clipes, chamar para jogar | Usado várias vezes na sessão, mas não o tempo todo |
+| **A um clique** | Menu da pessoa (clique direito), menu da sala (⋯), quem me ouve, controles da tela assistida, galeria de clipes, chamar para jogar | Usado várias vezes na sessão, mas não o tempo todo |
 | **Configurações** | Tudo que se ajusta uma vez e esquece: atalhos, replay, sons de entrada, janela quem fala, mapa do CS2, servidor dorme | Muda o comportamento, não a sessão de hoje |
 
 Quatro portas levam a qualquer coisa, e cada função tem uma só casa principal:
 
 1. **Clique direito numa pessoa** (ou tecla de menu com o canal focado): tudo sobre aquela pessoa.
-2. **Janela Você** (mesa, à esquerda): tudo sobre você agora (microfone, som, transmitir, sons, clipe, mais).
-3. **Ctrl+K** (paleta de comandos): busca e faz qualquer ação, sala, pessoa ou ajuste pelo nome. Atalho global de quem conhece o app.
-4. **Configurações** (Ctrl+,), com busca própria.
+2. **Janela Você** (mesa, à esquerda): tudo sobre você agora (microfone, som, transmitir, clipe, mais).
+3. **Busca do topo** (paleta de comandos): acha e faz qualquer ação, sala, pessoa ou ajuste pelo nome. Quem quiser define uma tecla para abri-la em Atalhos.
+4. **Configurações**, com busca própria.
 
 ### Regras de desenho
 
 - **Cor é estado, não enfeite.** Vermelho: ação principal, no ar e replay ligado (gravação é um tipo de "no ar"). Lima: quem fala e dado. Rede ruim usa `perigo` e sempre vem com texto ("rede ruim · 210 ms").
 - **Ícone discreto só aparece quando diz algo.** As três barras de rede ficam em tinta fraca quando tudo vai bem e só ganham cor quando a rede piora. O texto da causa vai para o corpo do canal.
-- **Painel nasce de onde foi chamado.** Sons e quem me ouve abrem acima da janela Você; o menu da pessoa abre sobre o canal dela. Nada de modal no meio da tela, exceto a paleta.
-- **Uma tecla para cada coisa frequente.** Toda ação da paleta mostra o atalho ao lado. Quem usa muito aprende sem manual.
+- **Painel nasce de onde foi chamado.** Quem me ouve abre acima da janela Você; o menu da pessoa abre sobre o canal dela. Nada de modal no meio da tela, exceto a paleta.
+- **Nenhum atalho vem pronto.** Toda ação frequente pode ganhar uma tecla em Configurações › Atalhos, e a página mostra uma sugestão escrita. Quando o usuário define uma tecla, ela aparece ao lado da ação na paleta e nas dicas. Sem tecla definida, nada aparece. Motivo: qualquer padrão pode colidir com outro programa da máquina (o Ctrl+Shift+O do protótipo antigo já tinha dono no PC do Filippe).
+- **Teclas de navegação não são atalhos.** Esc fecha, Enter confirma, setas e Tab andam dentro de menus e diálogos. Isso é comportamento padrão de interface e não se configura.
 - **Nada de espaço morto.** Quando a coluna da conversa não cabe (grade de telas), ela vira uma tira de 44 px com o contador de novas.
 - **Cabe em 1366×768 sem rolar a página.** Só a conversa e listas longas rolam por dentro.
 
 ## 2. Mapa de navegação
 
 ```
-Topo (sempre): marca/servidor → saguão · abas das salas · busca (Ctrl+K) · Clipes · Configurações · você
+Topo (sempre): marca/servidor → saguão · abas das salas · busca e comandos · Clipes · Configurações · você
 │
 ├── Saguão (fora da voz)      salas com quem está e o jogo · galera online · chamar para jogar
 ├── Sala                       faixa da sala · palco · conversa/pessoas · mesa (Você + canais)
-│   ├── menu da sala (⋯)       silenciar todos (admin) · sons da sala · mapa do CS2 · sair
+│   ├── menu da sala (⋯)       silenciar todos (admin) · mapa do CS2 · sair
 │   ├── menu da pessoa         volume · perfil · assistir · silenciar para mim · moderação
-│   ├── painel de sons         a partir da janela Você
 │   ├── quem me ouve           a partir do rodapé da janela Você
 │   └── Entrar no ar           tela atual de Go Live (sem mudança na 0.5)
 ├── Clipes                     galeria com corte por faixa e envio na conversa
@@ -58,30 +58,29 @@ A barra do topo perde o seletor Claro/Escuro e o medidor de ping solto da 0.4. O
 | # | Funcionalidade | Casa principal | Também em | Notas de desenho |
 |---|---|---|---|---|
 | 1 | Rede por pessoa | Três barras na barra de título de cada canal; a sua na janela Você | Menu da pessoa (ping e perda em números); dica ao passar o mouse | Com rede ruim, o corpo do canal troca "jogando CS2" por "rede ruim · 210 ms · 3% perda" em `perigo`. |
-| 1b | Teste de rede | Configurações › Voz e rede › Teste | Ctrl+K "teste de rede"; menu ⋯ da janela Você | Junta teste de microfone (grava 5 s e devolve) com ping e perda até o servidor. |
-| 2 | Zoom, janela flutuante | Controles do palco (embaixo, à direita) | Teclas `+` `−` `0`, `P` (flutuante), `F` (tela cheia) | Os controles aparecem ao passar o mouse ou focar o palco. Zoom arrasta com o mouse. |
-| 2b | Grade de telas | Seletor "Uma · Grade" que aparece na faixa da sala quando 2 ou mais pessoas estão no ar | Ctrl+K "grade" | O som vem da tela marcada (contorno vermelho). Clique numa tela para trocar o som. Cada tela tem sua qualidade. |
+| 1b | Teste de rede | Configurações › Voz e rede › Teste | Paleta "teste de rede"; menu ⋯ da janela Você | Junta teste de microfone (grava 5 s e devolve) com ping e perda até o servidor. |
+| 2 | Zoom, janela flutuante | Controles do palco (embaixo, à direita) | Roda do mouse sobre o palco (zoom); clique duplo (tela cheia) | Os controles aparecem ao passar o mouse ou focar o palco. Zoom arrasta com o mouse. |
+| 2b | Grade de telas | Seletor "Uma · Grade" que aparece na faixa da sala quando 2 ou mais pessoas estão no ar | Paleta "grade" | O som vem da tela marcada (contorno vermelho). Clique numa tela para trocar o som. Cada tela tem sua qualidade. |
 | 3 | Moderação | Menu da pessoa, seção "Moderação · você é admin" | Menu da sala: "Silenciar todos" | Só aparece para dono e admin. "Tirar da sala…" pede confirmação. "Mover para" abre submenu com as salas. |
 | 4 | Som de entrada e saída | Configurações › Sons e avisos | — | Ligado por padrão, volume próprio. |
-| 4b | Chamar para jogar | Saguão (painel à direita) | Botão na faixa da sala; Ctrl+K "chamar" | Jogo vem do jogo detectado; sala vem da atual; lista de quem avisar; prévia da notificação. Limite: um chamado a cada 10 min. |
+| 4b | Chamar para jogar | Saguão (painel à direita) | Botão na faixa da sala; paleta "chamar" | Jogo vem do jogo detectado; sala vem da atual; lista de quem avisar; prévia da notificação. Limite: um chamado a cada 10 min. |
 | 5 | Jogo detectado | Corpo do canal ("jogando CS2"); lista da galera no saguão | Menu da pessoa; cartão de perfil | Cada pessoa pode desligar em Configurações › Perfil ("mostrar o jogo"). |
-| 6 | Soundboard | Botão "Sons" na janela Você abre o painel acima dela | Ctrl+Shift+S; Configurações › Sons da sala (envio, admin) | Teclas 1 a 8 com o painel aberto. Barra lima mostra o som tocando. Espera de 3 s por pessoa aparece no botão ("em 2 s"). Cada um regula o volume dos sons para si e pode calar os sons de alguém pelo menu da pessoa. |
-| 7 | Clipes (salvar) | Alt+F10 (global); botão Clipe na janela Você | Ctrl+K | Ao salvar, linha de sistema na conversa: "Rafa salvou um clipe de 45 s · Ver". |
+| 7 | Clipes (salvar) | Botão Clipe na janela Você | Paleta; tecla, se o usuário definir uma | Ao salvar, linha de sistema na conversa: "Rafa salvou um clipe de 45 s · Ver". |
 | 7b | Aviso de replay | Chip "Replay ligado: Rafa e Duda" na faixa da sala; ícone ⟲ vermelho no canal de quem grava | Janela quem fala | O aviso **não desliga**. É a contrapartida de gravar a voz de todos. |
-| 7c | Galeria de clipes | Ícone de filme no topo | Ctrl+Shift+C; "Ver" na conversa | Corte por faixa: tela, jogo e a voz de cada pessoa separada. Dá para tirar uma voz do clipe antes de enviar. |
+| 7c | Galeria de clipes | Ícone de filme no topo | "Ver" na conversa; paleta | Corte por faixa: tela, jogo e a voz de cada pessoa separada. Dá para tirar uma voz do clipe antes de enviar. |
 | 8 | Qualidade de quem assiste | Controle "Você recebe: Original 1080p60" no palco | Menu da pessoa › Assistir tela | Opções: Original, Leve 720p, Automático. |
-| 9 | Janela quem fala | Menu ⋯ da janela Você › "Janela quem fala" | Ctrl+Shift+O; Configurações › Janela quem fala | Janela separada do Tauri, sem borda, sempre no topo, o clique passa através. Nada de gancho no jogo. Fica no lado esquerdo, na altura do meio, longe do minimapa e do placar; o usuário arrasta. |
+| 9 | Janela quem fala | Configurações › Janela quem fala | Menu ⋯ da janela Você (mostrar ou esconder); tecla, se o usuário definir uma | Janela separada do Tauri, sem borda, sempre no topo, o clique passa através. Nada de gancho no jogo. Configurável: mostrar ou esconder; só quem fala ou todos da sala (quem fala acende em lima); opacidade de 20 a 100%; tamanho pequeno, médio ou grande; canto (seis posições) ou arrastar com o mouse. Padrão: todos da sala, 80%, médio, esquerda no meio (longe do minimapa e do placar). Prévia ao vivo na própria página. |
 | 10 | Sala do mapa no CS2 | Automático quando o GSI avisa a partida; liga em Configurações › Salas e mapa do CS2 (admin) | Aba da sala mostra "CT 3 · TR 2" | Mesa agrupa CT e TR. O outro lado aparece com borda tracejada e "volta no fim do round". **As telas do outro lado ficam escondidas durante a partida** (anti-trapaça entre amigos). |
-| 11 | Modo internet ruim | Menu ⋯ da janela Você; Ctrl+Shift+B | Ctrl+K; sugestão automática quando a sua perda passa de 5% | O palco mostra "voz primeiro" e o botão para desligar. A sua tela continua indo para quem assiste. |
+| 11 | Modo internet ruim | Menu ⋯ da janela Você | Paleta; sugestão automática quando a sua perda passa de 5%; tecla, se o usuário definir uma | O palco mostra "voz primeiro" e o botão para desligar. A sua tela continua indo para quem assiste. |
 | 12 | Quem me ouve | Rodapé da janela Você: "4 te ouvem · 0 veem" | — | Lista por pessoa com voz e tela. **"Silenciar para mim" de outra pessoa não aparece aqui**: o volume zero continua recebendo, para ninguém descobrir que foi silenciado. Só aparecem motivos técnicos (conectando, modo internet ruim dela). |
-| 13 | Atalhos e apertar para falar | Configurações › Atalhos | Ctrl+K "atalhos" | Tabela por grupo, com tecla, e se vale fora do app. Gravação de tecla mostra conflito na hora. |
+| 13 | Atalhos e apertar para falar | Configurações › Atalhos | Paleta "atalhos" | Nenhum vem pronto. Cada linha mostra "sem atalho", uma sugestão escrita e o botão Definir. Ao gravar, o app tenta registrar a tecla; se outro programa já usa, avisa na hora ("Ctrl+Shift+O já é usado por outro programa"). Apertar para falar só funciona depois de o usuário escolher a tecla; até lá a página avisa. |
 | 14 | Servidor dorme | Configurações › Servidor › Geral e convites (admin) | — | "Dormir depois de 30 min sem ninguém"; o saguão mostra "acordando…" por alguns segundos na primeira entrada. |
 
 ## 4. A sala, peça por peça (1366×768)
 
 ```
 ┌ topo 48 ─────────────────────────────────────────────────────────────────────────────┐
-│ STACKCALL│Galera  [CS·5 ▪][Lobby][Cinema][Ranked]  [⌕ Buscar … Ctrl K]  [🎞][⚙][B] │
+│ STACKCALL│Galera  [CS·5 ▪][Lobby][Cinema][Ranked]  [⌕ Buscar sala, pessoa, ação…]  [🎞][⚙][B] │
 ├ faixa 36 ────────────────────────────────────────────────────────────────────────────┤
 │ CS  5 NA SALA · …   [⟲ Replay ligado: Rafa e Duda]       [Chamar para jogar][Convidar][⋯] │
 ├ palco ─────────────────────────────────────────────────┬ conversa 330 ───────────────┤
@@ -91,25 +90,26 @@ A barra do topo perde o seletor Claro/Escuro e o medidor de ping solto da 0.4. O
 │              [Você recebe: Original][−100%+][▣][⛶][Parar] │ [Mensagem para CS    →]  │
 ├ mesa 164 ──────────────────┬──────────┬──────────┬──────────┬──────────┤────────────┤
 │ VOCÊ · BRONZE   ▮▮▮ 142 ms │ RAFA ⟲▮▮▮│ DUDA ⟲▮▮▮│ LÉO   ▮▯▯│ NANDA ▮▮▯│
-│ [🎙][🎧][Transmitir][▦][⟲][⋯][⇥] │ falando  │ falando  │ rede ruim│ mic desl.│
+│ [🎙][🎧][ Transmitir ][⟲][⋯][⇥] │ falando  │ falando  │ rede ruim│ mic desl.│
 │ 4 te ouvem · 0 veem  REPLAY 60 S │ ───●──80%│ ───●──72%│ ───●──64%│ ───●──90%│
 └────────────────────────────┴──────────┴──────────┴──────────┴──────────┘
 ```
 
 - A manchete gigante da 0.4 ("CS" em 72 px) saiu: a aba ativa já diz a sala. O nome fica em 32 px na faixa, ao lado do estado (aquecimento, mapa, quem está no ar). Ganho: 40 px para o palco.
-- A janela Você tem sete botões: microfone, som, **Transmitir** (vermelho, o único), sons, clipe (com marca vermelha quando o replay está ligado), mais (⋯) e sair. O ⋯ abre: janela quem fala, modo internet ruim, teste de rede, entrar no ar com outra fonte.
+- A janela Você tem 372 px e seis botões: microfone, som, **Transmitir** (vermelho, o único), clipe (com marca vermelha quando o replay está ligado), mais (⋯) e sair. Os botões de ícone têm largura fixa de 40 px; só Transmitir estica. O ⋯ abre: janela quem fala, modo internet ruim, teste de rede, entrar no ar com outra fonte.
 - Os canais mantêm a linguagem da 0.4: barra vermelha e corpo escuro para quem está no ar; corpo lima para quem fala.
 
-### Paleta Ctrl+K
+### Paleta de comandos
 
 - Abre de qualquer tela, inclusive das Configurações.
-- Grupos fixos, nesta ordem: Ações, Salas e pessoas, Configurações. Cada linha mostra onde mora e o atalho.
+- Abre pela busca do topo ou pela tecla que o usuário definir.
+- Grupos fixos, nesta ordem: Ações, Salas e pessoas, Configurações. Cada linha mostra onde mora, e o atalho só se o usuário definiu um.
 - Ação que liga e desliga mostra o estado atual ("Modo internet ruim · ligado" → "desligar").
 - `>` filtra só ações; `@` só pessoas. `Tab` abre o ajuste destacado nas Configurações em vez de mudar na hora.
 
 ### Menu da pessoa
 
-Ordem: cabeçalho com jogo, ping e perda → volume → Ver perfil → Assistir tela → Silenciar para mim → Não ouvir os sons dela → **Moderação** (só dono e admin): Mover para ›, Silenciar na sala, Tirar da sala…. Itens de moderação ficam abaixo de uma linha forte, com o rótulo do seu cargo, para ninguém clicar por engano. "Tirar da sala…" usa `perigo` e confirma.
+Ordem: cabeçalho com jogo, ping e perda → volume → Ver perfil → Assistir tela → Silenciar para mim → **Moderação** (só dono e admin): Mover para ›, Silenciar na sala, Tirar da sala…. Itens de moderação ficam abaixo de uma linha forte, com o rótulo do seu cargo, para ninguém clicar por engano. "Tirar da sala…" usa `perigo` e confirma.
 
 ## 5. Configurações reorganizadas
 
@@ -118,7 +118,7 @@ Três grupos, na ordem de quem mais mexe:
 | Grupo | Páginas |
 |---|---|
 | **Você** | Perfil · Voz e rede · Atalhos · Clipes e replay · Sons e avisos · Janela quem fala · Aparência |
-| **Servidor Galera** (só dono e admin; mostra o cargo) | Geral e convites (servidor dorme) · Salas e mapa do CS2 · Sons da sala · Membros e cargos |
+| **Servidor Galera** (só dono e admin; mostra o cargo) | Geral e convites (servidor dorme) · Salas e mapa do CS2 · Membros e cargos |
 | **App** | Servidores · Sobre e atualizações |
 
 De onde veio cada página atual:
@@ -131,7 +131,7 @@ De onde veio cada página atual:
 | Sobre e atualizações | App › Sobre e atualizações |
 | Perfil (tela separada) | Você › Perfil (o atalho pelo avatar continua) |
 
-**Busca** no topo da lateral (Ctrl+F dentro das Configurações). Procura no nome do ajuste, na descrição e em apelidos ("ptt" acha Apertar para falar; "mute" acha microfone; "gravação" acha replay). O resultado mostra o caminho ("Voz e rede › Microfone") e o próprio controle, para mudar ali mesmo sem abrir a página.
+**Busca** no topo da lateral. Procura no nome do ajuste, na descrição e em apelidos ("ptt" acha Apertar para falar; "mute" acha microfone; "gravação" acha replay). O resultado mostra o caminho ("Voz e rede › Microfone") e o próprio controle, para mudar ali mesmo sem abrir a página.
 
 Cada página segue o mesmo molde: cabeçalho (rótulo com dado + manchete), depois linhas em janela com nome, uma frase do que muda e o controle à direita.
 
@@ -143,33 +143,34 @@ Cada página segue o mesmo molde: cabeçalho (rótulo com dado + manchete), depo
 | Palco | Modo internet ruim | "voz primeiro" (pincel) + "O vídeo que você recebe está pausado…" + **Desligar e voltar o vídeo** |
 | Grade | Só uma tela no ar | O seletor "Uma · Grade" some |
 | Sala do CS2 | GSI sem sinal | Mesa normal; na faixa: "mapa do CS2 sem sinal · confira o arquivo do GSI" (link para Configurações) |
-| Sons | Sala sem sons | "Esta sala ainda não tem sons." Admin vê **Enviar o primeiro som**; os outros veem "Peça para um admin enviar." |
-| Clipes | Nenhum clipe | "Nenhum clipe ainda. Ligue o replay e aperte Alt+F10 depois de uma jogada boa." + **Ligar replay** |
+| Clipes | Nenhum clipe | "Nenhum clipe ainda. Ligue o replay e use o botão Clipe depois de uma jogada boa." + **Ligar replay** |
 | Clipes | Disco cheio | Bloco Espaço em `perigo`: "Limite de 20 GB cheio. O clipe mais antigo vai sair no próximo." |
 | Quem me ouve | Sozinho na sala | "Ninguém mais aqui. **Chamar para jogar**" |
 | Saguão | Sala vazia | "Ninguém aqui. A primeira pessoa a entrar escolhe o filme." |
 | Saguão | Servidor dormindo | Cartões com "dormindo · acorda quando você entrar" |
 | Chamar para jogar | Ninguém disponível | "A galera toda já está numa sala." O botão some. |
+| Atalhos | Nenhum definido | Topo da página: "Nenhum atalho vem pronto. Defina só os que você vai usar." |
+| Atalhos | Tecla em uso | "Ctrl+Shift+O já é usado por outro programa. Aperte outra tecla." |
+| Janela quem fala | "Só quem fala" e ninguém falando | A janela fica vazia e transparente, sem moldura. |
 | Paleta | Sem resultado | "Nada com “xyz”. Procure nas **Configurações**." |
 | Busca de ajustes | Sem resultado | "Nenhum ajuste com “xyz”. Tente outra palavra, como “microfone” ou “tela”." |
 
-## 7. Atalhos padrão
+## 7. Atalhos
 
-| Ação | Tecla | Global |
+Nenhum atalho vem de fábrica. A página Atalhos lista as ações abaixo, cada uma com "sem atalho", uma sugestão escrita e o botão Definir.
+
+| Ação | Sugestão escrita | Alcance |
 |---|---|---|
-| Apertar para falar | Mouse 4 | sim |
-| Microfone | Ctrl+Shift+M | sim |
-| Som | Ctrl+Shift+D | sim |
-| Modo internet ruim | Ctrl+Shift+B | sim |
-| Salvar clipe | Alt+F10 | sim |
-| Ligar ou desligar o replay | Alt+F9 | sim |
-| Janela quem fala | Ctrl+Shift+O | sim |
-| Sons da sala | Ctrl+Shift+S | não |
-| Clipes | Ctrl+Shift+C | não |
-| Comandos | Ctrl+K | não |
-| Configurações | Ctrl+, | não |
+| Apertar para falar | Mouse 4 | global |
+| Ligar ou desligar o microfone | Ctrl+Shift+M | global |
+| Ligar ou desligar o som | Ctrl+Shift+D | global |
+| Modo internet ruim | Ctrl+Shift+B | global |
+| Salvar clipe | Alt+F10 | global |
+| Ligar ou desligar o replay | Alt+F9 | global |
+| Mostrar ou esconder a janela quem fala | nenhuma (sem sugestão boa que não colida) | global |
+| Abrir a busca e os comandos | Ctrl+K | só com o app na frente |
 
-Alt+F10 e Alt+F9 colidem com o replay do GeForce Experience/NVIDIA App quando ele está ligado. O app avisa na primeira vez e sugere trocar; o padrão fica porque quem joga já tem a memória muscular.
+A sugestão é só texto: o app não grava a tecla sozinho. Ao definir, o app tenta registrar a tecla global (plugin `global-shortcut` do Tauri). Se o registro falhar porque outro programa já usa, a linha mostra o aviso e pede outra tecla. A sugestão de Alt+F10 avisa que o app da NVIDIA também usa essa tecla.
 
 ## 8. Decisões registradas
 
@@ -180,12 +181,14 @@ Alt+F10 e Alt+F9 colidem com o replay do GeForce Experience/NVIDIA App quando el
 5. O tema sai do topo e vai para Aparência e para a paleta.
 6. Moderação mora só no menu da pessoa e no menu da sala; não há painel de moderação separado.
 7. Clipes ficam no PC de quem salvou; compartilhar é enviar na conversa (upload do arquivo cortado).
-8. A janela quem fala é uma janela do sistema, nunca um gancho no jogo.
+8. A janela quem fala é uma janela do sistema, nunca um gancho no jogo, e tudo nela é configurável.
+9. Soundboard fora da 0.5 (revisão do Filippe em 25/11/2026).
+10. Nenhum atalho de fábrica; só sugestão escrita.
 
 ## 9. Protótipo
 
 - Abra `docs/design/v05/index.html` no navegador. A barra fina embaixo troca de tela e de tema (passe o mouse).
-- Endereços diretos: `#sala`, `#grade`, `#menu-pessoa`, `#paleta`, `#sons`, `#clipes`, `#saguao`, `#config-atalhos`, `#config-clipes`, `#config-busca`, `#quem-fala`. `?tema=escuro` abre no escuro; `?print` esconde a barra do protótipo.
+- Endereços diretos: `#sala`, `#grade`, `#menu-pessoa`, `#paleta`, `#clipes`, `#saguao`, `#config-atalhos`, `#config-clipes`, `#config-quemfala`, `#config-busca`, `#quem-fala`. `?tema=escuro` abre no escuro; `?print` esconde a barra do protótipo.
 - HTML e CSS puros. As telas trocam por `:target`. O único script lê o tema e o modo captura.
 - Fontes locais em `v05/fontes/` (as mesmas do app, licença OFL, via @fontsource).
 - As cenas de jogo são formas chapadas em CSS, só para dar escala. Nomes e números são fictícios.
