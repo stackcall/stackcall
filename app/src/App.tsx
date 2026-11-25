@@ -7,6 +7,8 @@ import { ApiError, aoPerderSessao, servidorReal, type Pessoa, type Sala, type Se
 import { escolherServidor, esquecerServidor, ouvirDeepLinks, salvarServidor, servidorAtual } from './lib/servidores';
 import type { LinkConvite } from './lib/convite';
 import { useUpdater } from './lib/updater';
+import { useJanelaVisivel } from './lib/leveza';
+import { agendarPresenca } from './lib/presenca';
 import { RoomScreen } from './screens/Room';
 import { Entrada } from './screens/Entrada';
 import { Settings } from './screens/Settings';
@@ -17,9 +19,6 @@ import { UpdateBanner } from './components/UpdateBanner';
 import { Faixa, type Acao } from './components/Faixa';
 
 export type Overlay = null | 'settings' | 'perfil' | { novidades: string | null } | { cartao: string };
-
-/** Focus refresh at most this often: Alt-Tab during a match must not burn the rate limit. */
-export const FOCO_MS = 12_000;
 
 type Aviso = { tipo: 'erro' | 'aviso'; texto: string; acoes?: Acao[] };
 
@@ -40,6 +39,15 @@ export function App() {
   const [salas, setSalas] = useState<Sala[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [sala, setSala] = useState<string | null>(() => (modoFalso() && demoScreen() !== 'saguao' ? 'cs' : null));
+  const visivel = useJanelaVisivel();
+  const visivelRef = useRef(visivel);
+  visivelRef.current = visivel;
+  const agendaPresenca = useRef<ReturnType<typeof agendarPresenca> | null>(null);
+  const avisarPresenca = useCallback(() => agendaPresenca.current?.avisar(), []);
+  const escolherSala = useCallback((id: string | null) => {
+    setSala(id);
+    avisarPresenca();
+  }, [avisarPresenca]);
   const [link, setLink] = useState<LinkConvite | null>(null);
   const [aviso, setAviso] = useState<Aviso | null>(null);
   const salaRef = useRef(sala);
@@ -138,21 +146,27 @@ export function App() {
     };
   }, []);
 
-  // No polling: people and rooms refresh when the window comes back to the front, at most every FOCO_MS.
   useEffect(() => {
     if (!srv || estado.fase !== 'pronto') return;
-    let ultima = Date.now();
-    const atualizar = () => {
-      if (Date.now() - ultima < FOCO_MS) return;
-      ultima = Date.now();
-      void Promise.all([srv.pessoas().catch(() => null), srv.salas()]).then(([ps, ss]) => {
-        if (ps) setPessoas(ps);
-        setSalas(ss);
-      }, () => undefined);
+    let ativa = true;
+    const agenda = agendarPresenca(async () => {
+      const [ps, ss] = await Promise.allSettled([srv.pessoas(), srv.salas()]);
+      if (ativa) {
+        if (ps.status === 'fulfilled') setPessoas(ps.value);
+        if (ss.status === 'fulfilled') setSalas(ss.value);
+      }
+      return [ps, ss].some((r) => r.status === 'rejected' && r.reason instanceof ApiError && r.reason.status === 429);
+    }, visivelRef.current);
+    agendaPresenca.current = agenda;
+    window.addEventListener('focus', avisarPresenca);
+    return () => {
+      ativa = false;
+      agenda.parar();
+      agendaPresenca.current = null;
+      window.removeEventListener('focus', avisarPresenca);
     };
-    window.addEventListener('focus', atualizar);
-    return () => window.removeEventListener('focus', atualizar);
-  }, [srv, estado.fase]);
+  }, [srv, estado.fase, avisarPresenca]);
+  useEffect(() => agendaPresenca.current?.visibilidade(visivel), [visivel]);
 
   // Opens "Novidades" once after an update.
   useEffect(() => {
@@ -275,7 +289,8 @@ export function App() {
           <div hidden={!!corpo} className="h-full">
             <RoomScreen
               servidor={srv} nomeServidor={nomeServidor} eu={eu} salas={salas} pessoas={pessoas} sala={sala} demo={falso}
-              onSala={setSala}
+              onSala={escolherSala}
+              onPresenceChange={avisarPresenca}
               onConfig={() => setOverlay('settings')}
               onPerfil={() => setOverlay('perfil')}
               onCartao={(id) => setOverlay({ cartao: id })}

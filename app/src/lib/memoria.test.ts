@@ -50,6 +50,15 @@ test('redo forces the core probe and replaces the saved result', async () => {
   expect(calls).toEqual([false, true]);
 });
 
+test('replaces old probe trials with CBR results on the same GPU and driver', async () => {
+  let report = rtx('32.0.16.2114', 45);
+  core(() => report);
+  await probeMachine();
+  report = { ...rtx('32.0.16.2114', 60), cbr: true };
+  expect((await probeMachine()).trials[0].fps).toBe(60);
+  expect(savedProbe()?.cbr).toBe(true);
+});
+
 test('old core without adapters still keeps the saved probe', async () => {
   core(() => ({ trials: [trial(60)] }));
   await probeMachine();

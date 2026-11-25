@@ -85,13 +85,20 @@ jobs:
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: |
-          $tag = @()
-          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
-            $tag = @('--tag', $env:RELEASE_TAG)
-          }
-          git-cliff --offline --use-branch-tags @tag --context --output cliff-context.json
+          $needsCliff = node scripts/changelog-json.mjs --needs-cliff $env:RELEASE_TAG
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node scripts/changelog-json.mjs cliff-context.json $env:RELEASE_TAG
+          $context = '--manual'
+          if ($needsCliff -eq 'true') {
+            $tag = @()
+            if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
+              $tag = @('--tag', $env:RELEASE_TAG)
+            }
+            $context = 'cliff-context.json'
+            git-cliff --offline --use-branch-tags @tag --context --output $context
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          node scripts/changelog-json.mjs $context $env:RELEASE_TAG
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:

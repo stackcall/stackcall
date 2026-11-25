@@ -1,6 +1,11 @@
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::{path::PathBuf, process::Stdio, sync::Arc, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    process::Stdio,
+    sync::Arc,
+    time::Duration,
+};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
@@ -13,7 +18,7 @@ use crate::conta::Accounts;
 
 const EVENT: &str = "stackcall-stream";
 const UNAVAILABLE: &str = "O núcleo de transmissão não está disponível nesta máquina.";
-const CACHE_VERSION: u32 = 3;
+const CACHE_VERSION: u32 = 4;
 
 #[derive(Default)]
 pub struct Sidecar {
@@ -40,11 +45,11 @@ fn core() -> Result<Command, String> {
     Ok(command(executable.with_file_name("stackcall-core.exe")))
 }
 
-async fn query(subcommand: &str, seconds: u64) -> Result<Value, String> {
+async fn query(args: &[&str], seconds: u64) -> Result<Value, String> {
     let output = timeout(
         Duration::from_secs(seconds),
         core()?
-            .arg(subcommand)
+            .args(args)
             .env("STACKCALL_APP_PID", std::process::id().to_string())
             .output(),
     )
@@ -59,7 +64,7 @@ async fn query(subcommand: &str, seconds: u64) -> Result<Value, String> {
 
 #[tauri::command]
 pub async fn listar_fontes() -> Result<Value, String> {
-    query("sources", 30).await
+    query(&["sources"], 30).await
 }
 
 async fn driver_signature() -> Option<String> {
@@ -74,6 +79,19 @@ async fn driver_signature() -> Option<String> {
 
 fn cache_path(app: &AppHandle) -> Option<PathBuf> {
     Some(app.path().app_local_data_dir().ok()?.join("gpu-probe.json"))
+}
+
+fn report_path(cache: &Path) -> PathBuf {
+    cache.with_file_name(format!("gpu-probe-v{CACHE_VERSION}-report.json"))
+}
+
+fn save_report(cache: &Path, report: &Value) {
+    let path = report_path(cache);
+    let pending = path.with_extension("tmp");
+    // The publisher can open this report while a new probe is finishing.
+    if std::fs::write(&pending, report.to_string()).is_ok() {
+        let _ = std::fs::rename(pending, path);
+    }
 }
 
 #[tauri::command]
@@ -92,16 +110,24 @@ pub async fn testar_maquina(
             .filter(|cache| cache["version"] == CACHE_VERSION && cache["driver"] == *driver)
         {
             if let Some(report) = cache.get("report") {
+                if !report_path(path).is_file() {
+                    save_report(path, report);
+                }
                 return Ok(report.clone());
             }
         }
     }
-    let report = query("probe", 90).await?;
-    if let (Some(driver), Some(path)) = (driver, path) {
-        let cache = json!({ "version": CACHE_VERSION, "driver": driver, "report": report });
-        if let Some(directory) = path.parent() {
-            let _ = std::fs::create_dir_all(directory);
-            let _ = std::fs::write(path, cache.to_string());
+    let report = query(&["probe", "--cbr", "--hardware-quality"], 120).await?;
+    if let Some(path) = path {
+        if path
+            .parent()
+            .is_some_and(|dir| std::fs::create_dir_all(dir).is_ok())
+        {
+            save_report(&path, &report);
+            if let Some(driver) = driver {
+                let cache = json!({ "version": CACHE_VERSION, "driver": driver, "report": report });
+                let _ = std::fs::write(path, cache.to_string());
+            }
         }
     }
     Ok(report)
@@ -132,6 +158,39 @@ fn valid_capture_source(value: &str) -> bool {
     }
 }
 
+fn publish_arguments(command: &mut Command, args: &Publish, report: Option<&Path>) {
+    command
+        .args([
+            "publish",
+            "--control-stdin",
+            "--limit-capture-fps",
+            "--cbr",
+            "--adaptive-bitrate",
+            "--hardware-quality",
+            "--cache-cpu-scaler",
+        ])
+        .arg(format!("--source={}", args.source))
+        .arg(format!("--url={}", args.url))
+        .args([
+            "--res",
+            &args.resolution,
+            "--fps",
+            &args.fps.to_string(),
+            "--codec",
+            &args.codec,
+            "--encoder",
+            &args.encoder,
+            "--bitrate",
+            &args.kbps.to_string(),
+        ]);
+    if let Some(pid) = args.audio_pid {
+        command.args(["--audio-pid", &pid.to_string()]);
+    }
+    if let Some(report) = report {
+        command.arg("--nvenc-probe").arg(report);
+    }
+}
+
 #[tauri::command]
 pub async fn iniciar_transmissao(
     app: AppHandle,
@@ -157,27 +216,11 @@ pub async fn iniciar_transmissao(
         return Err("Já existe uma transmissão em andamento.".into());
     }
     let mut command = core()?;
-    command
-        .args(["publish", "--control-stdin"])
-        .arg(format!("--source={}", args.source))
-        .arg(format!("--url={}", args.url))
-        .args([
-            "--res",
-            &args.resolution,
-            "--fps",
-            &args.fps.to_string(),
-            "--codec",
-            &args.codec,
-            "--encoder",
-            &args.encoder,
-            "--bitrate",
-            &args.kbps.to_string(),
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped());
-    if let Some(pid) = args.audio_pid {
-        command.args(["--audio-pid", &pid.to_string()]);
-    }
+    let report = cache_path(&app)
+        .map(|cache| report_path(&cache))
+        .filter(|report| report.is_file());
+    publish_arguments(&mut command, &args, report.as_deref());
+    command.stdin(Stdio::piped()).stdout(Stdio::piped());
     #[cfg(windows)]
     command.creation_flags(
         windows_sys::Win32::System::Threading::CREATE_NO_WINDOW
@@ -365,7 +408,56 @@ async fn send_control(sidecar: &Sidecar, id: &str, command: Value) -> Result<(),
 
 #[cfg(test)]
 mod tests {
-    use super::valid_capture_source;
+    use super::{publish_arguments, valid_capture_source, Command, Path, Publish};
+
+    #[test]
+    fn enables_publish_improvements_and_passes_the_probe_only_when_available() {
+        let input = Publish {
+            id: "stream".into(),
+            source: "hmonitor:1".into(),
+            resolution: "4k".into(),
+            fps: 60,
+            codec: "av1".into(),
+            encoder: "nvenc".into(),
+            kbps: 18000,
+            audio_pid: Some(10),
+            url: "wss://example.test".into(),
+            token: "token-only-through-stdin".into(),
+        };
+        let report = Path::new("Stackcall dados/gpu-probe-v4-report.json");
+        for path in [None, Some(report)] {
+            let mut command = Command::new("stackcall-core");
+            publish_arguments(&mut command, &input, path);
+            let flags: Vec<_> = command.as_std().get_args().collect();
+            let mut expected = vec![
+                "publish",
+                "--control-stdin",
+                "--limit-capture-fps",
+                "--cbr",
+                "--adaptive-bitrate",
+                "--hardware-quality",
+                "--cache-cpu-scaler",
+                "--source=hmonitor:1",
+                "--url=wss://example.test",
+                "--res",
+                "4k",
+                "--fps",
+                "60",
+                "--codec",
+                "av1",
+                "--encoder",
+                "nvenc",
+                "--bitrate",
+                "18000",
+                "--audio-pid",
+                "10",
+            ];
+            if let Some(path) = path {
+                expected.extend(["--nvenc-probe", path.to_str().unwrap()]);
+            }
+            assert_eq!(flags, expected);
+        }
+    }
 
     #[test]
     fn accepts_only_ids_returned_by_the_capture_picker() {
