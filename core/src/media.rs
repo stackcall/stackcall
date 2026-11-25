@@ -1,4 +1,4 @@
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use ffmpeg_sys_next::*;
 use std::{
     ffi::{CStr, c_char, c_int},
@@ -200,41 +200,82 @@ impl Drop for Frame {
     }
 }
 
-pub fn to_nv12(input: &Frame, width: u32, height: u32) -> Result<Frame> {
-    let mut output = Frame::new(Pixel::AV_PIX_FMT_NV12, width, height)?;
-    unsafe {
-        let src = &*input.as_ptr();
-        let dst = output.raw_mut();
-        let scaler = sws_getContext(
-            src.width,
-            src.height,
-            Pixel::AV_PIX_FMT_BGRA,
-            dst.width,
-            dst.height,
-            Pixel::AV_PIX_FMT_NV12,
-            SwsFlags::SWS_BILINEAR as i32,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null(),
-        );
-        ensure!(
-            !scaler.is_null(),
-            "could not initialize BGRA to NV12 conversion"
-        );
-        let rows = sws_scale(
-            scaler,
-            src.data.as_ptr().cast(),
-            src.linesize.as_ptr(),
-            0,
-            src.height,
-            dst.data.as_ptr(),
-            dst.linesize.as_ptr(),
-        );
-        sws_freeContext(scaler);
+pub struct Scaler {
+    context: NonNull<SwsContext>,
+    input: Frame,
+    size: (u32, u32),
+}
+
+// The capture thread owns the scaler and only uses it through &mut self.
+unsafe impl Send for Scaler {}
+
+impl Scaler {
+    pub fn new((input_w, input_h): (u32, u32), size: (u32, u32)) -> Result<Self> {
+        let (width, height) = size;
+        let input = Frame::new(Pixel::AV_PIX_FMT_BGRA, input_w, input_h)?;
+        let context = unsafe {
+            sws_getContext(
+                input_w as i32,
+                input_h as i32,
+                Pixel::AV_PIX_FMT_BGRA,
+                width as i32,
+                height as i32,
+                Pixel::AV_PIX_FMT_NV12,
+                SwsFlags::SWS_BILINEAR as i32,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null(),
+            )
+        };
+        let context =
+            NonNull::new(context).context("could not initialize BGRA to NV12 conversion")?;
+        Ok(Self {
+            context,
+            input,
+            size,
+        })
+    }
+
+    pub fn copy_bgra(&mut self, bytes: &[u8], pitch: usize) {
+        let input = &mut self.input;
+        let rows = input.raw_mut().height as usize;
+        let row_len = input.raw_mut().width as usize * 4;
+        let stride = input.stride(0);
+        for (dst, src) in input
+            .plane_mut(0, rows)
+            .chunks_mut(stride)
+            .zip(bytes.chunks(pitch))
+        {
+            dst[..row_len].copy_from_slice(&src[..row_len]);
+        }
+    }
+
+    pub fn scale_nv12(&mut self) -> Result<Frame> {
+        let (width, height) = self.size;
+        let mut output = Frame::new(Pixel::AV_PIX_FMT_NV12, width, height)?;
+        let rows = unsafe {
+            let src = &*self.input.as_ptr();
+            let dst = output.raw_mut();
+            sws_scale(
+                self.context.as_ptr(),
+                src.data.as_ptr().cast(),
+                src.linesize.as_ptr(),
+                0,
+                src.height,
+                dst.data.as_ptr(),
+                dst.linesize.as_ptr(),
+            )
+        };
         check(rows)?;
         ensure!(rows == height as i32, "FFmpeg converted only {rows} rows");
+        Ok(output)
     }
-    Ok(output)
+}
+
+impl Drop for Scaler {
+    fn drop(&mut self) {
+        unsafe { sws_freeContext(self.context.as_ptr()) }
+    }
 }
 
 #[cfg(test)]
@@ -244,12 +285,14 @@ mod tests {
     #[test]
     fn converts_bgra_to_nv12_with_lgpl_dlls() -> Result<()> {
         init()?;
-        let mut source = Frame::new(Pixel::AV_PIX_FMT_BGRA, 16, 16)?;
-        source.plane_mut(0, 16).fill(0);
-        let mut output = to_nv12(&source, 16, 16)?;
+        let mut scaler = Scaler::new((16, 16), (16, 16))?;
+        scaler.copy_bgra(&[0; 16 * 16 * 4], 16 * 4);
+        let mut output = scaler.scale_nv12()?;
         assert_eq!(output.raw_mut().format, Pixel::AV_PIX_FMT_NV12 as i32);
         assert_eq!(output.plane_mut(0, 16)[0], 16);
         assert_eq!(output.plane_mut(1, 8)[0], 128);
+        scaler.copy_bgra(&[255; 16 * 16 * 4], 16 * 4);
+        assert_eq!(scaler.scale_nv12()?.plane_mut(0, 16)[0], 235);
         Ok(())
     }
 }

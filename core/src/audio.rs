@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use livekit::{
-    options::TrackPublishOptions,
+    options::{AudioEncoding, TrackPublishOptions},
     prelude::*,
     webrtc::{
         audio_frame::AudioFrame,
@@ -43,6 +43,10 @@ impl Worker {
                 TrackPublishOptions {
                     source: TrackSource::ScreenshareAudio,
                     stream: "screen".into(),
+                    audio_encoding: Some(AudioEncoding {
+                        max_bitrate: 96_000,
+                    }),
+                    dtx: false,
                     ..Default::default()
                 },
             )

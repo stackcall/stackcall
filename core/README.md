@@ -115,15 +115,38 @@ codificado, sem cabeçalhos de transporte. CPU é normalizada pelo número de n�
 NVIDIA e inclui outras sessões de codificação. Leituras indisponíveis
 e percentis sem amostras saem como `null`.
 
+### Opções experimentais de publicação
+
+| Flag | Efeito |
+|---|---|
+| `--limit-capture-fps` | Pede ao WGC um intervalo mínimo de até 90% do período do FPS alvo, ajustado à frequência da tela. Em versões do Windows sem suporte, usa a captura padrão. |
+| `--cbr` | Ativa CBR de baixa latência e configura VBV de 100 ms. |
+| `--adaptive-bitrate` | Aplica mudanças de pelo menos 20%, com intervalo mínimo de três segundos. QSV tenta ajustar a sessão ativa. Ao reabrir o encoder, reaproveita o conversor se o tamanho da fonte for o mesmo. |
+| `--cache-cpu-scaler` | Reaproveita o contexto de escala e o buffer BGRA na conversão pela CPU. |
+| `--hardware-quality` | Tenta H.264 High e volta ao perfil anterior se o encoder recusar a abertura. |
+| `--nvenc-probe <arquivo>` | Com `--hardware-quality`, lê a recomendação de preset do probe. |
+
+Para testar presets NVENC, salve o JSON de `probe --hardware-quality` em UTF-8.
+Acrescente `--cbr` ao probe quando for usar CBR na publicação. O probe tenta
+`p4` e `p3` nessa ordem. A recomendação exige carga estimada de até 60% e p95
+de codificação de até 60% do período de um quadro. A publicação usa a recomendação
+do mesmo codec, resolução, FPS e modo CBR. Sem recomendação aplicável ou se o
+encoder recusar o preset, usa `p1`.
+
+O backend pré-codificado do LiveKit 0.12.0 anuncia H.264 constrained baseline.
+Teste `--hardware-quality` com os espectadores alvo antes de ativar H.264 High
+no app.
+
+Com `--audio-pid`, o som do jogo usa Opus com teto de 96 kbps e DTX desativado.
+
 ## Pontos para validar em hardware
 
 O código-fonte do LiveKit 0.12.0 com libwebrtc 0.4.2 expõe
 `EncodedVideoCodec::H264` e `AV1` e aceita a publicação pelo backend
 `PreEncoded`. O áudio usa `NativeAudioSource` com PCM estéreo i16 a 48 kHz
 em blocos de 10 ms. A entrega, a latência, os formatos dos access units e a
-sincronia precisam das provas na sala. Uma mudança relevante de bitrate
-solicitada pelo SDK reabre o encoder e inicia com um keyframe. Meça o
-custo dessa transição junto com as perdas em P3.
+sincronia precisam das provas na sala. Sem `--adaptive-bitrate`, uma mudança
+relevante de bitrate solicitada pelo SDK reabre o encoder e inicia com um keyframe.
 
 Em máquinas híbridas, o caminho na GPU exige que o dispositivo D3D11 da
 captura seja compatível com o encoder escolhido. Se necessário, selecione

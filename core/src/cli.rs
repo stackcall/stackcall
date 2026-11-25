@@ -1,5 +1,5 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Parser)]
 pub struct Cli {
@@ -9,10 +9,18 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Command {
-    Probe,
+    Probe(Probe),
     Sources,
     Publish(Publish),
     Clock,
+}
+
+#[derive(Args)]
+pub struct Probe {
+    #[arg(long)]
+    pub cbr: bool,
+    #[arg(long, help = "Test H.264 High and measure headroom for NVENC p4/p3")]
+    pub hardware_quality: bool,
 }
 
 #[derive(Args)]
@@ -31,14 +39,30 @@ pub struct Publish {
     pub res: Resolution,
     #[arg(long, value_parser = parse_fps)]
     pub fps: u32,
+    #[arg(long, help = "Limit WGC capture updates to the target frame rate")]
+    pub limit_capture_fps: bool,
     #[arg(long, value_parser = clap::value_parser!(u32).range(1..=100_000))]
     pub bitrate: u32,
+    #[arg(long, help = "Use low-latency CBR with a short video buffer")]
+    pub cbr: bool,
+    #[arg(long, help = "Apply bitrate hysteresis and reuse the conversion path")]
+    pub adaptive_bitrate: bool,
+    #[arg(long, help = "Try H.264 High on the hardware encoder")]
+    pub hardware_quality: bool,
+    #[arg(
+        long,
+        requires = "hardware_quality",
+        help = "Use an NVENC preset recommended by probe for this mode"
+    )]
+    pub nvenc_probe: Option<std::path::PathBuf>,
     #[arg(long, default_value = "auto")]
     pub encoder: Encoder,
     #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
     pub audio_pid: Option<u32>,
     #[arg(long)]
     pub cpu_path: bool,
+    #[arg(long, help = "Reuse BGRA-to-NV12 scaling state on the CPU path")]
+    pub cache_cpu_scaler: bool,
     #[arg(long, value_parser = clap::value_parser!(u64).range(1..))]
     pub duration: Option<u64>,
 }
@@ -49,7 +73,7 @@ pub enum Codec {
     Av1,
 }
 
-#[derive(Clone, Copy, ValueEnum, Serialize)]
+#[derive(Clone, Copy, PartialEq, ValueEnum, Deserialize, Serialize)]
 pub enum Resolution {
     #[value(name = "720p")]
     #[serde(rename = "720p")]

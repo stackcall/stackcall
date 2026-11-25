@@ -192,7 +192,14 @@ pub async fn iniciar_transmissao(
     if let Some(pid) = args.audio_pid {
         command.args(["--audio-pid", &pid.to_string()]);
     }
+    #[cfg(windows)]
+    command.creation_flags(
+        windows_sys::Win32::System::Threading::CREATE_NO_WINDOW
+            | windows_sys::Win32::System::Threading::ABOVE_NORMAL_PRIORITY_CLASS,
+    );
     let child = command.spawn().map_err(|_| UNAVAILABLE)?;
+    #[cfg(windows)]
+    opt_out_of_eco_qos(&child);
     let (control_tx, control_rx) = mpsc::channel(8);
     let (started_tx, started_rx) = oneshot::channel();
     let (ended_tx, ended_rx) = watch::channel(false);
@@ -224,6 +231,33 @@ pub async fn iniciar_transmissao(
         emit(&app, &args.id, event);
     });
     started_rx.await.map_err(|_| UNAVAILABLE)?
+}
+
+#[cfg(windows)]
+fn opt_out_of_eco_qos(child: &Child) {
+    use windows_sys::Win32::System::Threading::{
+        ProcessPowerThrottling, SetProcessInformation, PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+        PROCESS_POWER_THROTTLING_EXECUTION_SPEED, PROCESS_POWER_THROTTLING_STATE,
+    };
+
+    if let Some(handle) = child.raw_handle() {
+        let power = PROCESS_POWER_THROTTLING_STATE {
+            Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+            ControlMask: PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
+            StateMask: 0,
+        };
+        let ok = unsafe {
+            SetProcessInformation(
+                handle,
+                ProcessPowerThrottling,
+                (&power as *const PROCESS_POWER_THROTTLING_STATE).cast(),
+                std::mem::size_of_val(&power) as u32,
+            )
+        };
+        if ok == 0 {
+            eprintln!("Não foi possível desativar o EcoQoS do núcleo: {}", std::io::Error::last_os_error());
+        }
+    }
 }
 
 async fn supervise(

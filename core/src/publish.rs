@@ -1,4 +1,4 @@
-use crate::media::{self, Frame as AvFrame, Picture, Pixel};
+use crate::media::{self, Frame as AvFrame, Picture, Scaler};
 use crate::{
     cli::{Codec, Publish, Source, bits_per_second},
     encoder, gpu,
@@ -25,7 +25,7 @@ use std::{
 use windows_capture::{
     capture::{CaptureControl, Context, GraphicsCaptureApiHandler},
     frame::Frame,
-    graphics_capture_api::InternalCaptureControl,
+    graphics_capture_api::{GraphicsCaptureApi, InternalCaptureControl},
     monitor::Monitor,
     settings::*,
     window::Window,
@@ -38,6 +38,7 @@ struct Setup {
     source: NativeVideoSource,
     stats: Arc<Mutex<Stats>>,
     requests: Arc<Requests>,
+    tuning: encoder::Tuning,
 }
 
 #[derive(Default)]
@@ -92,27 +93,48 @@ struct Capture {
     last_slot: Option<u128>,
     kbps: u32,
     limit_kbps: u32,
+    pending_kbps: Option<u32>,
+    last_bitrate_change: Instant,
+    qsv_reset_supported: bool,
 }
 
 struct Session {
     name: &'static str,
     encoder: encoder::Session,
-    gpu: Option<gpu::Converter>,
+    conversion: Conversion,
     input_size: (u32, u32),
     pending: BTreeMap<i64, (i64, Instant)>,
+}
+
+#[derive(Default)]
+struct Conversion {
+    gpu: Option<gpu::Converter>,
+    scaler: Option<Scaler>,
 }
 
 fn start_capture(setup: Setup) -> Result<Control> {
     fn start<T: TryInto<GraphicsCaptureItemType> + Send + 'static>(
         target: T,
+        monitor: Option<Monitor>,
         setup: Setup,
     ) -> Result<Control> {
+        let interval = if setup.args.limit_capture_fps
+            && GraphicsCaptureApi::is_minimum_update_interval_supported().unwrap_or(false)
+        {
+            let refresh = monitor.and_then(|monitor| monitor.refresh_rate().ok());
+            MinimumUpdateIntervalSettings::Custom(Duration::from_micros(capture_interval_us(
+                setup.args.fps,
+                refresh,
+            )))
+        } else {
+            MinimumUpdateIntervalSettings::Default
+        };
         Capture::start_free_threaded(Settings::new(
             target,
             CursorCaptureSettings::Default,
             DrawBorderSettings::Default,
             SecondaryWindowSettings::Default,
-            MinimumUpdateIntervalSettings::Default,
+            interval,
             DirtyRegionSettings::Default,
             ColorFormat::Bgra8,
             setup,
@@ -120,20 +142,24 @@ fn start_capture(setup: Setup) -> Result<Control> {
         .map_err(|err| anyhow::anyhow!("{err:?}"))
     }
 
+    let start_window = |window: Window, setup| {
+        let monitor = window.monitor();
+        start(window, monitor, setup)
+    };
     match &setup.args.source {
-        Source::Monitor(index) => start(
-            *Monitor::enumerate()?
+        Source::Monitor(index) => {
+            let monitor = *Monitor::enumerate()?
                 .get(*index)
-                .context("monitor index out of range")?,
-            setup,
-        ),
-        Source::Window(title) => start(Window::from_name(title)?, setup),
+                .context("monitor index out of range")?;
+            start(monitor, Some(monitor), setup)
+        }
+        Source::Window(title) => start_window(Window::from_name(title)?, setup),
         Source::Pid(pid) => {
             let window = Window::enumerate()?
                 .into_iter()
                 .find(|window| window.process_id().ok() == Some(*pid))
                 .context("no capturable window for this PID")?;
-            start(window, setup)
+            start_window(window, setup)
         }
         Source::WindowHandle { handle, pid } => {
             let window = Window::from_raw_hwnd(*handle as *mut _);
@@ -141,20 +167,51 @@ fn start_capture(setup: Setup) -> Result<Control> {
                 window.is_valid() && window.process_id().ok() == Some(*pid),
                 "A janela escolhida foi fechada."
             );
-            start(window, setup)
+            start_window(window, setup)
         }
         Source::MonitorHandle(handle) => {
             let monitor = Monitor::enumerate()?
                 .into_iter()
                 .find(|monitor| monitor.as_raw_hmonitor() as usize == *handle)
                 .context("A tela escolhida foi desconectada.")?;
-            start(monitor, setup)
+            start(monitor, Some(monitor), setup)
         }
+    }
+}
+
+fn capture_interval_us(fps: u32, refresh: Option<u32>) -> u64 {
+    let nominal = 900_000 / u64::from(fps);
+    refresh.filter(|&hz| hz >= fps).map_or(nominal, |hz| {
+        // Round down to a whole number of refreshes so 144 Hz can feed a 60 fps stream.
+        nominal.min(950_000 * u64::from(hz / fps) / u64::from(hz))
+    })
+}
+
+#[cfg(test)]
+#[test]
+fn capture_interval_preserves_target_on_high_refresh_displays() {
+    assert_eq!(capture_interval_us(60, None), 15_000);
+    assert_eq!(capture_interval_us(60, Some(240)), 15_000);
+    for hz in [75, 144, 165] {
+        assert!(capture_interval_us(60, Some(hz)) * u64::from(hz) < 1_000_000 * u64::from(hz / 60));
     }
 }
 
 pub async fn run(args: Publish) -> Result<()> {
     media::init().context("Não foi possível carregar o FFmpeg")?;
+    let nvenc_preset = args
+        .nvenc_probe
+        .as_deref()
+        .map(|path| {
+            crate::probe::nvenc_recommendation(path, args.codec, args.res, args.fps, args.cbr)
+        })
+        .transpose()?
+        .unwrap_or_default();
+    let tuning = encoder::Tuning {
+        cbr: args.cbr,
+        high_profile: args.hardware_quality,
+        nvenc_preset,
+    };
     let (width, height) = args.res.dimensions();
     let (codec, source) = (
         match args.codec {
@@ -199,7 +256,7 @@ pub async fn run(args: Publish) -> Result<()> {
         ).await.context("O servidor recusou a publicação da tela")?;
         let stats = Arc::new(Mutex::new(Stats::default()));
         let requests = Arc::new(Requests::default());
-        let control = start_capture(Setup { args, source, stats: stats.clone(), requests: requests.clone() })
+        let control = start_capture(Setup { args, source, stats: stats.clone(), requests: requests.clone(), tuning })
             .context("Não foi possível iniciar a captura")?;
         let mut audio = crate::audio::Worker::default();
         let result = async {
@@ -350,6 +407,9 @@ impl GraphicsCaptureApiHandler for Capture {
             last_slot: None,
             kbps,
             limit_kbps: kbps,
+            pending_kbps: None,
+            last_bitrate_change: Instant::now(),
+            qsv_reset_supported: true,
         })
     }
 
@@ -378,63 +438,49 @@ impl GraphicsCaptureApiHandler for Capture {
         let requested = source.take_rate_control_request().map(|rate| {
             (rate.target_bitrate_bps / 1000).clamp(1, u64::from(self.limit_kbps)) as u32
         });
-        let update = if manual != 0 && manual != self.kbps {
+        let update = if args.adaptive_bitrate {
+            if let Some(target) = (manual != 0).then_some(manual).or(requested) {
+                self.pending_kbps = Some(target);
+            }
+            self.pending_kbps.filter(|&target| {
+                bitrate_change_due(self.kbps, target, self.last_bitrate_change.elapsed())
+            })
+        } else if manual != 0 && manual != self.kbps {
             Some(manual)
         } else {
             requested.filter(|requested| requested.abs_diff(self.kbps) >= (self.kbps / 10).max(1))
         };
         let mut key = source.take_keyframe_request();
         key |= self.setup.requests.keyframe.swap(false, Ordering::Relaxed);
-        if self
+        let input_changed = self
             .session
             .as_ref()
-            .is_none_or(|session| session.input_size != dimensions)
-            || update.is_some()
+            .is_none_or(|session| session.input_size != dimensions);
+        if let Some(target) = update {
+            self.kbps = target;
+            self.pending_kbps = None;
+            self.last_bitrate_change = Instant::now();
+        }
+        let mut in_place = false;
+        if args.adaptive_bitrate
+            && self.qsv_reset_supported
+            && !input_changed
+            && update.is_some()
+            && let Some(session) = self.session.as_mut()
+            && session.name.ends_with("_qsv")
         {
+            in_place = session.encoder.update_qsv_bitrate(self.kbps, args.cbr);
+        }
+        if input_changed || (update.is_some() && !in_place) {
+            let mut reusable = None;
             if let Some(mut old) = self.session.take() {
                 old.encoder.send_eof()?;
                 self.send_packets(&mut old)?;
-            }
-            self.kbps = update.unwrap_or(self.kbps);
-            let mut errors = Vec::new();
-            for name in encoder::candidates(args.codec, args.encoder) {
-                let open = |gpu: Option<gpu::Converter>| {
-                    let encoder = encoder::open(
-                        name,
-                        args.res,
-                        args.fps,
-                        self.kbps,
-                        gpu.as_ref().map(gpu::Converter::output_pool),
-                    )?;
-                    Ok::<_, anyhow::Error>(Session {
-                        name,
-                        encoder,
-                        gpu,
-                        input_size: dimensions,
-                        pending: BTreeMap::new(),
-                    })
-                };
-                let attempt = if args.cpu_path {
-                    open(None)
-                } else {
-                    let (width, height) = args.res.dimensions();
-                    gpu::Converter::new(frame, width, height, args.fps, name.ends_with("_qsv"))
-                        .and_then(|converter| open(Some(converter)))
-                        .or_else(|error| open(None).with_context(|| format!("D3D11: {error:#}")))
-                };
-                match attempt {
-                    Ok(session) => {
-                        self.session = Some(session);
-                        break;
-                    }
-                    Err(err) => errors.push(format!("{name}: {err:#}")),
+                if args.adaptive_bitrate && !input_changed {
+                    reusable = Some((old.name, old.conversion));
                 }
             }
-            ensure!(
-                self.session.is_some(),
-                "no usable encoder: {}",
-                errors.join("; ")
-            );
+            self.session = Some(self.open_session(frame, reusable)?);
             key = true;
         }
         let mut session = self.session.take().context("encoder session missing")?;
@@ -445,9 +491,21 @@ impl GraphicsCaptureApiHandler for Capture {
         if key {
             self.last_key_request = Some(pts);
         }
-        let mut picture = match &mut session.gpu {
+        let mut picture = match &mut session.conversion.gpu {
             Some(gpu) => gpu.convert(frame)?,
-            None => cpu_convert(frame, args.res.dimensions())?,
+            None => {
+                let mut temporary = None;
+                let cache = if args.cache_cpu_scaler {
+                    &mut session.conversion.scaler
+                } else {
+                    &mut temporary
+                };
+                let scaler = match cache {
+                    Some(scaler) => scaler,
+                    None => cache.insert(Scaler::new(dimensions, args.res.dimensions())?),
+                };
+                cpu_convert(frame, scaler)?
+            }
         };
         let (width, height) = args.res.dimensions();
         picture.set_size(width, height);
@@ -459,14 +517,100 @@ impl GraphicsCaptureApiHandler for Capture {
             Picture::AV_PICTURE_TYPE_NONE
         };
         session.pending.insert(encoder_pts, (pts, Instant::now()));
-        session.encoder.send_frame(&picture)?;
-        self.send_packets(&mut session)?;
+        let result = session
+            .encoder
+            .send_frame(&picture)
+            .and_then(|()| self.send_packets(&mut session));
+        if in_place && let Err(error) = result {
+            eprintln!("QSV bitrate reset failed, reopening encoder: {error:#}");
+            self.qsv_reset_supported = false;
+            let reusable = (session.name, session.conversion);
+            drop(picture);
+            drop(session.encoder);
+            self.session = Some(self.open_session(frame, Some(reusable))?);
+            self.last_key_request = None;
+            return Ok(());
+        }
+        result?;
         self.session = Some(session);
         Ok(())
     }
 }
 
+fn bitrate_change_due(current: u32, target: u32, elapsed: Duration) -> bool {
+    elapsed >= Duration::from_secs(3) && target.abs_diff(current) * 5 >= current
+}
+
+#[cfg(test)]
+#[test]
+fn bitrate_hysteresis_is_inclusive_and_bidirectional() {
+    let ready = Duration::from_secs(3);
+    assert!(!bitrate_change_due(5000, 4000, Duration::from_millis(2999)));
+    assert!(!bitrate_change_due(5000, 4001, ready));
+    assert!(!bitrate_change_due(5000, 5999, ready));
+    assert!(bitrate_change_due(5000, 4000, ready));
+    assert!(bitrate_change_due(5000, 6000, ready));
+}
+
 impl Capture {
+    fn open_session(
+        &self,
+        frame: &Frame,
+        reusable: Option<(&'static str, Conversion)>,
+    ) -> Result<Session> {
+        let args = &self.setup.args;
+        let open = |name, conversion: Conversion| {
+            let encoder = encoder::open(
+                name,
+                args.res,
+                args.fps,
+                self.kbps,
+                conversion.gpu.as_ref().map(gpu::Converter::output_pool),
+                self.setup.tuning,
+            )?;
+            Ok::<_, anyhow::Error>(Session {
+                name,
+                encoder,
+                conversion,
+                input_size: (frame.width(), frame.height()),
+                pending: BTreeMap::new(),
+            })
+        };
+        let mut errors = Vec::new();
+        if let Some((name, converter)) = reusable {
+            match open(name, converter) {
+                Ok(session) => return Ok(session),
+                Err(err) => errors.push(format!("{name} with existing converter: {err:#}")),
+            }
+        }
+        for name in encoder::candidates(args.codec, args.encoder) {
+            let attempt = if args.cpu_path {
+                open(name, Conversion::default())
+            } else {
+                let (width, height) = args.res.dimensions();
+                gpu::Converter::new(frame, width, height, args.fps, name.ends_with("_qsv"))
+                    .and_then(|gpu| {
+                        open(
+                            name,
+                            Conversion {
+                                gpu: Some(gpu),
+                                scaler: None,
+                            },
+                        )
+                    })
+                    .or_else(|error| {
+                        open(name, Conversion::default())
+                            .with_context(|| format!("D3D11: {error:#}"))
+                    })
+            };
+            match attempt {
+                Ok(session) => return Ok(session),
+                Err(err) => errors.push(format!("{name}: {err:#}")),
+            }
+        }
+        anyhow::bail!("no usable encoder: {}", errors.join("; "))
+    }
+
     fn send_packets(&self, session: &mut Session) -> Result<()> {
         let (width, height) = self.setup.args.res.dimensions();
         let codec = match self.setup.args.codec {
@@ -503,25 +647,15 @@ impl Capture {
             stats.latency.push(encode_ms);
             stats.nvenc = session.name.ends_with("_nvenc");
             stats.encoder = Some(session.name);
-            stats.cpu_path = session.gpu.is_none();
+            stats.cpu_path = session.conversion.gpu.is_none();
             Ok(())
         })
     }
 }
 
-fn cpu_convert(frame: &mut Frame, (width, height): (u32, u32)) -> Result<AvFrame> {
-    let (input_w, input_h) = (frame.width(), frame.height());
-    let mut input = AvFrame::new(Pixel::AV_PIX_FMT_BGRA, input_w, input_h)?;
+fn cpu_convert(frame: &mut Frame, scaler: &mut Scaler) -> Result<AvFrame> {
     let mut buffer = frame.buffer()?;
-    let src_pitch = buffer.row_pitch() as usize;
-    let dst_pitch = input.stride(0);
-    let row_len = input_w as usize * 4;
-    for (dst, src) in input
-        .plane_mut(0, input_h as usize)
-        .chunks_mut(dst_pitch)
-        .zip(buffer.as_raw_buffer().chunks(src_pitch))
-    {
-        dst[..row_len].copy_from_slice(&src[..row_len]);
-    }
-    media::to_nv12(&input, width, height)
+    let pitch = buffer.row_pitch() as usize;
+    scaler.copy_bgra(buffer.as_raw_buffer(), pitch);
+    scaler.scale_nv12()
 }

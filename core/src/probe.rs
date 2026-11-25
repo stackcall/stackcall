@@ -1,5 +1,6 @@
 use std::{
     collections::BTreeMap,
+    path::Path,
     time::{Duration, Instant},
 };
 
@@ -8,17 +9,16 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, DXGI_ERROR_NOT_FOUND, IDXGIFactory1};
 
-use crate::{cli::Resolution, encoder};
-
-#[derive(Clone, Copy)]
-pub struct ProbeOptions {
-    pub seconds: u32,
-}
+use crate::{
+    cli::{Codec, Probe, Resolution},
+    encoder::{self, NvencPreset, Tuning},
+};
 
 #[derive(Serialize)]
 pub struct Report {
     adapters: Vec<Adapter>,
     trials: Vec<Trial>,
+    cbr: bool,
 }
 
 #[derive(Serialize)]
@@ -49,13 +49,17 @@ enum Outcome {
         encode_ms_p50: Option<f64>,
         encode_ms_p95: Option<f64>,
         encoder_load_percent: f64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        nvenc_preset: Option<NvencPreset>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        h264_high: Option<bool>,
     },
     Failure {
         error: String,
     },
 }
 
-pub fn run(options: ProbeOptions) -> Result<Report> {
+pub fn run(options: Probe) -> Result<Report> {
     crate::media::init()?;
     let factory: IDXGIFactory1 = unsafe { CreateDXGIFactory1()? };
     let adapters = (0..)
@@ -90,6 +94,11 @@ pub fn run(options: ProbeOptions) -> Result<Report> {
         (Resolution::P4k, 30, 15000, 10500),
         (Resolution::P4k, 60, 25000, 18000),
     ];
+    let tuning = Tuning {
+        cbr: options.cbr,
+        high_profile: options.hardware_quality,
+        ..Tuning::default()
+    };
     let trials = encoder::CANDIDATES
         .into_iter()
         .flat_map(|name| {
@@ -97,7 +106,46 @@ pub fn run(options: ProbeOptions) -> Result<Report> {
                 .into_iter()
                 .map(move |(resolution, target_fps, h264, av1)| {
                     let kbps = if name.starts_with("av1_") { av1 } else { h264 };
-                    let result = measure(name, resolution, target_fps, kbps, options.seconds);
+                    let best = if options.hardware_quality && name.ends_with("_nvenc") {
+                        [NvencPreset::P4, NvencPreset::P3]
+                            .into_iter()
+                            .find_map(|preset| {
+                                let outcome = measure(
+                                    name,
+                                    resolution,
+                                    target_fps,
+                                    kbps,
+                                    Tuning {
+                                        nvenc_preset: preset,
+                                        ..tuning
+                                    },
+                                )
+                                .ok()?;
+                                match &outcome {
+                                    Outcome::Success {
+                                        nvenc_preset,
+                                        encoder_load_percent,
+                                        encode_ms_p95,
+                                        ..
+                                    } if *nvenc_preset == Some(preset)
+                                        && has_headroom(
+                                            *encoder_load_percent,
+                                            *encode_ms_p95,
+                                            target_fps,
+                                        ) =>
+                                    {
+                                        Some(outcome)
+                                    }
+                                    _ => None,
+                                }
+                            })
+                    } else {
+                        None
+                    };
+                    let result = match best {
+                        Some(outcome) => Ok(outcome),
+                        None => measure(name, resolution, target_fps, kbps, tuning),
+                    };
                     Trial {
                         encoder: name,
                         resolution,
@@ -110,11 +158,69 @@ pub fn run(options: ProbeOptions) -> Result<Report> {
                 })
         })
         .collect();
-    Ok(Report { adapters, trials })
+    Ok(Report {
+        adapters,
+        trials,
+        cbr: options.cbr,
+    })
 }
 
-fn measure(name: &str, res: Resolution, fps: u32, kbps: u32, seconds: u32) -> Result<Outcome> {
-    let mut session = encoder::open(name, res, fps, kbps, None)?;
+fn has_headroom(load: f64, p95_ms: Option<f64>, fps: u32) -> bool {
+    load <= 60.0 && p95_ms.is_some_and(|latency| latency <= 600.0 / f64::from(fps))
+}
+
+pub fn nvenc_recommendation(
+    path: &Path,
+    codec: Codec,
+    res: Resolution,
+    fps: u32,
+    cbr: bool,
+) -> Result<NvencPreset> {
+    #[derive(serde::Deserialize)]
+    struct ProbeReport {
+        #[serde(default)]
+        cbr: bool,
+        trials: Vec<NvencTrial>,
+    }
+    #[derive(serde::Deserialize)]
+    struct NvencTrial {
+        encoder: String,
+        resolution: Resolution,
+        target_fps: u32,
+        ok: bool,
+        nvenc_preset: Option<NvencPreset>,
+        encoder_load_percent: Option<f64>,
+        encode_ms_p95: Option<f64>,
+    }
+    let json = std::fs::read_to_string(path).context("reading NVENC probe report")?;
+    let report: ProbeReport = serde_json::from_str(json.trim_start_matches('\u{feff}'))
+        .context("parsing NVENC probe report")?;
+    let name = match codec {
+        Codec::H264 => "h264_nvenc",
+        Codec::Av1 => "av1_nvenc",
+    };
+    Ok(if report.cbr == cbr {
+        report
+            .trials
+            .into_iter()
+            .find(|trial| {
+                trial.ok
+                    && trial.encoder == name
+                    && trial.resolution == res
+                    && trial.target_fps == fps
+                    && trial
+                        .encoder_load_percent
+                        .is_some_and(|load| has_headroom(load, trial.encode_ms_p95, fps))
+            })
+            .and_then(|trial| trial.nvenc_preset)
+            .unwrap_or_default()
+    } else {
+        NvencPreset::P1
+    })
+}
+
+fn measure(name: &str, res: Resolution, fps: u32, kbps: u32, tuning: Tuning) -> Result<Outcome> {
+    let mut session = encoder::open(name, res, fps, kbps, None, tuning)?;
     let (width, height) = res.dimensions();
     let mut frames: Vec<_> = (0..4)
         .map(|phase| {
@@ -140,7 +246,7 @@ fn measure(name: &str, res: Resolution, fps: u32, kbps: u32, seconds: u32) -> Re
     let mut pending = BTreeMap::<i64, Instant>::new();
     let mut latencies = Vec::new();
     let start = Instant::now();
-    for index in 0..seconds * fps {
+    for index in 0..5 * fps {
         let pts = i64::from(index) * 90_000 / i64::from(fps);
         let count = frames.len();
         let frame = &mut frames[index as usize % count];
@@ -170,6 +276,12 @@ fn measure(name: &str, res: Resolution, fps: u32, kbps: u32, seconds: u32) -> Re
         encode_ms_p50: p50,
         encode_ms_p95: p95,
         encoder_load_percent: (100.0 * f64::from(fps) / achieved).min(100.0),
+        nvenc_preset: name
+            .ends_with("_nvenc")
+            .then_some(session.tuning().nvenc_preset),
+        h264_high: name
+            .starts_with("h264")
+            .then_some(session.tuning().high_profile),
     })
 }
 
@@ -189,6 +301,14 @@ fn record(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nvenc_headroom_checks_throughput_and_tail_latency() {
+        assert!(has_headroom(60.0, Some(10.0), 60));
+        assert!(!has_headroom(61.0, Some(5.0), 60));
+        assert!(!has_headroom(30.0, Some(11.0), 60));
+        assert!(!has_headroom(30.0, None, 60));
+    }
 
     #[test]
     fn failure_is_a_row_with_no_measurements() {
