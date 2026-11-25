@@ -3,13 +3,69 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::{HashMap, VecDeque};
 use std::net::IpAddr;
 use std::sync::Mutex;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Url};
+use tauri::{AppHandle, Emitter, State, Url};
 
 const KEYRING_SERVICE: &str = "io.github.stackcall";
-static SESSIONS: Mutex<()> = Mutex::new(());
+
+#[derive(Default)]
+pub struct Accounts(Mutex<HashMap<String, ScreenAccess>>);
+
+#[derive(Default)]
+struct ScreenAccess {
+    url: String,
+    tokens: VecDeque<String>,
+}
+
+impl ScreenAccess {
+    fn remember(&mut self, body: &Value) {
+        let (Some(url), Some(token)) = (body["url"].as_str(), body["screen_token"].as_str()) else {
+            *self = Self::default();
+            return;
+        };
+        if self.url != url {
+            self.url = url.into();
+            self.tokens.clear();
+        }
+        // A response from a concurrent room request must not invalidate a just-issued token.
+        if self.tokens.len() == 8 {
+            self.tokens.pop_front();
+        }
+        self.tokens.push_back(token.into());
+    }
+}
+
+impl Accounts {
+    pub fn valid_livekit_url(&self, value: &str, token: &str) -> bool {
+        if value
+            .chars()
+            .any(|ch| ch == '\\' || ch.is_control() || ch.is_whitespace())
+        {
+            return false;
+        }
+        let Ok(url) = Url::parse(value) else {
+            return false;
+        };
+        let transport = match url.scheme() {
+            "https" | "wss" => true,
+            "http" | "ws" => matches!(url.host_str(), Some("localhost" | "127.0.0.1")),
+            _ => false,
+        };
+        transport
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.fragment().is_none()
+            && self.0.lock().is_ok_and(|sessions| {
+                // The WebView passes the original pair without choosing which server vouched for it.
+                sessions.values().any(|access| {
+                    access.url == value && access.tokens.iter().any(|saved| saved == token)
+                })
+            })
+    }
+}
 
 /// The v0.2 invite lived here; v0.3 logs in with accounts, so it is removed once.
 pub fn limpar_convite_antigo() {
@@ -99,7 +155,11 @@ pub struct Resposta {
 }
 
 #[tauri::command]
-pub async fn api(app: AppHandle, chamada: Chamada) -> Result<Resposta, String> {
+pub async fn api(
+    app: AppHandle,
+    accounts: State<'_, Accounts>,
+    chamada: Chamada,
+) -> Result<Resposta, String> {
     let origem = origem(&chamada.servidor)?;
     if !rota_valida(&chamada.rota) {
         return Err("Rota inválida.".into());
@@ -147,11 +207,12 @@ pub async fn api(app: AppHandle, chamada: Chamada) -> Result<Resposta, String> {
     let revogada = status == 401 && rota_autenticada(&chamada.metodo, url.path());
     if let Some(token) = &token {
         if revogada || (logout && sucesso) {
-            let _guard = SESSIONS.lock().map_err(|e| e.to_string())?;
+            let mut sessions = accounts.0.lock().map_err(|e| e.to_string())?;
             let entry = entrada(&origem)?;
             // A delayed response must not clear a session that was opened while it was in flight.
             if entry.get_password().is_ok_and(|current| &current == token) {
                 entry.delete_credential().map_err(|e| e.to_string())?;
+                sessions.remove(&origem);
                 if revogada {
                     let _ = app.emit("sessao-encerrada", serde_json::json!({ "origem": origem }));
                 }
@@ -164,10 +225,24 @@ pub async fn api(app: AppHandle, chamada: Chamada) -> Result<Resposta, String> {
     // Accepting an invite or a device link returns `sessao`: keep it in the vault, hide it from the WebView.
     if let Some(nova) = corpo.as_object_mut().and_then(|o| o.remove("sessao")) {
         if let (Some(nova), true) = (nova.as_str(), sucesso) {
-            let _guard = SESSIONS.lock().map_err(|e| e.to_string())?;
+            let mut sessions = accounts.0.lock().map_err(|e| e.to_string())?;
             entrada(&origem)?
                 .set_password(nova)
                 .map_err(|e| e.to_string())?;
+            sessions.remove(&origem);
+        }
+    }
+    if sucesso
+        && chamada.metodo == "POST"
+        && url.path().strip_prefix("/api/salas/").is_some_and(|route| {
+            route
+                .strip_suffix("/token")
+                .is_some_and(|id| !id.is_empty() && !id.contains('/'))
+        })
+    {
+        let mut sessions = accounts.0.lock().map_err(|e| e.to_string())?;
+        if token.is_some() && token == sessao(&origem) {
+            sessions.entry(origem).or_default().remember(&corpo);
         }
     }
     Ok(Resposta { status, corpo })
@@ -175,7 +250,51 @@ pub async fn api(app: AppHandle, chamada: Chamada) -> Result<Resposta, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{origem, rota_autenticada, rota_valida};
+    use super::{origem, rota_autenticada, rota_valida, Accounts};
+
+    #[test]
+    fn livekit_aceita_apenas_o_par_de_url_e_token_da_origem() {
+        let accounts = Accounts::default();
+        let remember = |origin: &str, url: &str, token: &str| {
+            accounts
+                .0
+                .lock()
+                .unwrap()
+                .entry(origin.into())
+                .or_default()
+                .remember(&serde_json::json!({"url": url, "screen_token": token}));
+        };
+        for (origin, url, token) in [
+            ("https://a.test", "wss://a.test/rtc", "token-a"),
+            ("https://b.test", "wss://video.b.test:444/rtc", "token-b"),
+            (
+                "http://localhost:8100",
+                "ws://localhost:7880",
+                "token-local",
+            ),
+            (
+                "http://127.0.0.1:8100",
+                "http://127.0.0.1:7880",
+                "token-loopback",
+            ),
+        ] {
+            remember(origin, url, token);
+            assert!(accounts.valid_livekit_url(url, token));
+        }
+        remember("https://a.test", "wss://a.test/rtc", "token-concurrent");
+        assert!(accounts.valid_livekit_url("wss://a.test/rtc", "token-a"));
+        assert!(!accounts.valid_livekit_url("wss://video.b.test:444/rtc", "token-a"));
+        assert!(!accounts.valid_livekit_url("wss://a.test/other", "token-a"));
+        for url in [
+            "ws://192.168.0.10:7880",
+            "wss://user@example.test/rtc",
+            "wss://example.test/rtc#fragment",
+            "wss://example.test/rtc\n",
+        ] {
+            remember("https://unusable.test", url, "token-unusable");
+            assert!(!accounts.valid_livekit_url(url, "token-unusable"));
+        }
+    }
 
     #[test]
     fn so_rotas_autenticadas_podem_encerrar_sessao() {
