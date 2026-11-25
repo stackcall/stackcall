@@ -9,7 +9,7 @@ import { interfaceAtiva, useInterfaceAtiva } from '../lib/leveza';
 import type { Servidor } from '../lib/servidor';
 import { resolutionOf, type Codec, type Preset } from '../lib/presets';
 import { stopTransmission, type StreamEvent } from '../lib/sidecar';
-import { aoMudarVoz, capturaDe, lerVoz } from '../lib/voz';
+import { AVISO_FORTE, aoMudarVoz, aplicarForte, capturaDe, lerVoz, salvarVoz } from '../lib/voz';
 import { horaDe, type ChatMessage, type Person, type RoomActions, type RoomModel, type Stream, type StreamStats } from './model';
 
 export type Session = { servidor: Servidor };
@@ -213,6 +213,7 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
         try {
           await room.localParticipant.setMicrophoneEnabled(true);
           setMicError(undefined);
+          if (lerVoz().forte) forte(true);
         } catch {
           setMicError(MIC_ERROR);
         }
@@ -224,14 +225,29 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       }
     })();
 
+    // Strong suppression (RNNoise): on failure the mic is back to normal; say so and turn the option off.
+    function forte(ligar: boolean) {
+      const mic = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.audioTrack;
+      if (!mic) return;
+      void aplicarForte(mic, ligar).then((r) => {
+        if (r !== 'falhou' || closed) return;
+        setMicError(AVISO_FORTE);
+        salvarVoz({ forte: false });
+      });
+    }
+
     // Settings > Voz: devices and processing change without leaving the room.
     const pararVoz = aoMudarVoz((v, antes) => {
       room.options.audioCaptureDefaults = capturaDe(v);
       if (v.saida !== antes.saida) void room.switchActiveDevice('audiooutput', v.saida || 'default').catch(() => undefined);
       const mic = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.audioTrack;
       if (!mic) return;
-      if (v.entrada !== antes.entrada || v.eco !== antes.eco || v.ganho !== antes.ganho || v.ruido !== antes.ruido) {
-        void mic.restartTrack(capturaDe(v)).then(() => setMicError(undefined), () => setMicError(MIC_ERROR));
+      const trocouForte = v.forte !== antes.forte;
+      if (trocouForte || v.entrada !== antes.entrada || v.eco !== antes.eco || v.ganho !== antes.ganho || v.ruido !== antes.ruido) {
+        // The strong toggle also flips the browser's suppression (capturaDe), so the track restarts first.
+        void mic.restartTrack(capturaDe(v))
+          .then(() => { if (!trocouForte) setMicError(undefined); }, () => setMicError(MIC_ERROR))
+          .finally(() => { if (trocouForte) forte(v.forte); });
       }
     });
 

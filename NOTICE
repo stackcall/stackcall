@@ -10,3 +10,11 @@ Texto da GPL v3 incorporado pela LGPL (também em FFmpeg-GPL.txt): https://www.g
 
 As DLLs do FFmpeg ficam ao lado de stackcall-core.exe e podem ser substituídas
 por builds compatíveis com a mesma ABI e arquitetura.
+
+Supressão forte de ruído (opcional, carregada só quando ligada):
+- @sapphi-red/web-noise-suppressor 0.4.2, licença MIT, (c) 2022 翠 / green.
+  https://github.com/sapphi-red/web-noise-suppressor
+- O WASM do RNNoise vem de @shiguredo/rnnoise-wasm, licença Apache-2.0.
+  https://github.com/shiguredo/rnnoise-wasm
+- RNNoise, da Xiph.Org Foundation e Jean-Marc Valin, licença BSD-3-Clause.
+  https://github.com/xiph/rnnoise

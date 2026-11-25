@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTema } from '../lib/tema';
-import { capturaDe, lerVoz, salvarVoz, type Voz } from '../lib/voz';
+import { aoMudarVoz, capturaDe, lerVoz, salvarVoz, type Voz } from '../lib/voz';
 
 type Aparelho = { id: string; nome: string };
 
@@ -18,6 +18,8 @@ async function listarAparelhos() {
 export function SecaoPreferencias() {
   const [tema, setTema] = useTema();
   const [voz, setVoz] = useState<Voz>(lerVoz);
+  // The room can turn the strong suppression off by itself when it fails: follow it.
+  useEffect(() => aoMudarVoz(setVoz), []);
   const [aparelhos, setAparelhos] = useState<Awaited<ReturnType<typeof listarAparelhos>> | undefined>();
   const mudar = (m: Partial<Voz>) => setVoz(salvarVoz(m));
   const atualizar = () => void listarAparelhos().then(setAparelhos);
@@ -69,8 +71,12 @@ export function SecaoPreferencias() {
         <section className="janela flex flex-col">
           <div className="barra">Tratamento da voz</div>
           <div className="flex flex-col p-4">
-            <Opcao id="voz-ruido" rotulo="Supressão de ruído" ajuda="Tira ruído constante (ventoinha, ar-condicionado). Teclado alto ainda passa."
+            <Opcao id="voz-ruido" rotulo="Supressão de ruído" ajuda={voz.forte
+              ? 'Fica parada enquanto a supressão forte está ligada, para não cortar a voz duas vezes.'
+              : 'Tira ruído constante (ventoinha, ar-condicionado). Teclado alto ainda passa.'}
               ligado={voz.ruido} onMudar={(ruido) => mudar({ ruido })} />
+            <Opcao id="voz-forte" rotulo="Supressão forte (teclado e cliques)" ajuda="Filtro RNNoise: tira teclado e mouse. Gasta um pouco de CPU e pode cortar o fim de palavras. Só carrega quando você liga."
+              ligado={voz.forte} onMudar={(forte) => mudar({ forte })} />
             <Opcao id="voz-eco" rotulo="Cancelamento de eco" ajuda="Precisa se o som sai da caixa. Com fone de ouvido, pode desligar."
               ligado={voz.eco} onMudar={(eco) => mudar({ eco })} />
             <Opcao id="voz-ganho" rotulo="Controle automático de ganho" ajuda="Iguala o volume da sua voz. Desligue se ele subir e descer sozinho."
