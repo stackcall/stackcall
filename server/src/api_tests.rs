@@ -534,7 +534,14 @@ async fn friendship_is_personal_and_presence_comes_from_livekit() {
         .online
         .lock()
         .unwrap()
-        .push(format!("{}:tela", id(&member)));
+        .extend([id(&member).to_owned(), format!("{}:tela", id(&member))]);
+    fixture
+        .config
+        .db
+        .lock()
+        .unwrap()
+        .execute("INSERT INTO salas VALUES ('room-in-use', 'Em uso', 99)", [])
+        .unwrap();
     let owner_token = session(&owner);
     let member_token = session(&member);
     make_invite(app, member_token).await;
@@ -562,6 +569,24 @@ async fn friendship_is_personal_and_presence_comes_from_livekit() {
         .unwrap();
     assert_eq!(entry["amigo"], true);
     assert_eq!(entry["online"], true);
+    assert_eq!(entry["sala"], "room-in-use");
+    let (status, rooms) = send(
+        app,
+        Method::GET,
+        "/api/salas",
+        Some(owner_token),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let live = rooms
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|room| room["id"] == "room-in-use")
+        .unwrap();
+    assert_eq!(live["pessoas"], 1);
+    assert_eq!(live["no_ar"], true);
     let (_, people) = send(
         app,
         Method::GET,
@@ -577,12 +602,35 @@ async fn friendship_is_personal_and_presence_comes_from_livekit() {
         .find(|person| person["id"] == id(&owner))
         .unwrap();
     assert_eq!(entry["amigo"], false);
+    assert!(entry["sala"].is_null());
     assert_eq!(
         send(app, Method::DELETE, &uri, Some(owner_token), Value::Null)
             .await
             .0,
         StatusCode::NO_CONTENT
     );
+}
+
+#[tokio::test]
+async fn lists_rooms_and_people_with_empty_presence_during_livekit_outage() {
+    let fixture = fixture(false).await;
+    let app = &fixture.app;
+    let owner = join(app, &fixture.owner_code, "Dono").await;
+    let owner_token = Some(session(&owner));
+    fixture.livekit.abort();
+
+    let (status, rooms) = send(app, Method::GET, "/api/salas", owner_token, Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    let rooms = rooms.as_array().unwrap();
+    assert!(!rooms.is_empty());
+    for room in rooms {
+        assert_eq!(room["pessoas"], 0);
+        assert_eq!(room["no_ar"], false);
+    }
+    let (status, people) = send(app, Method::GET, "/api/pessoas", owner_token, Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(people[0]["online"], false);
+    assert!(people[0]["sala"].is_null());
 }
 
 #[tokio::test]

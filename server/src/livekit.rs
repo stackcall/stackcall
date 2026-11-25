@@ -4,7 +4,10 @@ use livekit_api::access_token::{AccessToken, VideoGrants};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::{collections::HashSet, time::Duration};
+use std::{
+    collections::{BTreeMap, HashSet},
+    time::Duration,
+};
 use url::Url;
 
 const TOKEN_TTL: Duration = Duration::from_secs(3600);
@@ -42,6 +45,40 @@ struct Participants {
 #[derive(Deserialize)]
 struct Participant {
     identity: String,
+}
+
+#[derive(Default)]
+pub struct Presence(BTreeMap<String, HashSet<String>>);
+
+impl Presence {
+    pub fn room_status(&self, id: &str) -> (usize, bool) {
+        let Some(identities) = self.0.get(id) else {
+            return (0, false);
+        };
+        let mut no_ar = false;
+        let people: HashSet<_> = identities
+            .iter()
+            .map(|identity| {
+                if let Some(user) = identity.strip_suffix(":tela") {
+                    no_ar = true;
+                    user
+                } else {
+                    identity.as_str()
+                }
+            })
+            .collect();
+        (people.len(), no_ar)
+    }
+
+    pub fn room_for(&self, user: &str) -> Option<&str> {
+        let find = |id: &str| {
+            self.0
+                .iter()
+                .find(|(_, identities)| identities.contains(id))
+                .map(|(room, _)| room.as_str())
+        };
+        find(user).or_else(|| find(&format!("{user}:tela")))
+    }
 }
 
 impl LiveKit {
@@ -135,8 +172,17 @@ impl LiveKit {
         Ok(rooms.rooms.unwrap_or_default())
     }
 
-    pub async fn online(&self) -> Result<HashSet<String>, StatusCode> {
-        let lists: Vec<Vec<Participant>> = stream::iter(self.active_rooms().await?)
+    pub async fn online(&self) -> Presence {
+        self.try_online()
+            .await
+            .inspect_err(|status| {
+                eprintln!("Aviso: presença do LiveKit indisponível ({status})");
+            })
+            .unwrap_or_default()
+    }
+
+    async fn try_online(&self) -> Result<Presence, StatusCode> {
+        let rooms = stream::iter(self.active_rooms().await?)
             .map(|room| async move {
                 let grants = VideoGrants {
                     room_admin: true,
@@ -147,7 +193,7 @@ impl LiveKit {
                     .call("ListParticipants", grants, json!({"room": room.name}))
                     .await?;
                 if reply.status() == StatusCode::NOT_FOUND {
-                    return Ok::<_, StatusCode>(Vec::new());
+                    return Ok::<_, StatusCode>((room.name, HashSet::new()));
                 }
                 let people: Participants = reply
                     .error_for_status()
@@ -155,22 +201,18 @@ impl LiveKit {
                     .json()
                     .await
                     .map_err(|_| StatusCode::BAD_GATEWAY)?;
-                Ok(people.participants.unwrap_or_default())
+                let identities = people
+                    .participants
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|participant| participant.identity)
+                    .collect();
+                Ok((room.name, identities))
             })
             .buffer_unordered(8)
             .try_collect()
             .await?;
-        Ok(lists
-            .into_iter()
-            .flatten()
-            .map(|participant| {
-                participant
-                    .identity
-                    .strip_suffix(":tela")
-                    .map_or(participant.identity.as_str(), |id| id)
-                    .to_owned()
-            })
-            .collect())
+        Ok(Presence(rooms))
     }
 
     pub async fn kick(&self, user_id: &str) -> Result<(), StatusCode> {

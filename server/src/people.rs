@@ -27,13 +27,14 @@ struct Person {
     profile: Profile,
     amigo: bool,
     online: bool,
+    sala: Option<String>,
 }
 
 async fn list(
     State(config): State<Arc<Config>>,
     user: User,
 ) -> Result<Json<Vec<Person>>, StatusCode> {
-    let online = config.livekit.online().await?;
+    let online = config.livekit.online().await;
     db::run(config, move |conn| {
         user.ensure_active(conn)?;
         let mut friends = conn
@@ -54,10 +55,14 @@ async fn list(
             .query_map([], Profile::from_row)
             .map_err(db::internal)?
             .map(|row| {
-                row.map(|profile| Person {
-                    amigo: friends.contains(&profile.id),
-                    online: online.contains(&profile.id),
-                    profile,
+                row.map(|profile| {
+                    let sala = online.room_for(&profile.id);
+                    Person {
+                        amigo: friends.contains(&profile.id),
+                        online: sala.is_some(),
+                        sala: sala.map(str::to_owned),
+                        profile,
+                    }
                 })
             })
             .collect::<rusqlite::Result<Vec<_>>>()
