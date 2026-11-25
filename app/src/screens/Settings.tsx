@@ -10,9 +10,10 @@ import { testMachine } from '../lib/sidecar';
 import type { Convite, Pessoa, Sala, Servidor, Usuario } from '../lib/servidor';
 import { escolherServidor, lerServidores, servidorAtual } from '../lib/servidores';
 import { SecaoPreferencias } from './Preferencias';
+import { SecaoAtalhos } from './Atalhos';
 
 type Updater = ReturnType<typeof useUpdater>;
-type Secao = 'servidor' | 'servidores' | 'voz' | 'sobre';
+type Secao = 'servidor' | 'servidores' | 'voz' | 'atalhos' | 'sobre';
 
 const CATEGORY_LABEL: Record<(typeof CATEGORIES)[number], [string, string]> = {
   Novidades: ['novidade', 'novidades'],
@@ -50,13 +51,15 @@ type Props = {
 export function Settings(props: Props) {
   const [secao, setSecao] = useState<Secao>(props.servidor ? 'servidor' : 'sobre');
   useEffect(() => {
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && props.onClose();
+    // Esc while a shortcut is being recorded cancels the recording, not the whole screen.
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && !document.querySelector('[data-gravando]') && props.onClose();
     window.addEventListener('keydown', esc);
     return () => window.removeEventListener('keydown', esc);
   }, [props.onClose]);
   const itens: [Secao, string][] = [
     ...(props.servidor ? ([['servidor', 'Servidor'], ['servidores', 'Servidores']] as [Secao, string][]) : []),
     ['voz', 'Voz e tema'],
+    ['atalhos', 'Atalhos'],
     ['sobre', 'Sobre e atualizações'],
   ];
   return (
@@ -73,6 +76,7 @@ export function Settings(props: Props) {
         {secao === 'servidor' && props.servidor && props.eu && <SecaoServidor {...props} servidor={props.servidor} eu={props.eu} />}
         {secao === 'servidores' && <SecaoServidores atual={props.servidor?.url ?? null} onTrocar={props.onTrocar} onColarConvite={props.onColarConvite} />}
         {secao === 'voz' && <SecaoPreferencias />}
+        {secao === 'atalhos' && <SecaoAtalhos />}
         {secao === 'sobre' && <SecaoSobre updater={props.updater} inCall={props.inCall} onNotes={props.onNotes} />}
       </main>
     </div>

@@ -11,6 +11,7 @@ import '@fontsource/permanent-marker/400.css';
 import './index.css';
 import { aplicarTema, mostrarJanela } from './lib/tema';
 import { iniciarLeveza } from './lib/leveza';
+import { iniciarAtalhos } from './lib/atalhos';
 import { App } from './App';
 
 aplicarTema();
@@ -18,6 +19,7 @@ aplicarTema();
 const temaDev = import.meta.env.DEV ? new URLSearchParams(location.search).get('tema') : null;
 if (temaDev === 'claro' || temaDev === 'escuro') aplicarTema(temaDev);
 iniciarLeveza();
+iniciarAtalhos();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

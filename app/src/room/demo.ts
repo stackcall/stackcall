@@ -33,6 +33,7 @@ export function useDemoRoom(room: string, me: { id: string; name: string }): Roo
     stageStats: empty || !watching ? null : { height: 1080, fps: 60, codec: 'AV1', mbps: 4.2 },
     streams: empty ? [] : [{ owner: people[1], watching, watchers: watching ? 3 : 2, info: '1080p60 · AV1' }],
     toggleMic: () => setMicOn((v) => !v),
+    setMic: (on) => setMicOn(on),
     toggleDeafen: () => setDeafened((v) => !v),
     toggleCamera: () => undefined,
     setVolume: (id, v) => setVolumes((s) => ({ ...s, [id]: v })),

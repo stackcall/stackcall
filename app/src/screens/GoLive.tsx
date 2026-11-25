@@ -18,6 +18,8 @@ type Props = {
   onNativeStart?(source: CaptureSource, preset: PresetCard, codec: Codec, audio: boolean): Promise<void>;
   /** The native stream failed in this session (Room opens the screen again in the WebView2 mode). */
   fallback?: boolean;
+  /** Bumped by the "Entrar no ar" global shortcut while this screen is open: confirms the saved choice. */
+  confirmar?: number;
 };
 
 /** Same text as `UNAVAILABLE` in app/src-tauri/src/sidecar.rs: the core is missing on this machine. */
@@ -38,7 +40,7 @@ function readJson<T>(key: string): T | null {
   }
 }
 
-export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart, onNativeStart, fallback }: Props) {
+export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart, onNativeStart, fallback, confirmar = 0 }: Props) {
   const canNative = demo || (isTauri() && !!onNativeStart);
   const [reserva, setReserva] = useState<string | null>(() =>
     fallback ? 'A transmissão nativa falhou nesta sessão.' : canNative ? null : '');
@@ -202,6 +204,13 @@ export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart, on
       setBusy(false);
     }
   }
+
+  // Second press of the global shortcut: start with what is chosen (start() checks canStart).
+  const startRef = useRef(start);
+  startRef.current = start;
+  useEffect(() => {
+    if (confirmar > 0) void startRef.current();
+  }, [confirmar]);
 
   function onKey(event: KeyboardEvent) {
     if (event.key === 'Escape' && !busy) {

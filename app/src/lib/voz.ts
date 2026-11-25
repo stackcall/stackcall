@@ -10,10 +10,14 @@ export type Voz = {
   ruido: boolean;
   /** RNNoise on top (keyboard, clicks). Off by default; its code only downloads when turned on. */
   forte: boolean;
+  /** "voz" = voice detection (default); "ptt" = the mic opens only while the push to talk key is held. */
+  modo: 'voz' | 'ptt';
+  /** Push to talk release delay in ms (keeps the end of the word). */
+  soltura: number;
 };
 
 const CHAVE = 'stackcall.voz';
-export const VOZ_PADRAO: Voz = { entrada: '', saida: '', eco: true, ganho: true, ruido: true, forte: false };
+export const VOZ_PADRAO: Voz = { entrada: '', saida: '', eco: true, ganho: true, ruido: true, forte: false, modo: 'voz', soltura: 200 };
 
 export function lerVoz(): Voz {
   try {
@@ -25,6 +29,8 @@ export function lerVoz(): Voz {
       ganho: v.ganho !== false,
       ruido: v.ruido !== false,
       forte: v.forte === true,
+      modo: v.modo === 'ptt' ? 'ptt' : 'voz',
+      soltura: Number.isFinite(v.soltura) ? Math.min(1000, Math.max(0, Math.round(v.soltura))) : 200,
     };
   } catch {
     return { ...VOZ_PADRAO };

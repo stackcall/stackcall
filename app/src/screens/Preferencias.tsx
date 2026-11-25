@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTema } from '../lib/tema';
+import { lerAtalhos } from '../lib/atalhos';
 import { aoMudarVoz, capturaDe, lerVoz, salvarVoz, type Voz } from '../lib/voz';
 
 type Aparelho = { id: string; nome: string };
@@ -46,6 +47,32 @@ export function SecaoPreferencias() {
             <button type="button" aria-pressed={tema === 'escuro'} onClick={() => setTema('escuro')}>Escuro</button>
           </div>
           <span className="text-[14px] text-texto-fraco">O claro é o padrão. A barra de título do Windows acompanha.</span>
+        </div>
+      </section>
+
+      <section className="janela flex flex-col" aria-label="Modo de voz">
+        <div className="barra">Modo de voz</div>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 p-4">
+          <div className="abas" role="group" aria-label="Modo de voz">
+            <button type="button" aria-pressed={voz.modo === 'voz'} onClick={() => mudar({ modo: 'voz' })}>Detecção de voz</button>
+            <button type="button" aria-pressed={voz.modo === 'ptt'} onClick={() => mudar({ modo: 'ptt' })}>Apertar para falar</button>
+          </div>
+          {voz.modo === 'ptt' ? (
+            <>
+              <label className="flex items-center gap-3 text-[14px]">
+                <span className="font-bold">Soltura</span>
+                <input type="range" min={0} max={1000} step={50} value={voz.soltura} className="h-11 w-40"
+                  onChange={(e) => mudar({ soltura: Number(e.target.value) })} aria-valuetext={`${voz.soltura} milissegundos`} />
+                <span className="w-16 font-mono tabular-nums">{voz.soltura} ms</span>
+              </label>
+              <span className="basis-full text-[14px] text-texto-fraco">
+                O microfone só abre enquanto você segura a tecla, e fecha {voz.soltura} ms depois de soltar.{' '}
+                {lerAtalhos().teclas.falar ? `Tecla: ${lerAtalhos().teclas.falar}.` : 'Grave a tecla em Configurações > Atalhos.'}
+              </span>
+            </>
+          ) : (
+            <span className="text-[14px] text-texto-fraco">O microfone abre sozinho quando você fala. É o padrão.</span>
+          )}
         </div>
       </section>
 

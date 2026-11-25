@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks';
 import { App } from '../App';
@@ -290,4 +290,33 @@ test('lobby, small group with nobody in voice: rooms, invite and people outside 
   await userEvent.click(within(screen.getByRole('region', { name: 'Chame a galera' })).getByRole('button', { name: 'Convidar' }));
   expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/\/c\//));
   expect(await screen.findByText('Link copiado.')).toBeInTheDocument();
+});
+
+test('settings > atalhos: record, conflict warning, clear; a global shortcut acts on the room', async () => {
+  history.replaceState(null, '', '/?demo=1');
+  const { dispararAtalho } = await import('../lib/atalhos');
+  render(<App />);
+  await screen.findByRole('button', { name: 'Desligar microfone' });
+  act(() => dispararAtalho('mic', 'pressionado'));
+  expect(screen.getByRole('button', { name: 'Ligar microfone' })).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole('button', { name: 'Configurações' }));
+  const dialog = screen.getByRole('dialog', { name: 'Configurações' });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Atalhos' }));
+  expect(within(dialog).getAllByText(/Sem atalho/)).toHaveLength(8); // nothing on by default
+
+  const gravar = async (acao: string, opts: KeyboardEventInit) => {
+    await userEvent.click(within(dialog).getByRole('button', { name: `Gravar atalho para ${acao}` }));
+    expect(within(dialog).getByText(/Aperte as teclas/)).toBeInTheDocument();
+    act(() => void window.dispatchEvent(new KeyboardEvent('keydown', opts)));
+    await vi.waitFor(() => expect(within(dialog).queryByText(/Aperte as teclas/)).not.toBeInTheDocument());
+  };
+  await gravar('Ligar e desligar o microfone', { key: 'm', code: 'KeyM', ctrlKey: true, shiftKey: true });
+  await gravar('Silenciar tudo', { key: 'm', code: 'KeyM', ctrlKey: true, shiftKey: true });
+  expect(await within(dialog).findAllByRole('alert')).toHaveLength(2);
+  expect(within(dialog).getByText(/Mesmo atalho de Silenciar tudo/)).toBeInTheDocument();
+
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Limpar atalho de Silenciar tudo' }));
+  expect(within(dialog).queryByText(/Mesmo atalho/)).not.toBeInTheDocument();
+  expect(JSON.parse(localStorage.getItem('stackcall.atalhos')!).teclas).toEqual({ mic: 'Ctrl+Shift+M' });
 });
