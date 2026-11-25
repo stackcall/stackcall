@@ -18,3 +18,8 @@ Supressão forte de ruído (opcional, carregada só quando ligada):
   https://github.com/shiguredo/rnnoise-wasm
 - RNNoise, da Xiph.Org Foundation e Jean-Marc Valin, licença BSD-3-Clause.
   https://github.com/xiph/rnnoise
+
+Stackcall distribui as fontes Anton, Hanken Grotesk e JetBrains Mono sob
+SIL Open Font License 1.1, e Permanent Marker sob Apache License 2.0.
+Os avisos de autoria e os textos dessas licenças estão na pasta licenses
+da instalação do Stackcall.

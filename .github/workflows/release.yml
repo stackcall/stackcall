@@ -20,17 +20,27 @@ jobs:
   windows:
     runs-on: windows-latest
     permissions:
+      actions: read
       contents: read
+    outputs:
+      signpath: ${{ steps.signpath-config.outputs.enabled }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Detectar configuração da SignPath
+        id: signpath-config
+        env:
+          SIGNPATH_ENABLED: ${{ secrets.SIGNPATH_API_TOKEN != '' && vars.SIGNPATH_ORGANIZATION_ID != '' && vars.SIGNPATH_PROJECT_SLUG != '' && vars.SIGNPATH_SIGNING_POLICY_SLUG != '' }}
+        run: '"enabled=$env:SIGNPATH_ENABLED" >> $env:GITHUB_OUTPUT'
+
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
-          cache: ${{ hashFiles('app/package-lock.json') != '' && 'npm' || '' }}
+          cache: ${{ steps.signpath-config.outputs.enabled != 'true' && 'npm' || '' }}
+          package-manager-cache: ${{ steps.signpath-config.outputs.enabled != 'true' }}
           cache-dependency-path: app/package-lock.json
 
       - name: Conferir versão do app
@@ -46,6 +56,7 @@ jobs:
           if (!$version) { throw 'Informe uma versão no formato X.Y.Z.' }
           node scripts/versao.mjs --check $version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "version=$version" >> $env:GITHUB_OUTPUT
           "tag=v$version" >> $env:GITHUB_OUTPUT
 
       - name: Instalar git-cliff
@@ -104,6 +115,7 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: steps.signpath-config.outputs.enabled != 'true'
         with:
           workspaces: |
             app/src-tauri
@@ -112,18 +124,130 @@ jobs:
       - run: npm ci
         working-directory: app
 
-      - name: Preparar FFmpeg LGPL e compilar o sidecar x64
-        run: ./scripts/preparar-ffmpeg.ps1
-
-      - name: Compilar instalador NSIS sem assinatura
+      - name: Compilar app e sidecar
         working-directory: app
         run: |
           '{"bundle":{"createUpdaterArtifacts":false}}' | Set-Content -Encoding ascii src-tauri/release.conf.json
-          npm run tauri build -- --bundles nsis --config src-tauri/release.conf.json
+          npm run tauri build -- --no-bundle --config src-tauri/release.conf.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Preparar executáveis para assinatura
+        if: steps.signpath-config.outputs.enabled == 'true'
+        run: |
+          $inputDir = New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/signpath-input/bin" -Force
+          Copy-Item -LiteralPath app/src-tauri/target/release/stackcall.exe -Destination "$inputDir/stackcall.exe"
+          Copy-Item -LiteralPath app/src-tauri/sidecar/stackcall-core-x86_64-pc-windows-msvc.exe -Destination "$inputDir/stackcall-core.exe"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.signpath-config.outputs.enabled == 'true'
+        id: unsigned-binaries
+        with:
+          name: signpath-windows-binaries
+          path: ${{ runner.temp }}/signpath-input/bin/*
+          if-no-files-found: error
+
+      - name: Assinar os executáveis com a SignPath
+        if: steps.signpath-config.outputs.enabled == 'true'
+        uses: signpath/github-action-submit-signing-request@a2c5b60d9c75f073142b653c354b632eedce097b # v3.2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: windows-binaries
+          github-artifact-id: ${{ steps.unsigned-binaries.outputs.artifact-id }}
+          parameters: |
+            version: ${{ toJSON(steps.version.outputs.version) }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: ${{ runner.temp }}/signpath-output/bin
+
+      - name: Conferir e instalar os executáveis assinados na árvore de build
+        if: steps.signpath-config.outputs.enabled == 'true'
+        run: |
+          $signed = "$env:RUNNER_TEMP/signpath-output/bin"
+          foreach ($file in @('stackcall.exe', 'stackcall-core.exe')) {
+            $status = (Get-AuthenticodeSignature -LiteralPath "$signed/$file").Status
+            if ($status -ne 'Valid') { throw "Assinatura inválida em ${file}: $status." }
+          }
+          Copy-Item -LiteralPath "$signed/stackcall.exe" -Destination app/src-tauri/target/release/stackcall.exe -Force
+          Copy-Item -LiteralPath "$signed/stackcall-core.exe" -Destination app/src-tauri/sidecar/stackcall-core-x86_64-pc-windows-msvc.exe -Force
+
+      - name: Montar instalador NSIS
+        id: nsis
+        working-directory: app
+        env:
+          SIGNPATH_ENABLED: ${{ steps.signpath-config.outputs.enabled }}
+        run: |
+          $options = @()
+          if ($env:SIGNPATH_ENABLED -eq 'true') {
+            # A gravação do tipo de instalador no PE invalidaria a assinatura do executável.
+            $options = @('--no-sign', '--no-binary-patching')
+          }
+          npm run tauri bundle -- --bundles nsis --config src-tauri/release.conf.json @options
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $installers = @(Get-ChildItem -File src-tauri/target/release/bundle/nsis/*_x64-setup.exe)
           if ($installers.Count -ne 1) { throw 'A build precisa gerar um instalador NSIS x64.' }
-          $bytes = $installers[0].Length
+          $installer = $installers[0]
+          "path=$($installer.FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Preparar instalador para assinatura
+        if: steps.signpath-config.outputs.enabled == 'true'
+        env:
+          INSTALLER_PATH: ${{ steps.nsis.outputs.path }}
+        run: |
+          foreach ($file in @('app/src-tauri/target/release/stackcall.exe', 'app/src-tauri/sidecar/stackcall-core-x86_64-pc-windows-msvc.exe')) {
+            $status = (Get-AuthenticodeSignature -LiteralPath $file).Status
+            if ($status -ne 'Valid') { throw "Assinatura inválida após empacotar ${file}: $status." }
+          }
+          $inputDir = New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/signpath-input/nsis" -Force
+          Copy-Item -LiteralPath $env:INSTALLER_PATH -Destination "$inputDir/stackcall-setup.exe"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.signpath-config.outputs.enabled == 'true'
+        id: unsigned-nsis
+        with:
+          name: signpath-windows-nsis
+          path: ${{ runner.temp }}/signpath-input/nsis/stackcall-setup.exe
+          if-no-files-found: error
+
+      - name: Assinar o instalador com a SignPath
+        if: steps.signpath-config.outputs.enabled == 'true'
+        uses: signpath/github-action-submit-signing-request@a2c5b60d9c75f073142b653c354b632eedce097b # v3.2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: windows-nsis
+          github-artifact-id: ${{ steps.unsigned-nsis.outputs.artifact-id }}
+          parameters: |
+            version: ${{ toJSON(steps.version.outputs.version) }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: ${{ runner.temp }}/signpath-output/nsis
+
+      - name: Conferir o instalador assinado e creditar a Foundation
+        if: steps.signpath-config.outputs.enabled == 'true'
+        env:
+          INSTALLER_PATH: ${{ steps.nsis.outputs.path }}
+        run: |
+          $signed = "$env:RUNNER_TEMP/signpath-output/nsis/stackcall-setup.exe"
+          $status = (Get-AuthenticodeSignature -LiteralPath $signed).Status
+          if ($status -ne 'Valid') { throw "Assinatura inválida no instalador: $status." }
+          Copy-Item -LiteralPath $signed -Destination $env:INSTALLER_PATH -Force
+          @(
+            ''
+            'Free code signing provided by SignPath.io, certificate by SignPath Foundation'
+            ''
+            "[Code signing policy]($env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/blob/$env:GITHUB_SHA/CODE_SIGNING_POLICY.md)"
+          ) | Add-Content -LiteralPath release-notes.md -Encoding utf8
+
+      - name: Registrar tamanho do instalador
+        env:
+          INSTALLER_PATH: ${{ steps.nsis.outputs.path }}
+        run: |
+          $bytes = (Get-Item -LiteralPath $env:INSTALLER_PATH).Length
           "Instalador NSIS: $bytes bytes ($([Math]::Round($bytes / 1MB, 2)) MiB)" >> $env:GITHUB_STEP_SUMMARY
 
       - name: Conferir DLLs do sidecar
@@ -160,8 +284,9 @@ jobs:
           }
           Expand-Archive -LiteralPath $archive -DestinationPath "$env:RUNNER_TEMP/tauri-cli"
 
-      - name: Assinar o instalador
+      - name: Assinar o instalador final para o atualizador
         env:
+          SIGNPATH_ENABLED: ${{ needs.windows.outputs.signpath }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
@@ -171,6 +296,10 @@ jobs:
           $installers = @(Get-ChildItem -LiteralPath "$env:RUNNER_TEMP/nsis" -Recurse -File -Filter '*_x64-setup.exe')
           if ($installers.Count -ne 1) { throw 'Esperado um instalador NSIS x64.' }
           $installer = $installers[0]
+          if ($env:SIGNPATH_ENABLED -eq 'true') {
+            $status = (Get-AuthenticodeSignature -LiteralPath $installer.FullName).Status
+            if ($status -ne 'Valid') { throw "Assinatura inválida no instalador para publicação: $status." }
+          }
           & "$env:RUNNER_TEMP/tauri-cli/cargo-tauri.exe" tauri signer sign --app-version $env:GITHUB_REF_NAME.Substring(1) $installer.FullName
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (!(Test-Path -LiteralPath "$($installer.FullName).sig" -PathType Leaf)) {
@@ -190,18 +319,26 @@ jobs:
           $changelog = Join-Path $inputDir 'changelog.json'
           $signature = (Get-Content -LiteralPath "$($installer.FullName).sig" -Raw).Trim()
           if (!$signature) { throw 'A assinatura do instalador está vazia.' }
+          $null = [Convert]::FromBase64String($signature)
           $manifest = Join-Path $env:RUNNER_TEMP 'latest.json'
+          $version = $tag.Substring(1)
+          $url = "https://github.com/$repo/releases/download/$([Uri]::EscapeDataString($tag))/$([Uri]::EscapeDataString($installer.Name))"
           @{
-            version = $tag.Substring(1)
+            version = $version
             notes = Get-Content -LiteralPath $notes -Raw
             pub_date = [DateTimeOffset]::UtcNow.ToString('o')
             platforms = @{
               'windows-x86_64' = @{
-                url = "https://github.com/$repo/releases/download/$([Uri]::EscapeDataString($tag))/$([Uri]::EscapeDataString($installer.Name))"
+                url = $url
                 signature = $signature
               }
             }
           } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifest -Encoding utf8
+          $readback = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+          $windows = $readback.platforms.'windows-x86_64'
+          if ($readback.version -cne $version -or $windows.url -cne $url -or $windows.signature -cne $signature) {
+            throw 'O manifesto não corresponde ao instalador e à assinatura da versão.'
+          }
 
           $existing = gh release view $tag --repo $repo --json isDraft,tagName
           if ($LASTEXITCODE -eq 0) {
