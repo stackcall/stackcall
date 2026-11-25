@@ -8,9 +8,12 @@ import {
 import { interfaceAtiva, useInterfaceAtiva } from '../lib/leveza';
 import type { Servidor } from '../lib/servidor';
 import { resolutionOf, type Codec, type Preset } from '../lib/presets';
-import { stopTransmission, type StreamEvent } from '../lib/sidecar';
+import { setTransmissionPaused, stopTransmission, type StreamEvent } from '../lib/sidecar';
 import { aoMudarVoz, capturaDe, lerVoz } from '../lib/voz';
 import { horaDe, type ChatMessage, type Person, type RoomActions, type RoomModel, type Stream, type StreamStats } from './model';
+import {
+  ScreenAudience, supportsWatching, WATCH_ATTRIBUTE, WATCH_GRACE_MS, WATCH_HEARTBEAT_MS, WATCH_RESOURCE, WATCH_TOPIC,
+} from './screenAudience';
 
 export type Session = { servidor: Servidor };
 
@@ -23,6 +26,7 @@ const streamInfo = (preset: Preset, codec: Codec) =>
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const MAX_CHAT = 200;
+type NativeStream = { id: string; info: string; ready: boolean; pauseRequested: boolean; paused: boolean };
 /** Hidden this long (game on top, tray, minimized): stop receiving the watched screen. */
 export const VIDEO_OCULTO_MS = 10_000;
 const MIC_ERROR = 'Microfone indisponível. Confira a permissão do Windows e o dispositivo.';
@@ -50,11 +54,14 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
   const deafRef = useRef(false);
   const micBeforeDeafen = useRef(true);
   const volumes = useRef(new Map<string, number>());
-  /** viewer identity -> streamer identity, from "watch" data messages plus our own entry. */
-  const watchMap = useRef(new Map<string, string>());
+  const legacyWatchers = useRef(new Map<string, string>());
+  const audience = useRef(new ScreenAudience());
   const watchingRef = useRef<string | null>(null);
+  const announcedScreen = useRef<string | null>(null);
+  const watchedVideoEnabled = useRef(true);
+  const checkPauseRef = useRef<(() => void) | null>(null);
   const live = useRef<{ track: MediaStreamTrack; info: string } | null>(null);
-  const native = useRef<{ id: string; info: string } | null>(null);
+  const native = useRef<NativeStream | null>(null);
 
   const applyVolume = (p: RemoteParticipant) => {
     const v = deafRef.current ? 0 : volumes.current.get(screenOwner(p.identity)) ?? 1;
@@ -67,13 +74,35 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       .publishData(encoder.encode(JSON.stringify({ target })), { reliable: true, topic: 'watch', destinationIdentities: to })
       .catch(() => undefined);
 
+  const announceWatch = (room: Room, repeat = false) => {
+    if (roomRef.current !== room || room.state !== 'connected') return;
+    const owner = watchedVideoEnabled.current ? watchingRef.current : null;
+    const screen = owner
+      ? [owner + SCREEN_SUFFIX, owner].find((id) =>
+        room.remoteParticipants.get(id)?.getTrackPublication(Track.Source.ScreenShare)) ?? null
+      : null;
+    const previous = announcedScreen.current;
+    const send = (screen: string, watching: boolean) => {
+      void room.localParticipant.publishData(encoder.encode(JSON.stringify({ screen, watching })),
+        { reliable: true, topic: WATCH_TOPIC }).catch(() => undefined);
+    };
+    if (previous && previous !== screen) send(previous, false);
+    if (screen && (repeat || screen !== previous)) send(screen, true);
+    announcedScreen.current = screen;
+    if (previous !== screen) rerender();
+  };
+
   useEffect(() => {
     if (!isTauri()) return;
     const unsubscribe = listen<StreamEvent>('stackcall-stream', ({ payload }) => {
-      if (native.current?.id !== payload.id) return;
+      const current = native.current;
+      if (current?.id !== payload.id) return;
       if (payload.event === 'error' || payload.event === 'stopped') {
         native.current = null;
         if (payload.event === 'error') setStreamError(payload.reason ?? 'O núcleo de transmissão foi encerrado.');
+        rerender();
+      } else if (payload.event === 'pause_changed' && typeof payload.paused === 'boolean') {
+        current.paused = payload.paused;
         rerender();
       }
     });
@@ -99,8 +128,58 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
     setAutoRetry(true);
     setStreamError(undefined);
     setChat([]);
-    watchMap.current.clear();
+    legacyWatchers.current.clear();
+    const viewers = new ScreenAudience();
+    audience.current = viewers;
     watchingRef.current = null;
+    announcedScreen.current = null;
+    watchedVideoEnabled.current = interfaceAtiva();
+
+    let emptySince: number | null = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let retryControl: ReturnType<typeof setTimeout> | undefined;
+    let pendingControl = Promise.resolve();
+    // Serialize control so a pause already in transit cannot arrive after its resume.
+    const requestPause = (stream: NativeStream, paused: boolean) => {
+      if (stream.pauseRequested === paused) return;
+      stream.pauseRequested = paused;
+      pendingControl = pendingControl.then(async () => {
+        if (closed || native.current !== stream || stream.pauseRequested !== paused) return;
+        await setTransmissionPaused(stream.id, paused);
+      }).catch(() => {
+        if (!closed && native.current === stream && stream.pauseRequested === paused) {
+          stream.pauseRequested = !paused;
+          clearTimeout(retryControl);
+          retryControl = setTimeout(checkPause, 1000);
+        }
+      });
+    };
+    const checkPause = () => {
+      clearTimeout(timer);
+      if (closed) return;
+      const stream = native.current;
+      const now = performance.now();
+      if (viewers.expire(now)) rerender();
+      let next = viewers.nextExpiry();
+      const canPause = stream?.ready && room.state === 'connected' &&
+        viewers.canPause(room.localParticipant.identity + SCREEN_SUFFIX, [...room.remoteParticipants.values()].filter((p) =>
+          !screenParticipant(p.identity)));
+      if (!canPause || !stream) {
+        emptySince = null;
+        if (stream?.ready) requestPause(stream, false);
+      } else {
+        emptySince ??= now;
+        const pauseAt = emptySince + WATCH_GRACE_MS;
+        if (pauseAt > now) next = Math.min(next, pauseAt);
+        else requestPause(stream, true);
+      }
+      if (Number.isFinite(next)) timer = setTimeout(checkPause, next - now);
+    };
+    checkPauseRef.current = checkPause;
+    const heartbeat = setInterval(() => announceWatch(room, true), WATCH_HEARTBEAT_MS);
+    const advertise = () => {
+      void room.localParticipant.setAttributes({ [WATCH_ATTRIBUTE]: WATCH_RESOURCE }).catch(() => undefined);
+    };
 
     // Voice and cameras subscribe at once; a screen only after "Assistir", to save bandwidth.
     const subscribeDefault = (pub: RemoteTrackPublication, p: RemoteParticipant) => {
@@ -110,19 +189,21 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
         if (pub.source === Track.Source.ScreenShare) pub.setSubscribed(true);
       } else if (!SCREEN.includes(pub.source) || watchingRef.current === owner) {
         pub.setSubscribed(true);
+        if (pub.source === Track.Source.ScreenShare && !watchedVideoEnabled.current) pub.setEnabled(false);
       }
     };
 
     const clearWatch = (owner: string) => {
-      if (watchingRef.current !== owner) return;
+      if (closed || watchingRef.current !== owner) return;
       watchingRef.current = null;
-      watchMap.current.delete(room.localParticipant.identity);
       void sendWatch(room, null);
+      announceWatch(room);
     };
 
     room
       .on(RoomEvent.TrackPublished, (pub, p) => {
         subscribeDefault(pub, p);
+        if (pub.source === Track.Source.ScreenShare) announceWatch(room);
         rerender();
       })
       .on(RoomEvent.TrackUnpublished, (pub, p) => {
@@ -145,33 +226,51 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
         rerender();
       })
       .on(RoomEvent.ParticipantConnected, (p) => {
+        if (closed) return;
         applyVolume(p);
-        const mine = watchMap.current.get(room.localParticipant.identity);
+        const mine = watchingRef.current;
         if (mine && !screenParticipant(p.identity)) void sendWatch(room, mine, [p.identity]);
+        checkPause();
         rerender();
       })
+      .on(RoomEvent.ParticipantActive, (p) => {
+        if (!screenParticipant(p.identity)) announceWatch(room, true);
+      })
+      .on(RoomEvent.ParticipantAttributesChanged, (_changed, p) => {
+        if (closed) return;
+        if (supportsWatching(p.attributes) && legacyWatchers.current.delete(p.identity)) rerender();
+        checkPause();
+      })
       .on(RoomEvent.ParticipantDisconnected, (p) => {
-        watchMap.current.delete(p.identity);
+        if (closed) return;
+        legacyWatchers.current.delete(p.identity);
+        viewers.leave(p.identity);
         if (screenParticipant(p.identity) || !room.remoteParticipants.has(p.identity + SCREEN_SUFFIX)) {
           clearWatch(screenOwner(p.identity));
         }
+        checkPause();
         rerender();
       })
       .on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
-        if (!participant || screenParticipant(participant.identity)) return;
-        let msg: { text?: unknown; target?: unknown };
+        if (closed || !participant || screenParticipant(participant.identity) ||
+            !room.remoteParticipants.has(participant.identity)) return;
+        let msg: { text?: unknown; target?: unknown; screen?: unknown; watching?: unknown } | null;
         try {
           msg = JSON.parse(decoder.decode(payload));
         } catch {
           return;
         }
+        if (!msg) return;
         if (topic === 'chat' && typeof msg.text === 'string' && msg.text.trim()) {
           const text = msg.text.slice(0, 2000);
           const who = participant.name || participant.identity;
           setChat((c) => [...c.slice(-MAX_CHAT + 1), { id: crypto.randomUUID(), who, hora: horaDe(new Date()), text, mine: false }]);
-        } else if (topic === 'watch') {
-          if (typeof msg.target === 'string') watchMap.current.set(participant.identity, msg.target);
-          else watchMap.current.delete(participant.identity);
+        } else if (topic === WATCH_TOPIC && typeof msg.screen === 'string' && typeof msg.watching === 'boolean') {
+          if (viewers.announce(participant.identity, msg.screen, msg.watching, performance.now())) rerender();
+          checkPause();
+        } else if (topic === 'watch' && !supportsWatching(participant.attributes)) {
+          if (typeof msg.target === 'string') legacyWatchers.current.set(participant.identity, msg.target);
+          else legacyWatchers.current.delete(participant.identity);
           rerender();
         }
       })
@@ -187,8 +286,14 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       .on(RoomEvent.TrackUnmuted, rerender)
       .on(RoomEvent.LocalTrackPublished, rerender)
       .on(RoomEvent.LocalTrackUnpublished, rerender)
+      .on(RoomEvent.ConnectionStateChanged, checkPause)
       .on(RoomEvent.Reconnecting, () => setState('reconnecting'))
-      .on(RoomEvent.Reconnected, () => setState('connected'))
+      .on(RoomEvent.Reconnected, () => {
+        if (closed) return;
+        advertise();
+        announceWatch(room, true);
+        setState('connected');
+      })
       .on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {
         if (closed) return;
         if (native.current) void stopTransmission(native.current.id).catch(() => undefined);
@@ -204,6 +309,7 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
         if (closed) return;
         await room.connect(url, token, { autoSubscribe: false });
         if (closed) return void room.disconnect();
+        advertise();
         room.remoteParticipants.forEach((p) => {
           applyVolume(p);
           p.trackPublications.forEach((pub) => subscribeDefault(pub, p));
@@ -260,6 +366,10 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       closed = true;
       pararVoz();
       clearInterval(stats);
+      clearInterval(heartbeat);
+      clearTimeout(timer);
+      clearTimeout(retryControl);
+      checkPauseRef.current = null;
       live.current?.track.stop();
       live.current = null;
       const publishing = native.current;
@@ -278,10 +388,16 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
     const telas = () => [...room.remoteParticipants.values()].flatMap((p) =>
       [...p.trackPublications.values()].filter((pub) => pub.source === Track.Source.ScreenShare && pub.isSubscribed));
     if (ativa) {
+      watchedVideoEnabled.current = true;
       telas().forEach((pub) => pub.setEnabled(true));
+      announceWatch(room);
       return;
     }
-    const t = setTimeout(() => telas().forEach((pub) => pub.setEnabled(false)), VIDEO_OCULTO_MS);
+    const t = setTimeout(() => {
+      watchedVideoEnabled.current = false;
+      telas().forEach((pub) => pub.setEnabled(false));
+      announceWatch(room);
+    }, VIDEO_OCULTO_MS);
     return () => clearTimeout(t);
   }, [ativa, state]);
 
@@ -312,8 +428,6 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
     };
   });
 
-  const watchersOf = (id: string) => [...watchMap.current.values()].filter((t) => t === id).length;
-
   const streams: Stream[] = [...screenByOwner].map(([id, p]) => {
     const owner = people.find((p) => p.id === id) ?? {
       id, name: p.name || id, isLocal: false, speaking: false, muted: true, level: 0, volume: volumes.current.get(id) ?? 1, live: true,
@@ -324,7 +438,8 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       owner,
       track: owner.isLocal || pub.isSubscribed ? pub.videoTrack : undefined,
       watching: owner.isLocal || watchingRef.current === owner.id,
-      watchers: watchersOf(owner.id),
+      watchers: audience.current.count(p.identity) + Number(announcedScreen.current === p.identity)
+        + [...legacyWatchers.current].filter(([viewer, target]) => target === owner.id && !audience.current.has(viewer)).length,
       info: (owner.isLocal ? native.current?.info ?? live.current?.info : undefined) ?? (dims ? `${dims.height}P` : ''),
     };
   });
@@ -332,7 +447,10 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
   const setScreenSubscribed = (id: string, on: boolean) => {
     for (const identity of [id, id + SCREEN_SUFFIX]) {
       room?.remoteParticipants.get(identity)?.trackPublications.forEach((pub) => {
-        if (SCREEN.includes(pub.source)) pub.setSubscribed(on);
+        if (SCREEN.includes(pub.source)) {
+          pub.setSubscribed(on);
+          if (on && pub.source === Track.Source.ScreenShare) pub.setEnabled(watchedVideoEnabled.current);
+        }
       });
     }
   };
@@ -369,17 +487,18 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       if (!room) return;
       if (watchingRef.current && watchingRef.current !== id) setScreenSubscribed(watchingRef.current, false);
       watchingRef.current = id;
-      watchMap.current.set(room.localParticipant.identity, id);
       setScreenSubscribed(id, true);
       void sendWatch(room, id);
+      announceWatch(room);
       rerender();
     },
     unwatch: (id) => {
       if (!room) return;
       setScreenSubscribed(id, false);
+      if (watchingRef.current !== id) return;
       watchingRef.current = null;
-      watchMap.current.delete(room.localParticipant.identity);
       void sendWatch(room, null);
+      announceWatch(room);
       rerender();
     },
     sendChat: (raw) => {
@@ -422,7 +541,9 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       if (roomRef.current !== room) throw new Error('A sala mudou. Escolha a fonte novamente.');
       const access = { url: fresh.url, token: fresh.screen_token };
       const id = crypto.randomUUID();
-      native.current = { id, info: streamInfo(preset, codec) };
+      const stream: NativeStream = { id, info: streamInfo(preset, codec), ready: false, pauseRequested: false, paused: false };
+      native.current = stream;
+      checkPauseRef.current?.();
       setStreamError(undefined);
       try {
         await invoke('iniciar_transmissao', { args: {
@@ -434,6 +555,8 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
           await stopTransmission(id);
           throw new Error('A sala mudou. Escolha a fonte novamente.');
         }
+        stream.ready = true;
+        checkPauseRef.current?.();
         rerender();
       } catch (error) {
         if (native.current?.id === id) native.current = null;
@@ -454,6 +577,7 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
 
   return {
     room: roomId, state, error, autoRetry, people, streams, chat, deafened, micError, streamError, ping, stageStats,
+    videoPaused: native.current?.paused,
     micOn: !!lp?.isMicrophoneEnabled,
     cameraOn: !!lp?.isCameraEnabled,
     ...actions,

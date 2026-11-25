@@ -305,7 +305,10 @@ function RoomView(props: ComSala & { model: RoomModel & RoomActions; reconexao: 
               )}
             </div>
             {stage || !vivo ? (
-              <Palco model={model} stage={stage} reconexao={props.reconexao} onPick={setStageId} onRetry={props.onRetry} />
+              <Palco model={model} stage={stage} reconexao={props.reconexao} onPick={(id) => {
+                if (stage?.watching && !stage.owner.isLocal && stage.owner.id !== id) model.unwatch(stage.owner.id);
+                setStageId(id);
+              }} onRetry={props.onRetry} />
             ) : (
               <SalaLivre model={model} others={others} porId={porId} pessoas={pessoas} salas={salas} sala={sala} conectada={conectada}
                 onGoLive={abrirGoLive} onCartao={onCartao} />
@@ -563,6 +566,9 @@ function Voce({ model, nome, sala, imLive, temPalco, onGoLive, onSair, onFallbac
           <Icone nome="sair" tamanho={20} />
         </button>
       </div>
+      {imLive && model.videoPaused && (
+        <p role="status" className="m-0 px-3 pb-2 text-[12px] text-texto-fraco">Ninguém assistindo · vídeo pausado</p>
+      )}
       {(model.micError || model.streamError) && (
         <div role="alert" className="flex flex-col gap-2 border-t border-texto px-3 py-2 text-[13px] text-perigo">
           {model.micError && <span>{model.micError}</span>}

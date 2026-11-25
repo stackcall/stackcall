@@ -432,6 +432,7 @@ async fn signs_scoped_livekit_tokens_and_checks_room_permissions() {
     assert_eq!(voice.video.room, room);
     assert!(voice.video.room_join);
     assert!(!voice.video.room_admin);
+    assert!(voice.video.can_update_own_metadata());
     assert_eq!(screen.sub, format!("{}:tela", id(&member)));
     assert_eq!(screen.video.room, room);
     assert_eq!(screen.exp - screen.nbf, 3600);
@@ -441,6 +442,7 @@ async fn signs_scoped_livekit_tokens_and_checks_room_permissions() {
     );
     assert_eq!(screen.video.can_subscribe, Some(false));
     assert_eq!(screen.video.can_publish_data, Some(false));
+    assert!(!screen.video.can_update_own_metadata());
 }
 
 #[tokio::test]

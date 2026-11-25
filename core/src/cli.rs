@@ -23,7 +23,7 @@ pub struct Probe {
     pub hardware_quality: bool,
 }
 
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct Publish {
     #[arg(long)]
     pub url: String,
