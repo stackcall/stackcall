@@ -26,7 +26,6 @@ const MIC_ERROR = 'Microfone indisponível. Confira a permissão do Windows e o 
 
 export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomActions {
   const roomRef = useRef<Room | null>(null);
-  const screenAccess = useRef<{ url: string; token: string; expires: number } | null>(null);
   const [, setTick] = useState(0);
   const rerender = useCallback(() => setTick((t) => t + 1), []);
   const [state, setState] = useState<RoomModel['state']>('connecting');
@@ -171,7 +170,6 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       .on(RoomEvent.Reconnected, () => setState('connected'))
       .on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {
         if (closed) return;
-        screenAccess.current = null;
         if (native.current) void stopTransmission(native.current.id).catch(() => undefined);
         setState('error');
         setError(`A conexão com a sala caiu${reason !== undefined ? ` (motivo ${reason})` : ''}. Troque de aba para tentar de novo.`);
@@ -179,12 +177,10 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
 
     (async () => {
       try {
-        const requestedAt = Date.now();
-        const { url, token, screen_token } = await session.servidor.token(roomId);
+        const { url, token } = await session.servidor.token(roomId);
         if (closed) return;
         await room.connect(url, token, { autoSubscribe: false });
         if (closed) return void room.disconnect();
-        screenAccess.current = { url, token: screen_token, expires: requestedAt + 3600_000 };
         room.remoteParticipants.forEach((p) => {
           applyVolume(p);
           p.trackPublications.forEach((pub) => subscribeDefault(pub, p));
@@ -227,7 +223,6 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
     }, 2000);
     return () => {
       closed = true;
-      screenAccess.current = null;
       clearInterval(stats);
       live.current?.track.stop();
       live.current = null;
@@ -368,9 +363,11 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       rerender();
     },
     goLiveNative: async (source, preset, codec, audio) => {
-      const access = screenAccess.current;
-      if (!room || !lp || !access || !preset.trial) throw new Error('Sem conexão com a sala ou preset indisponível.');
-      if (Date.now() >= access.expires) throw new Error('O token de transmissão expirou. Entre novamente na sala.');
+      if (!room || !lp || !preset.trial) throw new Error('Sem conexão com a sala ou preset indisponível.');
+      // The screen token lasts 1 h: ask a new one at every go live (bugs.md 2.5).
+      const fresh = await session.servidor.token(roomId);
+      if (roomRef.current !== room) throw new Error('A sala mudou. Escolha a fonte novamente.');
+      const access = { url: fresh.url, token: fresh.screen_token };
       const id = crypto.randomUUID();
       native.current = { id, info: streamInfo(preset, codec) };
       setStreamError(undefined);

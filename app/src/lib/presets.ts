@@ -49,7 +49,8 @@ export type PresetInput = {
   trials?: Trial[];
 };
 
-export type PresetCard = Preset & { locked: boolean; reason?: string; recommended: boolean; trial?: Trial };
+/** `short` is the reason in a few words, for a 44 px row; `reason` is the full sentence. */
+export type PresetCard = Preset & { locked: boolean; reason?: string; short?: string; recommended: boolean; trial?: Trial };
 
 const fmt = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
@@ -57,31 +58,35 @@ export function evaluatePresets({ codec, uploadMbps, sourceHeight, sourceWidth, 
   const cards = PRESETS.map((p): PresetCard => {
     const enc = encoding[p.id];
     let reason: string | undefined;
+    let short: string | undefined;
     let trial: Trial | undefined;
+    const lock = (full: string, brief: string) => { reason = full; short = brief; };
     if (!trials && p.lockedReason) {
-      reason = p.lockedReason;
+      lock(p.lockedReason, p.height > 1440 ? 'Só no modo nativo' : 'Ainda em teste');
     } else if (sourceHeight !== null && sourceHeight < p.height * 0.9) {
-      reason = `A fonte escolhida tem ${sourceHeight} linhas. Escolha uma tela maior para ${p.height}p.`;
+      lock(`A fonte escolhida tem ${sourceHeight} linhas. Escolha uma tela maior para ${p.height}p.`, `Fonte com ${sourceHeight} linhas`);
     } else if (sourceWidth !== undefined && sourceWidth < p.width * 0.9) {
-      reason = `A fonte escolhida tem ${sourceWidth} pixels de largura. Escolha uma tela maior.`;
+      lock(`A fonte escolhida tem ${sourceWidth} pixels de largura. Escolha uma tela maior.`, `Fonte com ${sourceWidth} px de largura`);
     } else if (trials) {
       const label = codec === 'av1' ? 'AV1' : 'H.264';
       const matching = trials.filter((t) => t.ok && t.encoder.startsWith(codec + '_')
         && t.resolution === resolutionOf(p) && t.target_fps === p.fps);
       const smooth = matching.filter((t) => (t.fps ?? 0) >= p.fps * 0.95);
       trial = smooth.find((t) => (t.encoder_load_percent ?? Infinity) <= 80);
-      if (!matching.length) reason = `A GPU não conseguiu codificar ${presetLabel(p)} em ${label}.`;
-      else if (!smooth.length) reason = `A GPU não sustentou ${p.fps} fps neste preset.`;
-      else if (!trial) reason = 'O preset ultrapassa 80% de carga estimada do codificador.';
-      if (!reason && uploadMbps === null) reason = 'Meça o upload para liberar este preset.';
+      if (!matching.length) lock(`A GPU não conseguiu codificar ${presetLabel(p)} em ${label}.`, `Placa não codifica em ${label}`);
+      else if (!smooth.length) lock(`A GPU não sustentou ${p.fps} fps neste preset.`, `Placa não sustenta ${p.fps} fps`);
+      else if (!trial) lock('O preset ultrapassa 80% de carga estimada do codificador.', 'Placa acima de 80% de carga');
+      if (!reason && uploadMbps === null) lock('Meça o upload para liberar este preset.', 'Falta medir o upload');
     } else if (enc && (!enc.supported || !enc.smooth)) {
-      reason = `O WebView2 desta máquina não segura ${presetLabel(p)} em ${codec === 'av1' ? 'AV1' : 'H.264'}.`;
+      lock(`O WebView2 desta máquina não segura ${presetLabel(p)} em ${codec === 'av1' ? 'AV1' : 'H.264'}.`, 'WebView2 não segura');
     }
+    // Single headroom (hotfix 0.3.1): 80% of the measured upload must cover 1.5x the bitrate plus audio.
     const requiredMbps = p.mbps[codec] * 1.5 + 0.3;
     if (!reason && uploadMbps !== null && uploadMbps * 0.8 < requiredMbps) {
-      reason = `Seu upload medido (${fmt(uploadMbps)} Mbps) não sustenta este preset. Ele pede cerca de ${fmt(requiredMbps)} Mbps com folga.`;
+      lock(`Seu upload medido (${fmt(uploadMbps)} Mb/s) não sustenta este preset. Ele pede cerca de ${fmt(requiredMbps)} Mb/s com folga.`,
+        `Pede ${fmt(requiredMbps / 0.8)} Mb/s · seu upload ${fmt(uploadMbps)}`);
     }
-    return { ...p, locked: !!reason, reason, recommended: false, trial };
+    return { ...p, locked: !!reason, reason, short, recommended: false, trial };
   });
   const best = cards.filter((c) => !c.locked && c.height <= 1080).at(-1);
   if (best) best.recommended = true;

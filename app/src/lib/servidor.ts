@@ -1,4 +1,5 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
+import { store } from './config';
 
 /**
  * Porteiro API (docs/PLANO-ABERTO.md). One server = one group of friends.
@@ -187,23 +188,66 @@ export function servidorReal(url: string): Servidor {
   };
 }
 
-/** Upload speed in Mbit/s against `POST /api/upload-test`; null when unreachable. */
-export async function medirUpload(url: string, segundos = 5) {
-  const alvo = url.replace(/\/+$/, '') + '/api/upload-test';
-  let size = 256 * 1024;
-  let bytes = 0;
-  const start = performance.now();
+const MB = 1024 * 1024;
+const UPLOAD_VALE_MS = 24 * 60 * 60 * 1000;
+let medindo: { servidor: string; promessa: Promise<number | null> } | null = null;
+
+/** Upload measured for this server in the last 24 h, or null. */
+export function uploadGuardado(servidor: string): number | null {
   try {
-    while (performance.now() - start < segundos * 1000) {
-      const sent = performance.now();
-      const response = await fetch(alvo, { method: 'POST', body: new Uint8Array(size), cache: 'no-store' });
-      if (!response.ok) return null;
-      bytes += size;
-      // Grow until one request takes ~1 s, capped below the server limit (16 MB).
-      if (performance.now() - sent < 1000 && size < 8 * 1024 * 1024) size *= 2;
-    }
+    const o = JSON.parse(store.get('upload') ?? 'null') as { mbps: number; at: number; servidor: string } | null;
+    return o && o.servidor === servidor && Date.now() - o.at < UPLOAD_VALE_MS && o.mbps > 0 ? o.mbps : null;
   } catch {
     return null;
   }
-  return (bytes * 8) / ((performance.now() - start) / 1000) / 1e6;
+}
+
+/** Saved upload when fresh; otherwise one test at a time per server, saved for 24 h. */
+export function uploadMedido(servidor: string, refazer = false): Promise<number | null> {
+  const guardado = refazer ? null : uploadGuardado(servidor);
+  if (guardado !== null) return Promise.resolve(guardado);
+  if (medindo?.servidor === servidor) return medindo.promessa;
+  const promessa = medirUpload(servidor).then((mbps) => {
+    if (mbps !== null) store.set('upload', JSON.stringify({ mbps, at: Date.now(), servidor }));
+    return mbps;
+  }).finally(() => {
+    if (medindo?.promessa === promessa) medindo = null;
+  });
+  medindo = { servidor, promessa };
+  return promessa;
+}
+
+/** Mbit/s of one connection, counting only requests of 1 MB or more (the slow TCP start is left out). */
+export function taxaUpload(amostras: { bytes: number; ms: number }[]) {
+  const grandes = amostras.filter((a) => a.bytes >= MB);
+  const usadas = grandes.length ? grandes : amostras;
+  const bytes = usadas.reduce((t, a) => t + a.bytes, 0);
+  const ms = usadas.reduce((t, a) => t + a.ms, 0);
+  return ms > 0 ? (bytes * 8) / (ms / 1000) / 1e6 : 0;
+}
+
+/** Upload speed in Mbit/s against `POST /api/upload-test`, two connections in parallel; null when unreachable. */
+export async function medirUpload(url: string, segundos = 5) {
+  const alvo = url.replace(/\/+$/, '') + '/api/upload-test';
+  const fim = performance.now() + segundos * 1000;
+  const conexao = async () => {
+    const amostras: { bytes: number; ms: number }[] = [];
+    let size = 256 * 1024;
+    while (performance.now() < fim) {
+      const sent = performance.now();
+      const response = await fetch(alvo, { method: 'POST', body: new Uint8Array(size), cache: 'no-store' });
+      if (!response.ok) throw new Error(String(response.status));
+      const ms = performance.now() - sent;
+      amostras.push({ bytes: size, ms });
+      // Grow until one request takes ~1 s, capped below the server limit (16 MB).
+      if (ms < 1000 && size < 8 * MB) size *= 2;
+    }
+    return taxaUpload(amostras);
+  };
+  try {
+    const taxas = await Promise.all([conexao(), conexao()]);
+    return taxas[0] + taxas[1];
+  } catch {
+    return null;
+  }
 }
