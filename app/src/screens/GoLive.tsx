@@ -223,7 +223,7 @@ export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart, on
   }
 
   const gpuLoad = chosen?.trial?.encoder_load_percent ?? null;
-  const uploadText = upload === 'testing' ? 'medindo…' : upload === null ? 'sem resposta' : `${fmt(upload)} Mb/s`;
+  const uploadText = upload === 'testing' ? 'medindo…' : upload === null ? 'sem resposta' : <>{fmt(upload)} <Unit>Mb/s</Unit></>;
   const encoderText = native && testing && !trials ? 'testando a placa…' : `${codecLabel}${codec.hardware ? ' por hardware' : ''}`;
   const testedAt = gpu ? new Date(gpu.at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : null;
   const preview = native ? source : null;
@@ -390,7 +390,12 @@ function Stat({ label, value, unit }: { label: string; value: string; unit?: str
   return (
     <span className="flex min-w-0 flex-col px-3 py-1.5 [&+&]:border-l [&+&]:border-texto">
       <span className="rotulo truncate text-[10px]">{label}</span>
-      <b className="font-display text-[26px] leading-none tabular-nums">{value}{unit && <span className="rotulo ml-1 text-[10px]">{unit}</span>}</b>
+      <b className="font-display text-[26px] leading-none tabular-nums">{value}{unit && <Unit className="ml-1 text-[11px] text-texto-fraco">{unit}</Unit>}</b>
     </span>
   );
+}
+
+/** Units keep their case ("Mb/s", not "MB/S") inside uppercase labels and title bars. */
+function Unit({ children, className = '' }: { children: string; className?: string }) {
+  return <span className={`font-mono normal-case ${className}`}>{children}</span>;
 }

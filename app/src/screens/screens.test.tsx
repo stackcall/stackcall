@@ -147,6 +147,13 @@ test('go live layout: only the source list scrolls and the action bar is outside
   await vi.waitFor(() => expect(action).toBeEnabled());
 });
 
+test('go live keeps the case of Mb/s inside uppercase labels', async () => {
+  render(<GoLive demo server="demo" roomLabel="CS" viewers={4} onCancel={() => undefined} onStart={async () => undefined} />);
+  const units = await screen.findAllByText('Mb/s');
+  expect(units.length).toBeGreaterThanOrEqual(2);
+  for (const unit of units) expect(unit).toHaveClass('normal-case');
+});
+
 const nativeSources = [
   { id: 'hmonitor:1', title: 'Tela 1', process_name: null, pid: null, width: 1920, height: 1080, thumbnail: null, minimized: false },
   { id: 'hwnd:123:456', title: 'Counter-Strike 2', process_name: 'cs2.exe', pid: 456, width: 1920, height: 1080, thumbnail: null, minimized: true },
