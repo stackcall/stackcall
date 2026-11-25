@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.3.1",
+    "date": "2026-11-24",
+    "categories": [
+      {
+        "name": "Correções",
+        "items": [
+          { "message": "A lista de fontes mostrava janelas que não estavam abertas e usava o tamanho errado para janelas minimizadas.", "breaking": false },
+          { "message": "O preset 1080p60 ficava travado mesmo com upload suficiente.", "breaking": false }
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.3.0",
     "date": "2026-11-24",
     "categories": [

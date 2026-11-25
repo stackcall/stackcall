@@ -71,10 +71,12 @@ mantenha a chamada em outro processo para verificar o isolamento.
 ## JSON no stdout
 
 `sources` imprime um array de objetos com `id`, `title`, `process_name`,
-`pid`, `width`, `height` e `thumbnail`. Passe o `id` diretamente em
+`pid`, `width`, `height`, `minimized` e `thumbnail`. Passe o `id` diretamente em
 `publish --source`. Monitores têm `process_name` e `pid` nulos. A miniatura
 é um PNG de até 320 × 320 px codificado em base64. O campo pode ser nulo
 quando o Windows não entrega um quadro para prévia.
+Janelas minimizadas usam o tamanho restaurado ou o do monitor, sem miniatura.
+Se o Windows não informar nenhum tamanho utilizável, `width` e `height` são nulos.
 
 `probe` imprime um objeto com `adapters` e `trials`. Cada adaptador
 inclui `name`, `vendor_id` (decimal), `vendor`, `dedicated_bytes` e

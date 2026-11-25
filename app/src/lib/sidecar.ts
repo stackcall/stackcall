@@ -5,8 +5,9 @@ export type CaptureSource = {
   title: string;
   process_name: string | null;
   pid: number | null;
-  width: number;
-  height: number;
+  width: number | null;
+  height: number | null;
+  minimized: boolean;
   thumbnail: string | null;
 };
 

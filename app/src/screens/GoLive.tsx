@@ -113,11 +113,10 @@ export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart, on
     codec: codec.codec,
     uploadMbps: typeof upload === 'number' ? upload : null,
     sourceHeight,
-    sourceWidth: native ? source?.width : undefined,
+    sourceWidth: native ? source?.width ?? undefined : undefined,
     encoding,
     trials: native ? trials ?? [] : undefined,
-  }).filter((p) => !native || p.height <= 1080
-    || (p.trial && typeof upload === 'number' && upload * 0.5 >= p.uploadNeeded));
+  });
   const chosen = cards.find((c) => c.id === picked && !c.locked) ?? cards.find((c) => c.recommended);
   const codecLabel = codec.codec === 'av1' ? 'AV1' : 'H.264';
   const surface = SURFACE[track?.getSettings().displaySurface ?? ''] ?? 'fonte';
@@ -185,12 +184,17 @@ export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart, on
                   className={`flex min-w-0 flex-col border border-texto bg-superficie p-0 text-left active:translate-y-px ${on ? 'outline-[3px] -outline-offset-1 outline-destaque' : ''}`}>
                   <span className="relative flex h-[104px] items-end border-b border-texto bg-palco p-2">
                     {candidate.thumbnail && <img alt="" className="absolute inset-0 size-full object-contain" src={`data:image/png;base64,${candidate.thumbnail}`} />}
-                    <span className="rotulo relative text-[10px] text-[#b3b3ab]">{candidate.width}×{candidate.height}</span>
+                    {candidate.width !== null && candidate.height !== null && (
+                      <span className="rotulo relative text-[10px] text-[#b3b3ab]">{candidate.width}×{candidate.height}</span>
+                    )}
                   </span>
                   <span className="flex min-w-0 items-center gap-2 px-3 py-2.5">
                     <b title={candidate.title} className="truncate text-[14px]">{candidate.title}</b>
                     <span className="rotulo ml-auto shrink-0 text-[10px]">{candidate.pid ? 'janela' : 'monitor'}</span>
                   </span>
+                  {candidate.minimized && (
+                    <span className="px-3 pb-2.5 text-[13px] text-texto-fraco">Minimizada: volte ao jogo antes de entrar no ar</span>
+                  )}
                 </button>
               );
             })}

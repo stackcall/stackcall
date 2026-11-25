@@ -1,11 +1,14 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { clearMocks, mockIPC } from '@tauri-apps/api/mocks';
 import { App } from '../App';
 import { Entrada } from './Entrada';
 import { GoLive } from './GoLive';
 import { servidorFalso } from '../lib/falso';
 import { lerConvite } from '../lib/convite';
-import type { Servidor } from '../lib/servidor';
+import { medirUpload, type Servidor } from '../lib/servidor';
+
+vi.mock('../lib/servidor', { spy: true });
 
 // jsdom has no layout, so the virtual list would render nothing; show every message.
 vi.mock('@tanstack/react-virtual', () => ({
@@ -119,6 +122,37 @@ test('go live shows locked 4K and recommends 1080p60 in demo', async () => {
   expect(radios).toHaveLength(6);
   expect(radios.filter((c) => c.hasAttribute('disabled'))).toHaveLength(3);
   expect(screen.getByRole('radio', { checked: true })).toHaveTextContent('1080p60 fps');
+});
+
+test('go live uses the corrected dimensions of a minimized native source', async () => {
+  vi.stubGlobal('isTauri', true);
+  vi.mocked(medirUpload).mockResolvedValue(26.4);
+  onTestFinished(() => {
+    clearMocks();
+    vi.unstubAllGlobals();
+    vi.mocked(medirUpload).mockRestore();
+  });
+  const source = {
+    id: 'hwnd:123:456', title: 'Counter-Strike 2', process_name: 'cs2.exe', pid: 456,
+    width: 1920, height: 1080, thumbnail: null, minimized: true,
+  };
+  mockIPC((command) => {
+    if (command === 'listar_fontes') return [source];
+    if (command === 'testar_maquina') return { trials: [
+      { encoder: 'av1_nvenc', resolution: '720p', target_fps: 30, ok: true, fps: 30, encoder_load_percent: 50 },
+      { encoder: 'av1_nvenc', resolution: '1080p', target_fps: 60, ok: true, fps: 60, encoder_load_percent: 60 },
+    ] };
+    throw new Error(`Unexpected Tauri command: ${command}`);
+  });
+  render(<GoLive demo={false} server="demo" roomLabel="CS" viewers={4} onCancel={() => undefined}
+    onStart={async () => undefined} onNativeStart={async () => undefined} />);
+
+  const button = await screen.findByRole('button', { name: /Counter-Strike 2/ });
+  expect(button).toHaveTextContent('1920×1080');
+  expect(button).toHaveTextContent(/minimizada: volte ao jogo antes de entrar no ar/i);
+  await userEvent.click(button);
+  expect(screen.getByRole('radio', { checked: true })).toHaveTextContent('1080p60 fps');
+  expect(screen.getByRole('button', { name: 'Entrar no ar' })).toBeEnabled();
 });
 
 test('settings: admin generates, copies and revokes an invite; creates a room', async () => {
