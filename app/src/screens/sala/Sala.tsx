@@ -9,7 +9,7 @@ import { Icone } from '../../components/Icone';
 import { useInterfaceAtiva } from '../../lib/leveza';
 import { demoScreen } from '../../lib/config';
 import { ultimoAlvo, esperaCutucar, marcarCutucada, marcarSilenciado } from '../../lib/cutucadas';
-import { replay as nucleoReplay, type EstadoReplay } from '../../lib/nucleo';
+import { replay as nucleoReplay } from '../../lib/nucleo';
 import { lerPreferencias, salvarPreferencias } from '../../lib/preferencias';
 import { publicarQuemFala } from '../../lib/quemfala';
 import { registrarItensSala, type ItemPaleta } from '../../lib/paleta';
@@ -55,7 +55,7 @@ export function RoomView(props: ComSala & { model: RoomModel & RoomActions; reco
   const [confirmarAr, setConfirmarAr] = useState(0);
   const [painel, setPainel] = useState<Painel>(null);
   const [grade, setGrade] = useState(() => new URLSearchParams(location.search).has('grade'));
-  const [replay, setReplay] = useState<EstadoReplay | null>(null);
+  const [replayAtivo, setReplayAtivo] = useState(false);
   const [aviso, setAviso] = useState<{ texto: string; erro?: boolean } | null>(null);
   const antesDoMudo = useRef(new Map<string, number>());
   const me = model.people.find((p) => p.isLocal);
@@ -67,14 +67,25 @@ export function RoomView(props: ComSala & { model: RoomModel & RoomActions; reco
   const conectada = model.state === 'connected';
   const gravando = model.people.filter((p) => p.replay);
 
-  useEffect(() => void nucleoReplay.estado().then(setReplay, () => setReplay(null)), []);
+  // Replay state and clip results come from the core (stackcall-replay); the clip is ready only on "saved".
+  useEffect(() => {
+    void nucleoReplay.atual().then(setReplayAtivo, () => setReplayAtivo(false));
+    return nucleoReplay.aoEvento((e) => {
+      if (e.event === 'state') setReplayAtivo(e.ativo);
+      else if (e.event === 'saved') {
+        bipe('liga');
+        avisar(`Clipe de ${Math.round(e.duracao)} s salvo. Veja em Clipes, no topo.`);
+      } else avisar(`O replay parou. ${e.motivo}`, true);
+    });
+  }, []);
+  const replay = { ligado: replayAtivo, segundos: lerPreferencias().replaySegundos };
   useEffect(() => {
     marcarSilenciado(model.deafened);
     return () => marcarSilenciado(false);
   }, [model.deafened]);
   // "Quem fala" window: equal states are dropped by publicarQuemFala, so every render may call it.
   useEffect(() => publicarQuemFala({
-    sala: sala.nome, ping: model.ping, replay: !!replay?.ligado,
+    sala: sala.nome, ping: model.ping, replay: replayAtivo,
     pessoas: model.people.map((p) => ({ id: p.id, nome: p.name, cor: porId.get(p.id)?.cor ?? null, falando: p.speaking, mudo: p.muted })),
   }));
   useEffect(() => () => publicarQuemFala(null), []);
@@ -100,9 +111,7 @@ export function RoomView(props: ComSala & { model: RoomModel & RoomActions; reco
 
   async function salvarClipe() {
     try {
-      const c = await nucleoReplay.salvarClipe();
-      bipe('liga');
-      avisar(`Clipe de ${c.duracao_s} s salvo. Veja em Clipes, no topo.`);
+      await nucleoReplay.salvar();
     } catch (e) {
       avisar(`Não deu para salvar o clipe. ${e instanceof Error ? e.message : String(e)}`, true);
     }
@@ -724,7 +733,7 @@ function BarrasRede({ rede, naBarra = true }: { rede?: Rede; naBarra?: boolean }
 }
 
 function Voce({ model, nome, sala, imLive, replay, onGoLive, onSair, onFallback, onClipe, onOuvem, onMais }: {
-  model: RoomModel & RoomActions; nome: string; sala: string; imLive: boolean; replay: EstadoReplay | null;
+  model: RoomModel & RoomActions; nome: string; sala: string; imLive: boolean; replay: { ligado: boolean; segundos: number };
   onGoLive(): void; onSair(): void; onFallback(): void; onClipe(): void; onOuvem(el: HTMLElement): void; onMais(el: HTMLElement): void;
 }) {
   const me = model.people.find((p) => p.isLocal);

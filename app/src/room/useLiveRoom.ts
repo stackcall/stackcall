@@ -5,7 +5,7 @@ import {
   AudioPresets, Participant, RemoteParticipant, RemoteTrackPublication, Room, RoomEvent, Track, VideoQuality,
   type DisconnectReason,
 } from 'livekit-client';
-import { ATRIBUTO_REPLAY } from '../lib/nucleo';
+import { ATRIBUTO_REPLAY, FAIXA_LEVE, replay as nucleoReplay, TOPICO_TELA_LEVE } from '../lib/nucleo';
 import { lerPreferencias, salvarPreferencias } from '../lib/preferencias';
 import { tocarSom } from '../lib/sons';
 import { ATRIBUTO_OUVE, ATRIBUTO_REDE, ouveLista, quemRecebe, redeDe } from './sala05';
@@ -28,6 +28,14 @@ const screenOwner = (identity: string) => screenParticipant(identity) ? identity
 const streamInfo = (preset: Preset, codec: Codec) =>
   `${preset.height === 2160 ? '4K' : `${preset.height}P`}${preset.fps} · ${codec === 'av1' ? 'AV1' : 'H.264'}`;
 const encoder = new TextEncoder();
+/**
+ * A native screen publishes "screen" and, while someone asks for it, "screen-low" (720p30), both as
+ * ScreenShare. The one to show: the light one when asked and present, else the main one.
+ */
+const telaQuer = (p: Participant, leve: boolean) => {
+  const videos = [...p.trackPublications.values()].filter((t) => t.source === Track.Source.ScreenShare);
+  return (leve && videos.find((t) => t.trackName === FAIXA_LEVE)) || videos.find((t) => t.trackName !== FAIXA_LEVE) || videos[0];
+};
 const decoder = new TextDecoder();
 const MAX_CHAT = 200;
 type NativeStream = { id: string; info: string; ready: boolean; pauseRequested: boolean; paused: boolean };
@@ -72,6 +80,28 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
   const publicarOuveRef = useRef<() => void>(() => undefined);
   /** Video may come in: window visible and bad internet mode off. */
   const videoPermitido = () => watchedVideoEnabled.current && !redeRuimRef.current;
+  // Subscribe to the one screen track to show (light or main) and drop the other.
+  const escolherFaixa = (p: RemoteParticipant, on: boolean) => {
+    const escolha = qualidadeRef.current[screenOwner(p.identity)];
+    const leve = escolha === 'leve';
+    const quer = telaQuer(p, leve);
+    p.trackPublications.forEach((pub) => {
+      if (pub.source !== Track.Source.ScreenShare) return;
+      const sim = on && pub === quer;
+      pub.setSubscribed(sim);
+      if (sim) {
+        pub.setEnabled(videoPermitido());
+        // Browser screens have no "screen-low": the SFU low layer is the light one there.
+        if (escolha && pub.trackName !== FAIXA_LEVE) pub.setVideoQuality(leve ? VideoQuality.LOW : VideoQuality.HIGH);
+      }
+    });
+  };
+  const assistindo = (owner: string) => !!roomRef.current?.remoteParticipants.get(owner + SCREEN_SUFFIX)?.getTrackPublication(Track.Source.ScreenShareAudio)?.isSubscribed
+    || [...(roomRef.current?.remoteParticipants.get(owner + SCREEN_SUFFIX)?.trackPublications.values() ?? [])].some((t) => t.source === Track.Source.ScreenShare && t.isSubscribed);
+  const pedirLeve = (owner: string, assistir: boolean) => {
+    void roomRef.current?.localParticipant.publishData(encoder.encode(JSON.stringify({ tela: owner + SCREEN_SUFFIX, assistir })),
+      { reliable: true, topic: TOPICO_TELA_LEVE }).catch(() => undefined);
+  };
 
   const applyVolume = (p: RemoteParticipant) => {
     const v = deafRef.current ? 0 : volumes.current.get(screenOwner(p.identity)) ?? 1;
@@ -199,10 +229,11 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
       const owner = screenOwner(p.identity);
       const ownScreen = screenParticipant(p.identity) && owner === room.localParticipant.identity;
       if (ownScreen) {
-        if (pub.source === Track.Source.ScreenShare) pub.setSubscribed(true);
+        if (pub.source === Track.Source.ScreenShare && pub.trackName !== FAIXA_LEVE) pub.setSubscribed(true);
+      } else if (pub.source === Track.Source.ScreenShare) {
+        if (watchingRef.current === owner) escolherFaixa(p, true);
       } else if (!SCREEN.includes(pub.source) || watchingRef.current === owner) {
         pub.setSubscribed(true);
-        if (pub.source === Track.Source.ScreenShare && !videoPermitido()) pub.setEnabled(false);
       }
     };
 
@@ -223,7 +254,10 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
         rerender();
       })
       .on(RoomEvent.TrackUnpublished, (pub, p) => {
-        if (pub.source === Track.Source.ScreenShare) {
+        // The light track went away (nobody asks for it any more): back to the main one.
+        if (pub.trackName === FAIXA_LEVE) {
+          if (watchingRef.current === screenOwner(p.identity)) escolherFaixa(p, true);
+        } else if (pub.source === Track.Source.ScreenShare) {
           clearWatch(screenOwner(p.identity));
           if (!closed) onPresenceChange?.();
         }
@@ -284,7 +318,7 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
       .on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
         if (closed || !participant || screenParticipant(participant.identity) ||
             !room.remoteParticipants.has(participant.identity)) return;
-        let msg: { text?: unknown; target?: unknown; screen?: unknown; watching?: unknown } | null;
+        let msg: { text?: unknown; target?: unknown; screen?: unknown; watching?: unknown; tela?: unknown; assistir?: unknown } | null;
         try {
           msg = JSON.parse(decoder.decode(payload));
         } catch {
@@ -295,6 +329,12 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
           const text = msg.text.slice(0, 2000);
           const who = participant.name || participant.identity;
           setChat((c) => [...c.slice(-MAX_CHAT + 1), { id: crypto.randomUUID(), who, hora: horaDe(new Date()), text, mine: false }]);
+        } else if (topic === TOPICO_TELA_LEVE && typeof msg.tela === 'string' && typeof msg.assistir === 'boolean') {
+          // Someone asks for my light track: the core encodes it while at least one asks (docs/api-v05-app.md).
+          const n = native.current;
+          if (n?.ready && msg.tela === room.localParticipant.identity + SCREEN_SUFFIX) {
+            void invoke('mudar_faixa_leve', { id: n.id, participante: participant.identity, assistir: msg.assistir }).catch(() => undefined);
+          }
         } else if (topic === WATCH_TOPIC && typeof msg.screen === 'string' && typeof msg.watching === 'boolean') {
           if (viewers.announce(participant.identity, msg.screen, msg.watching, performance.now())) rerender();
           checkPause();
@@ -331,6 +371,7 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
         if (closed) return;
         onPresenceChange?.();
         advertise();
+        lerReplay();
         announceWatch(room, true);
         setState('connected');
       })
@@ -352,6 +393,7 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
         if (closed) return void room.disconnect();
         onPresenceChange?.();
         advertise();
+        lerReplay();
         conectadoEm = performance.now();
         publicarOuve();
         room.remoteParticipants.forEach((p) => {
@@ -377,6 +419,19 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
       }
     })();
 
+    // My replay on or off, for the others (attribute stackcall.replay = "1"), at connect and on every change.
+    const publicarReplay = (ativo: boolean) => {
+      if (!closed && room.state === 'connected') void room.localParticipant.setAttributes({ [ATRIBUTO_REPLAY]: ativo ? '1' : '' }).catch(() => undefined);
+    };
+    function lerReplay() {
+      void nucleoReplay.atual().then(publicarReplay, () => undefined);
+    }
+    const pararReplay = nucleoReplay.aoEvento((e) => e.event === 'state' && publicarReplay(e.ativo));
+    // Light track asked every 20 s while I watch that screen in "Leve"; the core forgets after 45 s.
+    const leveTimer = setInterval(() => {
+      for (const [owner, q] of Object.entries(qualidadeRef.current)) if (q === 'leve' && assistindo(owner)) pedirLeve(owner, true);
+    }, 20_000);
+
     // Join and leave sound (Settings > Sons e avisos); not for the people already there when I arrive.
     function somEntrada(som: 'entrou' | 'saiu') {
       const p = lerPreferencias();
@@ -389,11 +444,7 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
       clearTimeout(ouveTimer);
       ouveTimer = setTimeout(() => {
         if (closed || room.state !== 'connected') return;
-        const vozes = [...room.remoteParticipants.values()].filter((p) => !screenParticipant(p.identity)).map((p) => {
-          const mic = p.getTrackPublication(Track.Source.Microphone);
-          // No microphone published yet: it will be received as soon as it is (voice subscribes at once).
-          return { id: p.identity, assinado: !mic || mic.isSubscribed };
-        });
+        const vozes = [...room.remoteParticipants.keys()].filter((id) => !screenParticipant(id));
         const valor = JSON.stringify(ouveLista(vozes, deafRef.current));
         if (valor === ouvePublicado) return;
         ouvePublicado = valor;
@@ -456,7 +507,7 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
       const owner = watchingRef.current;
       const screen = owner
         ? [room.remoteParticipants.get(owner + SCREEN_SUFFIX), room.remoteParticipants.get(owner)]
-          .map((p) => p?.getTrackPublication(Track.Source.ScreenShare)?.videoTrack).find((t) => !!t)
+          .map((p) => p && telaQuer(p, qualidadeRef.current[owner] === 'leve')?.videoTrack).find((t) => !!t)
         : undefined;
       const report = await screen?.getRTCStatsReport().catch(() => undefined);
       const next = report ? videoOf(report, lastVideo) : null;
@@ -468,6 +519,8 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
       clearTimeout(ouveTimer);
       pararVoz();
       clearInterval(stats);
+      clearInterval(leveTimer);
+      pararReplay();
       clearInterval(heartbeat);
       clearTimeout(timer);
       clearTimeout(retryControl);
@@ -505,6 +558,11 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
 
   const room = roomRef.current;
   const lp = room?.localParticipant;
+  // Replay: the core puts my voice in the clip only while my microphone is really open
+  // (mute, silenciar tudo, push to talk, leaving the room).
+  const micAberto = state === 'connected' && !!lp?.isMicrophoneEnabled && !deafened;
+  useEffect(() => void nucleoReplay.microfone(micAberto).catch(() => undefined), [micAberto]);
+  useEffect(() => () => void nucleoReplay.microfone(false).catch(() => undefined), []);
   const participants: Participant[] = room && lp ? [lp, ...room.remoteParticipants.values()] : [];
   const screenByOwner = new Map<string, Participant>();
   for (const p of participants) {
@@ -543,7 +601,7 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
     const owner = people.find((p) => p.id === id) ?? {
       id, name: p.name || id, isLocal: false, speaking: false, muted: true, level: 0, volume: volumes.current.get(id) ?? 1, live: true,
     };
-    const pub = p.getTrackPublication(Track.Source.ScreenShare)!;
+    const pub = telaQuer(p, qualidadeRef.current[id] === 'leve')!;
     const dims = pub.dimensions;
     return {
       owner,
@@ -557,16 +615,12 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
 
   const setScreenSubscribed = (id: string, on: boolean) => {
     for (const identity of [id, id + SCREEN_SUFFIX]) {
-      room?.remoteParticipants.get(identity)?.trackPublications.forEach((pub) => {
-        if (SCREEN.includes(pub.source)) {
-          pub.setSubscribed(on);
-          if (on && pub.source === Track.Source.ScreenShare) {
-            pub.setEnabled(videoPermitido());
-            if (qualidadeRef.current[id] === 'leve') pub.setVideoQuality(VideoQuality.LOW);
-          }
-        }
-      });
+      const p = room?.remoteParticipants.get(identity);
+      if (!p) continue;
+      p.trackPublications.forEach((pub) => pub.source === Track.Source.ScreenShareAudio && pub.setSubscribed(on));
+      escolherFaixa(p, on);
     }
+    if (qualidadeRef.current[id] === 'leve') pedirLeve(id, on);
   };
 
   const actions: RoomActions = {
@@ -671,7 +725,7 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
         await invoke('iniciar_transmissao', { args: {
           id, source: source.id, resolution: resolutionOf(preset), fps: preset.fps, codec,
           encoder: preset.trial.encoder.split('_')[1], kbps: Math.round(preset.mbps[codec] * 1000),
-          audio_pid: audio ? source.pid : null, url: access.url, token: access.token,
+          game_audio: audio, url: access.url, token: access.token,
         } });
         if (roomRef.current !== room) {
           await stopTransmission(id);
@@ -698,10 +752,11 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
     },
     setQualidade: (ownerId, q) => {
       qualidadeRef.current = { ...qualidadeRef.current, [ownerId]: q };
-      // "Leve" asks the SFU for the low simulcast layer; it only differs when the sender publishes layers.
+      // Native screens: ask the sender's core for "screen-low", then switch when it appears (TrackPublished).
+      if (assistindo(ownerId) || q === 'original') pedirLeve(ownerId, q === 'leve');
       for (const identity of [ownerId, ownerId + SCREEN_SUFFIX]) {
-        room?.remoteParticipants.get(identity)?.getTrackPublication(Track.Source.ScreenShare)
-          ?.setVideoQuality(q === 'leve' ? VideoQuality.LOW : VideoQuality.HIGH);
+        const p = room?.remoteParticipants.get(identity);
+        if (p && assistindo(ownerId)) escolherFaixa(p, true);
       }
       rerender();
     },

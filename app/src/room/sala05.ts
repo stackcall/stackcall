@@ -42,31 +42,31 @@ export function textoRede(r: Rede): string | null {
 /** Bars lit (0..3) for the three network bars. */
 export const barrasDe = (q: QualidadeRede) => (q === 'boa' ? 3 : q === 'media' ? 2 : q === 'ruim' ? 1 : 0);
 
-export type Remoto = { id: string; nome: string; attributes?: Record<string, string>; conectado: boolean; redeRuim?: boolean };
+export type Remoto = { id: string; nome: string; attributes?: Record<string, string>; conectado: boolean };
 export type Receptor = { id: string; nome: string; voz: boolean; motivo?: string; tela: boolean };
 
 /**
  * "Quem recebe você": each remote voice participant, whether my voice reaches them (from their
- * `stackcall.ouve.v1`) and whether they watch my screen. Someone who set my volume to zero still
- * lists me (see `ouveLista`), so "silenced for me" never shows here; only technical reasons do.
+ * `stackcall.ouve.v1`) and whether they watch my screen. Only "silenciar tudo" takes someone out;
+ * a person who set my volume to zero still lists me (see `ouveLista`), so it is never revealed.
  */
 export function quemRecebe(remotos: Remoto[], euId: string, meVeem: Set<string>): Receptor[] {
   return remotos.map((r) => {
     const lista = json(r.attributes, ATRIBUTO_OUVE);
     const declarou = Array.isArray(lista);
     const voz = declarou && (lista as unknown[]).includes(euId);
-    const motivo = voz ? undefined : !r.conectado ? 'conectando' : r.redeRuim ? 'modo internet ruim' : declarou ? undefined : 'app antigo';
+    const motivo = voz ? undefined : !r.conectado ? 'conectando' : !declarou ? 'app antigo'
+      : (lista as unknown[]).length === 0 ? 'som desligado' : 'conectando';
     return { id: r.id, nome: r.nome, voz, motivo, tela: meVeem.has(r.id) };
   });
 }
 
 /**
- * What this client publishes in `stackcall.ouve.v1`: every voice participant whose microphone it
- * receives. Deafened = nobody. The per-person volume is left out on purpose: "silenciar para mim"
- * must not be discoverable by the silenced person (docs/design/v05-interface.md, decision 2).
+ * What this client publishes in `stackcall.ouve.v1`: every other voice participant in the room,
+ * or nobody while "silenciar tudo" is on. The per-person volume is left out on purpose: "silenciar
+ * para mim" must not be discoverable nor counted (decision of 25/11/2026, docs/api-v05.md).
  */
-export const ouveLista = (vozes: { id: string; assinado: boolean }[], ensurdecido: boolean) =>
-  ensurdecido ? [] : vozes.filter((v) => v.assinado).map((v) => v.id).sort();
+export const ouveLista = (vozes: string[], ensurdecido: boolean) => (ensurdecido ? [] : [...vozes].sort());
 
 /** Names for "Replay ligado: Rafa e Duda". */
 export function nomesReplay(nomes: string[]): string {

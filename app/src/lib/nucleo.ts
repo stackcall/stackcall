@@ -1,119 +1,146 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
-import { modoFalso } from './falso';
-import type { PosicaoQuemFala, Preferencias, TamanhoQuemFala } from './preferencias';
+import { listen } from '@tauri-apps/api/event';
+import { primaryMonitor } from '@tauri-apps/api/window';
+import type { PosicaoQuemFala, Preferencias } from './preferencias';
 
 /**
- * Commands of the 0.5 core used by Settings, the lobby and the "quem fala" window.
- * shortcut: names follow the interface agreed in docs/design/v05-interface.md, because
- * docs/api-v05-app.md (branch feat/v05-nucleo) did not exist yet; rename here when it lands.
- * A missing command answers the fallback, so an older core never breaks the screen.
+ * Commands and events of the 0.5 core, as in docs/api-v05-app.md. Inside the app every call goes
+ * to the core and its error reaches the caller (no silent fallback). Outside the app (the demo
+ * `?demo=1` and the tests) the fake answers, so the screens can be reviewed in a browser.
  */
-async function chamar<T>(comando: string, args: Record<string, unknown>, falta: T): Promise<T> {
-  if (!isTauri()) return falta;
-  try {
-    return await invoke<T>(comando, args);
-  } catch {
-    return falta;
-  }
-}
+const falso = () => !isTauri();
 
-const demo = () => !isTauri() && modoFalso();
+/** Size the core gives the "falantes" window (logical pixels). */
+export const JANELA_FALANTES = { largura: 320, altura: 96 };
 
-export type EstadoGsi = { instalado: boolean; caminho: string | null };
-export type JanelaQuemFala = { mostrar: boolean; posicao: PosicaoQuemFala; tamanho: TamanhoQuemFala; largura: number };
-
-/** Window width in CSS pixels for each size; the core sizes the window to fit. */
-export const LARGURA_QUEM_FALA: Record<TamanhoQuemFala, number> = { p: 170, m: 210, g: 270 };
+export type JogoDetectado = { executavel: string; nome: string };
 
 export const nucleo = {
-  /** Display name of the game in front ("Counter-Strike 2"), or null. */
-  jogoAtual: () => (demo() ? Promise.resolve('Counter-Strike 2') : chamar<string | null>('jogo_detectado', {}, null)),
-  /** CS2 Game State Integration config file: installed or not (null = the core does not know). */
-  gsiEstado: () => (demo() ? Promise.resolve<EstadoGsi>({ instalado: false, caminho: null }) : chamar<EstadoGsi | null>('cs2_gsi_estado', {}, null)),
-  /** Writes the GSI config into the CS2 folder. Throws with the reason (CS2 not found, no permission). */
-  instalarGsi: async (): Promise<EstadoGsi> => {
-    if (demo()) return { instalado: true, caminho: 'C:\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg\\gamestate_integration_stackcall.cfg' };
-    if (!isTauri()) throw new Error('Abra pelo app do Stackcall.');
-    return invoke<EstadoGsi>('cs2_gsi_instalar');
-  },
-  /** Folder picker of Windows; null when cancelled or unavailable. */
-  escolherPasta: () => chamar<string | null>('escolher_pasta', {}, null),
-  /** Shows, hides, places and sizes the "quem fala" window. */
-  janelaQuemFala: (j: JanelaQuemFala) => chamar<null>('quem_fala_janela', { janela: j }, null),
-  /** Drag mode: the window takes clicks until it is turned off again; the core keeps the new place. */
-  arrastarQuemFala: (ligado: boolean) => chamar<null>('quem_fala_arrastar', { ligado }, null),
-  /** Whether the core has the window at all (older cores do not). */
-  temJanelaQuemFala: () => (demo() ? Promise.resolve(true) : chamar<boolean>('quem_fala_disponivel', {}, false)),
+  /** Display name of the game in front, or null. Called every 30 s only while the presence is on. */
+  jogoAtual: async (): Promise<string | null> =>
+    falso() ? 'Counter-Strike 2' : (await invoke<JogoDetectado | null>('presenca_jogo_atual', { ativa: true }))?.nome ?? null,
+  /** Path where the CS2 GSI file goes, or null when CS2 was not found. */
+  gsiLocalizar: (): Promise<string | null> =>
+    falso() ? Promise.resolve('C:\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg\\gamestate_integration_stackcall.cfg')
+      : invoke<string | null>('gsi_cs2_localizar'),
+  /** Writes the GSI file after the person confirmed the path; returns the path written. */
+  gsiInstalar: (): Promise<string> => (falso() ? nucleo.gsiLocalizar().then((c) => c!) : invoke<string>('gsi_cs2_instalar', { confirmado: true })),
+  falantesAbrir: () => (falso() ? Promise.resolve() : invoke<void>('falantes_abrir')),
+  falantesFechar: () => (falso() ? Promise.resolve() : invoke<void>('falantes_fechar')),
+  /** Physical pixels on the virtual desktop (may be negative). */
+  falantesPosicionar: (x: number, y: number) => (falso() ? Promise.resolve() : invoke<void>('falantes_posicionar', { x, y })),
 };
 
-/**
- * Replay buffer and clips (room and clips gallery). Assumed names, same shortcut as above:
- *   replay_estado -> { ligado, segundos }      replay_alternar -> { ligado, segundos }
- *   clipe_salvar -> Clipe                      clipes_listar -> { clipes, usados_bytes, limite_bytes }
- *   clipe_apagar { id }                        clipes_abrir_pasta { id? }
- * Outside the app (browser, demo, tests) a fake answers with sample data.
- */
-export type Clipe = {
-  id: string;
-  titulo: string;
-  autor: string;
-  jogo: string | null;
-  /** Unix seconds. */
-  criado_em: number;
-  duracao_s: number;
-  bytes: number;
-  /** Local file URL for <video>, when the app can serve it. */
-  url: string | null;
-};
-export type ListaClipes = { clipes: Clipe[]; usados_bytes: number; limite_bytes: number };
-export type EstadoReplay = { ligado: boolean; segundos: number };
+/** `stackcall-gsi`: the team of the CS2 match on this PC. */
+export type EventoGsi = { time: 'CT' | 'TR' | null; fase: string | null };
+export function aoGsi(f: (e: EventoGsi) => void) {
+  if (falso()) return () => undefined;
+  const parar = listen<EventoGsi>('stackcall-gsi', ({ payload }) => f(payload));
+  return () => void parar.then((u) => u());
+}
 
-const agora = () => Math.floor(Date.now() / 1000);
-let falsoReplay: EstadoReplay = { ligado: true, segundos: 60 };
-let falsoClipes: Clipe[] = [
-  { id: 'c1', titulo: 'Clutch 1v3 no B', autor: 'Rafa', jogo: 'CS2', criado_em: agora() - 1800, duracao_s: 45, bytes: 38e6, url: null },
-  { id: 'c2', titulo: 'Sem título', autor: 'você', jogo: 'CS2', criado_em: agora() - 4200, duracao_s: 60, bytes: 52e6, url: null },
-  { id: 'c3', titulo: 'A cara do Léo', autor: 'você', jogo: 'Cinema', criado_em: agora() - 90000, duracao_s: 30, bytes: 21e6, url: null },
-  { id: 'c4', titulo: 'Ace de deagle', autor: 'você', jogo: 'CS2', criado_em: agora() - 260000, duracao_s: 45, bytes: 35e6, url: null },
-];
+/** Replay buffer (docs/api-v05-app.md, "Som do jogo e clipes"). */
+export type ConfigReplay = {
+  segundos: 30 | 60 | 120;
+  sempre: boolean;
+  fonte?: string;
+  resolucao?: '720p' | '1080p' | '1440p' | '4k';
+  fps?: 30 | 60;
+  kbps?: number;
+  encoder?: 'auto' | 'qsv' | 'nvenc' | 'amf';
+};
+export type EventoReplay =
+  | { event: 'state'; ativo: boolean }
+  | { event: 'saved'; caminho: string; duracao: number; tamanho: number }
+  | { event: 'error'; motivo: string };
+
+let falsoAtivo = false;
+const ouvintesFalsos = new Set<(e: EventoReplay) => void>();
+const emitirFalso = (e: EventoReplay) => ouvintesFalsos.forEach((f) => f(e));
 
 export const replay = {
-  estado: (): Promise<EstadoReplay> => (isTauri() ? invoke('replay_estado') : Promise.resolve({ ...falsoReplay })),
-  alternar: (): Promise<EstadoReplay> => {
-    if (isTauri()) return invoke('replay_alternar');
-    falsoReplay = { ...falsoReplay, ligado: !falsoReplay.ligado };
-    return Promise.resolve({ ...falsoReplay });
+  definir: async (config: ConfigReplay | null) => {
+    if (!falso()) return invoke<void>('replay_definir', { config });
+    falsoAtivo = config !== null;
+    emitirFalso({ event: 'state', ativo: falsoAtivo });
   },
-  salvarClipe: (): Promise<Clipe> => {
-    if (isTauri()) return invoke('clipe_salvar');
-    const c: Clipe = { id: `c${Date.now()}`, titulo: 'Sem título', autor: 'você', jogo: 'CS2', criado_em: agora(), duracao_s: falsoReplay.segundos, bytes: 40e6, url: null };
-    falsoClipes = [c, ...falsoClipes];
-    return Promise.resolve(c);
+  atual: (): Promise<boolean> => (falso() ? Promise.resolve(falsoAtivo) : invoke<boolean>('replay_atual')),
+  /** The MP4 arrives later in the `saved` event. */
+  salvar: async () => {
+    if (!falso()) return invoke<void>('replay_salvar');
+    if (!falsoAtivo) throw new Error('O replay está desligado.');
+    emitirFalso({ event: 'saved', caminho: `C:\\Users\\voce\\Videos\\Stackcall\\clipe-${Date.now()}.mp4`, duracao: 60, tamanho: 40e6 });
   },
-  listarClipes: (): Promise<ListaClipes> => (isTauri() ? invoke('clipes_listar') : Promise.resolve({
-    clipes: [...falsoClipes], usados_bytes: falsoClipes.reduce((n, c) => n + c.bytes, 0), limite_bytes: 20e9,
-  })),
-  apagarClipe: (id: string): Promise<void> => {
-    if (isTauri()) return invoke('clipe_apagar', { id });
-    falsoClipes = falsoClipes.filter((c) => c.id !== id);
-    return Promise.resolve();
+  /** Whether my microphone is really open (mute, deafen, push to talk, leaving the room). */
+  microfone: (ativo: boolean) => (falso() ? Promise.resolve() : invoke<void>('replay_microfone', { ativo })),
+  aoEvento: (f: (e: EventoReplay) => void) => {
+    if (falso()) {
+      ouvintesFalsos.add(f);
+      return () => void ouvintesFalsos.delete(f);
+    }
+    const parar = listen<EventoReplay>('stackcall-replay', ({ payload }) => f(payload));
+    return () => void parar.then((u) => u());
   },
-  abrirPastaClipes: (id?: string): Promise<void> => (isTauri() ? invoke('clipes_abrir_pasta', { id: id ?? null }) : Promise.resolve()),
 };
 
-/** LiveKit participant attribute the core sets while the replay buffer records the room. */
+/** LiveKit attribute each client sets on its voice participant while its replay is on (value "1"). */
 export const ATRIBUTO_REPLAY = 'stackcall.replay';
 
-/** Main window: keeps the "quem fala" window in step with the preferences (show, corner, size). */
+/** Data topic of the light track request (docs/api-v05-app.md, "Faixa leve"). */
+export const TOPICO_TELA_LEVE = 'stackcall.tela-leve';
+export const FAIXA_LEVE = 'screen-low';
+export const FAIXA_PRINCIPAL = 'screen';
+
+/**
+ * Replay preference -> core, on start and on every change. "Sempre ligado" needs a capture source
+ * outside the air: the primary monitor. "720p" is the lighter local file; otherwise the core default.
+ */
+export function sincronizarReplay(ler: () => Preferencias, ouvir: (f: (p: Preferencias) => void) => () => void,
+  fontePrincipal: () => Promise<string | null>) {
+  let ultimo = '';
+  const aplicar = async (p: Preferencias) => {
+    const chave = JSON.stringify([p.replayLigado, p.replaySegundos, p.replayQualidade]);
+    if (chave === ultimo) return;
+    ultimo = chave;
+    const fonte = p.replayLigado ? await fontePrincipal().catch(() => null) : null;
+    await replay.definir(p.replayLigado
+      ? { segundos: p.replaySegundos, sempre: !!fonte, ...(fonte ? { fonte } : {}), ...(p.replayQualidade === '720p' ? { resolucao: '720p' as const } : {}) }
+      : null).catch((e) => console.error('replay_definir', e));
+  };
+  void aplicar(ler());
+  return ouvir((p) => void aplicar(p));
+}
+
+type Monitor = { x: number; y: number; largura: number; altura: number; escala: number };
+/** Top-left corner, in physical pixels, for the window in that corner of the monitor; null keeps it where it is. */
+export function posicaoFalantes(posicao: PosicaoQuemFala, m: Monitor): { x: number; y: number } | null {
+  if (posicao === 'livre') return null;
+  const w = JANELA_FALANTES.largura * m.escala;
+  const h = JANELA_FALANTES.altura * m.escala;
+  const margem = Math.round(24 * m.escala);
+  const [v, lado] = posicao.split('-') as ['sup' | 'meio' | 'inf', 'esq' | 'dir'];
+  const x = lado === 'esq' ? m.x + margem : m.x + m.largura - w - margem;
+  const y = v === 'sup' ? m.y + margem : v === 'meio' ? m.y + (m.altura - h) / 2 : m.y + m.altura - h - margem;
+  return { x: Math.round(x), y: Math.round(y) };
+}
+
+/** Main window: opens, closes and places the "falantes" window from the preferences. */
 export function sincronizarJanelaQuemFala(ler: () => Preferencias, ouvir: (f: (p: Preferencias) => void) => () => void) {
   let ultimo = '';
-  const aplicar = (p: Preferencias) => {
-    const j: JanelaQuemFala = { mostrar: p.quemFalaMostrar, posicao: p.quemFalaPosicao, tamanho: p.quemFalaTamanho, largura: LARGURA_QUEM_FALA[p.quemFalaTamanho] };
-    const json = JSON.stringify(j);
-    if (json === ultimo) return;
-    ultimo = json;
-    void nucleo.janelaQuemFala(j);
+  const aplicar = async (p: Preferencias) => {
+    const chave = JSON.stringify([p.quemFalaMostrar, p.quemFalaPosicao]);
+    if (chave === ultimo) return;
+    ultimo = chave;
+    try {
+      if (!p.quemFalaMostrar) return await nucleo.falantesFechar();
+      await nucleo.falantesAbrir();
+      const mon = falso() ? null : await primaryMonitor();
+      const pos = mon && posicaoFalantes(p.quemFalaPosicao, { x: mon.position.x, y: mon.position.y, largura: mon.size.width, altura: mon.size.height, escala: mon.scaleFactor });
+      if (pos) await nucleo.falantesPosicionar(pos.x, pos.y);
+    } catch (e) {
+      console.error('janela falantes', e);
+    }
   };
-  aplicar(ler());
-  return ouvir(aplicar);
+  void aplicar(ler());
+  return ouvir((p) => void aplicar(p));
 }

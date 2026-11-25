@@ -34,7 +34,8 @@ export type ReceberCutucadas = 'todos' | 'amigos' | 'ninguem';
 export type CutucadaPendente = { id: string; de: string; recado: string; criadoEm: number };
 /** Room moderation (docs/api-v05.md): owner and admins only. `silenciar` acts on the whole room. */
 export type AcaoModeracao = { acao: 'mover'; usuarioId: string; destinoId: string } | { acao: 'silenciar' } | { acao: 'retirar'; usuarioId: string };
-export type Sala = { id: string; nome: string; ordem: number; pessoas: number; noAr: boolean };
+/** `paiId` and `time`: CS2 sub-room ("CS · CT"), listed only while occupied (docs/api-v05.md). */
+export type Sala = { id: string; nome: string; ordem: number; pessoas: number; noAr: boolean; paiId?: string | null; time?: 'ct' | 'tr' | null };
 export type Convite = { id: string; link: string | null; expiraEm: string; usos: number; usosMax: number };
 /** Voice server sleep (docs/api-v05.md): configured in the server .env, read only here. */
 export type Dorme = { ligado: boolean; minutos: number | null; dormindo: boolean };
@@ -104,6 +105,8 @@ export interface Servidor {
   renomearSala(id: string, nome: string): Promise<Sala>;
   apagarSala(id: string): Promise<void>;
   token(salaId: string): Promise<TokenSala>;
+  /** POST /api/salas/{pai}/cs2/token: the id of the team sub-room (the voice token comes from `token`). */
+  tokenCs2(paiId: string, time: 'ct' | 'tr'): Promise<string>;
   convites(): Promise<Convite[]>;
   criarConvite(): Promise<Convite>;
   revogarConvite(id: string): Promise<void>;
@@ -174,6 +177,8 @@ const lerSala = (o: Record<string, unknown>): Sala => ({
   ordem: Number(o.ordem) || 0,
   pessoas: Number(o.pessoas) || 0,
   noAr: !!(o.no_ar ?? o.noAr),
+  paiId: opt(o.pai_id),
+  time: o.time === 'ct' || o.time === 'tr' ? o.time : null,
 });
 // expira_em comes in Unix seconds from the porteiro.
 const quando = (v: unknown) => (typeof v === 'number' ? new Date(v * 1000).toISOString() : str(v));
@@ -248,6 +253,11 @@ export function servidorReal(url: string): Servidor {
         throw new ApiError(502, 'Resposta inesperada do servidor.');
       }
       return { url: o.url, token: o.token, screen_token: o.screen_token };
+    },
+    tokenCs2: async (paiId, time) => {
+      const o = await chamar('POST', `/api/salas/${c(paiId)}/cs2/token`, { time });
+      if (typeof o.sala_id !== 'string') throw new ApiError(502, 'Resposta inesperada do servidor.');
+      return o.sala_id;
     },
     convites: async () => lista(await chamar('GET', '/api/convites'), 'convites')
       .filter((o) => !o.revogado && !(typeof o.expira_em === 'number' && o.expira_em * 1000 < Date.now()) && Number(o.usos) < Number(o.usos_max ?? 1))

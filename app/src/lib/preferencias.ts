@@ -17,8 +17,6 @@ export type Preferencias = {
   replaySegundos: 30 | 60 | 120;
   /** "transmissao" = same quality as the stream; "720p" = lighter file. */
   replayQualidade: 'transmissao' | '720p';
-  /** Clips folder; empty = the core default (Videos\Stackcall). */
-  replayPasta: string;
   cutucarVoz: boolean;
   /** 0 to 100. */
   cutucarVolume: number;
@@ -45,7 +43,6 @@ export const PREFERENCIAS_PADRAO: Preferencias = {
   replayLigado: false,
   replaySegundos: 60,
   replayQualidade: 'transmissao',
-  replayPasta: '',
   cutucarVoz: true,
   cutucarVolume: 70,
   cutucarMesmoSilenciado: true,
@@ -68,14 +65,12 @@ const bool: Validar<boolean> = (v, p) => (typeof v === 'boolean' ? v : p);
 const um = <T,>(...validos: T[]): Validar<T> => (v, p) => (validos.includes(v as T) ? (v as T) : p);
 const faixa = (min: number, max: number): Validar<number> => (v, p) =>
   typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, Math.round(v))) : p;
-const texto = (max: number): Validar<string> => (v, p) => (typeof v === 'string' && v.length <= max ? v : p);
 
 const REGRAS: { [K in keyof Preferencias]: Validar<Preferencias[K]> } = {
   presencaJogo: bool,
   replayLigado: bool,
   replaySegundos: um(30, 60, 120),
   replayQualidade: um('transmissao', '720p'),
-  replayPasta: texto(260),
   cutucarVoz: bool,
   cutucarVolume: faixa(0, 100),
   cutucarMesmoSilenciado: bool,

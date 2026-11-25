@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
-import { isTauri } from '@tauri-apps/api/core';
 import { Cabecalho, Chave, Deslizante, Linha, Segmento } from '../../components/Controles';
 import { Faixa } from '../../components/Faixa';
 import { Icone } from '../../components/Icone';
 import { QuemFalaLista } from '../../components/QuemFalaLista';
 import { falar, fraseCutucada, vozPortugues } from '../../lib/cutucar';
-import { LARGURA_QUEM_FALA, nucleo, type EstadoGsi } from '../../lib/nucleo';
+import { JANELA_FALANTES, nucleo } from '../../lib/nucleo';
 import { usePreferencias, type PosicaoQuemFala } from '../../lib/preferencias';
 import { ESTADO_EXEMPLO } from '../../lib/quemfala';
 import { lerAtalhos } from '../../lib/atalhos';
@@ -58,14 +57,8 @@ export function PaginaClipes({ destaque }: Pagina) {
         <Segmento rotulo="Qualidade do clipe" valor={p.replayQualidade} opcoes={[['transmissao', 'Igual à transmissão'], ['720p', '720p']]} onMudar={(replayQualidade) => mudar({ replayQualidade })} />
       </Linha>
       <Linha ajuste="replay-pasta" titulo="Pasta dos clipes" destaque={destaque === 'replay-pasta'}
-        descricao={<span className="font-mono text-[12.5px]">{p.replayPasta || 'Vídeos\\Stackcall (padrão)'}</span>}>
-        <span className="flex gap-2">
-          {p.replayPasta && <button type="button" className="btn btn-fant" onClick={() => mudar({ replayPasta: '' })}>Usar a padrão</button>}
-          <button type="button" className="btn" disabled={!isTauri()} title={isTauri() ? undefined : 'Só no app instalado'} onClick={async () => {
-            const pasta = await nucleo.escolherPasta();
-            if (pasta) mudar({ replayPasta: pasta });
-          }}><Icone nome="pasta" />Trocar pasta</button>
-        </span>
+        descricao="O núcleo grava os clipes sempre aqui. Abra pela galeria de Clipes, no topo.">
+        <span className="font-mono text-[12.5px]">Vídeos\Stackcall</span>
       </Linha>
       <p className="m-0 text-[13px] text-texto-fraco">
         Quem está na sala vê o aviso “replay ligado” no seu canal e no topo da sala. Esse aviso não desliga.
@@ -175,17 +168,12 @@ const POSICAO_PREVIA: Record<PosicaoQuemFala, string> = {
 /** Você > Janela quem fala, with a live preview over a drawn game frame. */
 export function PaginaQuemFala({ destaque }: Pagina) {
   const [p, mudar] = usePreferencias();
-  const [disponivel, setDisponivel] = useState(true);
-  const [arrastando, setArrastando] = useState(false);
   const tecla = lerAtalhos().teclas.quemFala;
-  useEffect(() => void nucleo.temJanelaQuemFala().then(setDisponivel), []);
-  useEffect(() => () => void (arrastando && nucleo.arrastarQuemFala(false)), [arrastando]);
   const conteudo = p.quemFalaConteudo === 'falando' ? 'só quem fala' : 'todos';
   const tamanho = { p: 'pequeno', m: 'médio', g: 'grande' }[p.quemFalaTamanho];
   return (
     <>
       <Cabecalho rotulo="Você · janela separada, sempre no topo" titulo="Janela quem fala" />
-      {!disponivel && <Faixa tipo="aviso">Esta versão do núcleo ainda não abre a janela. As escolhas ficam guardadas e valem quando ela chegar.</Faixa>}
       <div className="grid grid-cols-[minmax(0,1fr)_340px] items-start gap-3 max-[1180px]:grid-cols-1">
         <div className="flex flex-col gap-2">
           <Linha ajuste="quemfala-mostrar" titulo="Mostrar a janela" descricao="Fica por cima do jogo em tela cheia sem borda. Nada entra no jogo." destaque={destaque === 'quemfala-mostrar'}>
@@ -201,7 +189,7 @@ export function PaginaQuemFala({ destaque }: Pagina) {
             <Segmento rotulo="Tamanho da janela" valor={p.quemFalaTamanho} opcoes={[['p', 'Pequeno'], ['m', 'Médio'], ['g', 'Grande']]} onMudar={(quemFalaTamanho) => mudar({ quemFalaTamanho })} />
           </Linha>
           <Linha ajuste="quemfala-posicao" titulo="Posição" destaque={destaque === 'quemfala-posicao'}
-            descricao={p.quemFalaPosicao === 'livre' ? 'No lugar onde você arrastou. Escolha um canto para voltar.' : 'Escolha o canto ou arraste a janela por cima do jogo.'}>
+            descricao={p.quemFalaPosicao === 'livre' ? 'Onde ela estava. Escolha um canto do monitor principal.' : 'Canto do monitor principal. Em tela cheia exclusiva o Windows pode esconder a janela; use janela sem borda.'}>
             <span className="flex items-center gap-3">
               <span role="radiogroup" aria-label="Canto da tela" className="grid grid-cols-[repeat(2,28px)] grid-rows-[repeat(3,20px)] gap-[3px] border border-texto p-1">
                 {CANTOS.map(([id, texto]) => (
@@ -210,21 +198,8 @@ export function PaginaQuemFala({ destaque }: Pagina) {
                     className={`border ${p.quemFalaPosicao === id ? 'border-texto bg-texto' : 'border-borda bg-superficie hover:bg-superficie-alta'}`} />
                 ))}
               </span>
-              {arrastando ? (
-                <button type="button" className="btn btn-prim" onClick={() => {
-                  void nucleo.arrastarQuemFala(false);
-                  setArrastando(false);
-                  mudar({ quemFalaPosicao: 'livre' });
-                }}>Pronto</button>
-              ) : (
-                <button type="button" className="btn" disabled={!disponivel || !p.quemFalaMostrar} onClick={() => {
-                  void nucleo.arrastarQuemFala(true);
-                  setArrastando(true);
-                }}>Arrastar com o mouse</button>
-              )}
             </span>
           </Linha>
-          {arrastando && <p role="status" className="m-0 text-[13px]">Arraste a janela pela tela. Clique em Pronto para fixar; o clique volta a passar através dela.</p>}
           <Linha ajuste="quemfala-mostrar" titulo="Atalho para mostrar e esconder" descricao={tecla ? <>Tecla: <span className="font-mono">{tecla}</span></> : 'Nenhum vem pronto.'}>
             <span className="rotulo">Em Você › Atalhos</span>
           </Linha>
@@ -234,7 +209,7 @@ export function PaginaQuemFala({ destaque }: Pagina) {
           <div className="relative aspect-video overflow-hidden bg-[linear-gradient(#56636f_0_46%,#7c6f58_46%_100%)]">
             <span aria-hidden="true" className="absolute top-[40%] right-[30%] bottom-[30%] left-[30%] bg-[#a08f6d]" />
             <div className={`absolute scale-[0.7] ${POSICAO_PREVIA[p.quemFalaPosicao]}`}>
-              <QuemFalaLista estado={ESTADO_EXEMPLO} prefs={p} largura={LARGURA_QUEM_FALA[p.quemFalaTamanho]} />
+              <QuemFalaLista estado={ESTADO_EXEMPLO} prefs={p} largura={JANELA_FALANTES.largura} />
             </div>
           </div>
           <p className="m-0 px-3 py-2.5 text-[13px] text-texto-fraco">{p.quemFalaMostrar ? 'Assim ela aparece por cima do jogo.' : 'Desligada: a janela não aparece.'}</p>
@@ -247,17 +222,21 @@ export function PaginaQuemFala({ destaque }: Pagina) {
 /** Você > Mapa do CS2: the room split by team, from the official Valve GSI. */
 export function PaginaCs2({ destaque }: Pagina) {
   const [p, mudar] = usePreferencias();
-  const [gsi, setGsi] = useState<EstadoGsi | null | undefined>();
+  // Path where the file goes (null: CS2 not found); `instalado` only after installing here.
+  const [gsi, setGsi] = useState<{ caminho: string | null; instalado: boolean } | undefined>();
   const [confirmar, setConfirmar] = useState(false);
   const [erro, setErro] = useState<string>();
   const [instalando, setInstalando] = useState(false);
-  useEffect(() => void nucleo.gsiEstado().then(setGsi), []);
+  useEffect(() => void nucleo.gsiLocalizar().then((caminho) => setGsi({ caminho, instalado: false }), (e: unknown) => {
+    setGsi({ caminho: null, instalado: false });
+    setErro(erroDe(e));
+  }), []);
   async function instalar() {
     setConfirmar(false);
     setErro(undefined);
     setInstalando(true);
     try {
-      setGsi(await nucleo.instalarGsi());
+      setGsi({ caminho: await nucleo.gsiInstalar(), instalado: true });
     } catch (e) {
       setErro(erroDe(e));
     } finally {
@@ -270,20 +249,20 @@ export function PaginaCs2({ destaque }: Pagina) {
         Durante a partida, a sala se divide em CT e TR sozinha. As telas do outro time ficam escondidas até o fim do round.
       </Cabecalho>
       <Linha ajuste="cs2-sala" titulo="Sala do mapa" destaque={destaque === 'cs2-sala'}
-        descricao={gsi?.instalado ? 'Liga a troca automática para a sub-sala do seu time.' : 'Precisa da integração com o CS2, logo abaixo.'}>
+        descricao="Liga a troca automática para a sub-sala do seu time. Precisa da integração com o CS2, logo abaixo.">
         <Chave rotulo="Sala do mapa do CS2" ligado={p.cs2SalaMapa} onMudar={(cs2SalaMapa) => mudar({ cs2SalaMapa })} />
       </Linha>
       <Linha ajuste="cs2-gsi" titulo="Integração com o CS2" destaque={destaque === 'cs2-gsi'}
-        descricao={gsi === undefined ? 'Conferindo…' : gsi === null ? 'Esta versão do núcleo ainda não instala a integração.'
-          : gsi.instalado ? <>Instalada em <span className="break-all font-mono text-[12px]">{gsi.caminho}</span></>
+        descricao={gsi === undefined ? 'Procurando o CS2…' : gsi.caminho === null ? 'O CS2 não foi encontrado neste PC.'
+          : gsi.instalado ? <>Instalada em <span className="break-all font-mono text-[12px]">{gsi.caminho}</span>. Feche e abra o CS2.</>
             : 'O arquivo oficial de Game State Integration da Valve. O CS2 manda o time e o round para este PC; nada entra no jogo.'}>
         {gsi?.instalado ? <span className="rotulo text-vitoria">● instalada</span> : (
-          <button type="button" className="btn" disabled={!gsi || instalando} onClick={() => setConfirmar(true)}>{instalando ? 'Instalando…' : 'Instalar integração'}</button>
+          <button type="button" className="btn" disabled={!gsi?.caminho || instalando} onClick={() => setConfirmar(true)}>{instalando ? 'Instalando…' : 'Instalar integração'}</button>
         )}
       </Linha>
       {confirmar && (
         <Faixa tipo="aviso" acoes={[{ rotulo: 'Instalar', principal: true, onClick: () => void instalar() }, { rotulo: 'Cancelar', onClick: () => setConfirmar(false) }]}>
-          Vai criar o arquivo gamestate_integration_stackcall.cfg na pasta cfg do CS2. Feche e abra o CS2 depois. Para desfazer, apague o arquivo.
+          Vai criar <span className="break-all font-mono text-[12px]">{gsi?.caminho}</span>. Feche e abra o CS2 depois. Para desfazer, apague o arquivo.
         </Faixa>
       )}
       {erro && <Faixa acoes={[{ rotulo: 'Tentar de novo', onClick: () => void instalar() }]}>Não deu para instalar. {erro}</Faixa>}

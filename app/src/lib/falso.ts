@@ -105,6 +105,7 @@ export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
     token: async () => {
       throw new ApiError(0, 'Servidor falso: a sala usa dados de demonstração.');
     },
+    tokenCs2: async (paiId, time) => (await espera(), `${paiId}:cs:${time}`),
     convites: async () => (await espera(), convites.map((c) => ({ ...c }))),
     criarConvite: async () => {
       const c = { id: `c${convites.length + 1}`, link: `${url}/c/${Math.random().toString(36).slice(2, 12)}`, expiraEm: '2026-12-01T21:00:00Z', usos: 0, usosMax: 1 };

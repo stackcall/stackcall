@@ -14,21 +14,31 @@ import { iniciarLeveza } from './lib/leveza';
 import { iniciarAtalhos } from './lib/atalhos';
 import { App } from './App';
 import { JanelaQuemFala } from './screens/QuemFala';
-import { sincronizarJanelaQuemFala } from './lib/nucleo';
+import { sincronizarJanelaQuemFala, sincronizarReplay } from './lib/nucleo';
+import { iniciarClipes } from './lib/clipes';
+import { listSources } from './lib/sidecar';
+import { isTauri } from '@tauri-apps/api/core';
 import { aoMudarPreferencias, lerPreferencias } from './lib/preferencias';
 
 aplicarTema();
 // Dev only: ?tema=escuro for review screenshots without touching the saved choice.
 const temaDev = import.meta.env.DEV ? new URLSearchParams(location.search).get('tema') : null;
 if (temaDev === 'claro' || temaDev === 'escuro') aplicarTema(temaDev);
-// The core opens the "quem fala" window on index.html?janela=quemfala: only the list, no app.
-const janelaQuemFala = new URLSearchParams(location.search).get('janela') === 'quemfala';
+// The core opens the "falantes" window on index.html?falantes=1: only the list, no app.
+const janelaQuemFala = new URLSearchParams(location.search).has('falantes');
 if (janelaQuemFala) {
   document.documentElement.dataset.janela = 'quemfala';
 } else {
   iniciarLeveza();
   iniciarAtalhos();
   sincronizarJanelaQuemFala(lerPreferencias, aoMudarPreferencias);
+  iniciarClipes();
+  // "Replay sempre ligado" records the primary monitor outside the air (the core needs a source).
+  sincronizarReplay(lerPreferencias, aoMudarPreferencias, async () => {
+    if (!isTauri()) return null;
+    const fontes = await listSources();
+    return (fontes.find((f) => !f.pid && f.primary) ?? fontes.find((f) => !f.pid))?.id ?? null;
+  });
 }
 
 createRoot(document.getElementById('root')!).render(
