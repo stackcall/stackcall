@@ -13,7 +13,7 @@ use crate::conta::Accounts;
 
 const EVENT: &str = "stackcall-stream";
 const UNAVAILABLE: &str = "O núcleo de transmissão não está disponível nesta máquina.";
-const CACHE_VERSION: u32 = 2;
+const CACHE_VERSION: u32 = 3;
 
 #[derive(Default)]
 pub struct Sidecar {

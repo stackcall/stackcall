@@ -85,7 +85,8 @@ Janelas minimizadas usam o tamanho restaurado ou o do monitor, sem miniatura.
 Se o Windows não informar nenhum tamanho utilizável, `width` e `height` são nulos.
 
 `probe` imprime um objeto com `adapters` e `trials`. Cada adaptador
-inclui `name`, `driver_version` (versão DXGI em quatro partes ou nula),
+inclui `name`, `driver_version` (versão DXGI em quatro partes ou texto vazio
+quando indisponível),
 `vendor_id` (decimal), `vendor`, `dedicated_bytes` e `shared_bytes`.
 Cada ensaio inclui `encoder`, `resolution`, `target_fps`
 e `ok`. O ensaio processa até cinco segundos de quadros sintéticos NV12

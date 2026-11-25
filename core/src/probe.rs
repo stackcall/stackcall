@@ -27,7 +27,7 @@ pub struct Report {
 #[derive(Serialize)]
 struct Adapter {
     name: String,
-    driver_version: Option<String>,
+    driver_version: String,
     vendor_id: u32,
     vendor: &'static str,
     dedicated_bytes: usize,
@@ -75,11 +75,11 @@ pub fn run(options: Probe) -> Result<Report> {
         };
         let desc = unsafe { adapter.GetDesc1()? };
         let driver_version = unsafe { adapter.CheckInterfaceSupport(&IDXGIDevice::IID) }
-            .ok()
             .map(|version| {
                 let [a, b, c, d] = [48, 32, 16, 0].map(|shift| (version >> shift) as u16);
                 format!("{a}.{b}.{c}.{d}")
-            });
+            })
+            .unwrap_or_default();
         adapters.push(Adapter {
             name: String::from_utf16_lossy(&desc.Description)
                 .trim_end_matches('\0')
@@ -312,6 +312,21 @@ fn record(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn adapter_driver_version_is_text_even_when_unknown() {
+        let adapter = Adapter {
+            name: "Test adapter".into(),
+            driver_version: Default::default(),
+            vendor_id: 0,
+            vendor: "Other",
+            dedicated_bytes: 0,
+            shared_bytes: 0,
+        };
+        let json = serde_json::to_value(adapter).unwrap();
+        assert_eq!(json["name"], "Test adapter");
+        assert_eq!(json["driver_version"], "");
+    }
 
     #[test]
     fn nvenc_headroom_checks_throughput_and_tail_latency() {
