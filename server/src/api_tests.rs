@@ -207,6 +207,60 @@ async fn member(app: &Router, owner: &str) -> Value {
 }
 
 #[tokio::test]
+async fn game_presence_expires_and_can_be_cleared() {
+    let fixture = fixture(false).await;
+    let app = &fixture.app;
+    let owner = join(app, &fixture.owner_code, "Dono").await;
+    let player = member(app, session(&owner)).await;
+    let set = |name: Value| {
+        send(
+            app,
+            Method::PUT,
+            "/api/eu/jogo",
+            Some(session(&player)),
+            json!({"jogo":name}),
+        )
+    };
+    let read = || async {
+        let (status, profiles) = send(
+            app,
+            Method::GET,
+            "/api/pessoas",
+            Some(session(&owner)),
+            Value::Null,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        profiles
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["id"] == id(&player))
+            .unwrap()["jogo"]
+            .clone()
+    };
+    assert!(read().await.is_null());
+    assert_eq!(set(json!("CS2\n")).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(set(json!("a".repeat(61))).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(set(json!(" CS2 ")).await.0, StatusCode::NO_CONTENT);
+    assert_eq!(read().await, "CS2");
+    fixture
+        .config
+        .db
+        .lock()
+        .unwrap()
+        .execute(
+            "UPDATE usuarios SET jogo_expira_em = unixepoch() WHERE id = ?1",
+            [id(&player)],
+        )
+        .unwrap();
+    assert!(read().await.is_null());
+    assert_eq!(set(json!("CS2")).await.0, StatusCode::NO_CONTENT);
+    assert_eq!(set(json!("")).await.0, StatusCode::NO_CONTENT);
+    assert!(read().await.is_null());
+}
+
+#[tokio::test]
 async fn room_moderation_checks_roles_and_keeps_the_target_in_the_group() {
     let fixture = fixture(false).await;
     let app = &fixture.app;
