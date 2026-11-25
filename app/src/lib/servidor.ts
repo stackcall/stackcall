@@ -38,10 +38,32 @@ const MENSAGENS: Record<number, string> = {
   401: 'Sua sessão neste aparelho acabou. Peça um convite novo.',
   403: 'Só o dono ou um admin pode fazer isso.',
   404: 'Não encontrado. O link pode ter expirado ou sido revogado.',
-  409: 'Esse nome já está em uso neste servidor.',
   410: 'Este link já foi usado ou expirou. Peça outro.',
+  413: 'Imagem grande demais. Escolha um arquivo menor.',
+  415: 'Formato não aceito. Use uma imagem PNG, JPG ou WebP.',
+  422: 'O servidor não conseguiu ler essa imagem. Tente outra.',
   429: 'Muitas tentativas. Espere um minuto.',
+  500: 'O servidor teve um erro interno. Tente de novo em instantes.',
+  502: 'O servidor de voz não respondeu. Tente de novo em instantes.',
+  503: 'Servidor ocupado. Tente de novo em alguns segundos.',
+  504: 'O servidor demorou demais para responder. Tente de novo.',
 };
+
+/** Text for an HTTP status the porteiro sent without its own `erro` message. */
+export const mensagemDe = (status: number) =>
+  MENSAGENS[status] ?? `O servidor recusou o pedido (código ${status}). Atualize o app e tente de novo.`;
+
+/**
+ * Central 401: the Rust side already dropped the device session. App listens and goes to the
+ * entry screen. Routes that answer 401 for a bad code (not a dead session) are left out.
+ */
+const ouvintesSessao = new Set<(servidor: string) => void>();
+export function aoPerderSessao(f: (servidor: string) => void) {
+  ouvintesSessao.add(f);
+  return () => void ouvintesSessao.delete(f);
+}
+const rotaDeCodigo = (metodo: string, rota: string) =>
+  rota === '/api/aparelhos/entrar' || /^\/api\/convites\/[^/]+\/aceitar$/.test(rota) || (metodo === 'GET' && /^\/api\/convites\/[^/]+$/.test(rota));
 
 export interface Servidor {
   readonly url: string;
@@ -74,10 +96,15 @@ const nomeAparelho = () => (navigator.userAgent.includes('Windows') ? 'PC com Wi
 const str = (v: unknown) => (typeof v === 'string' ? v : v == null ? '' : String(v));
 const opt = (v: unknown) => (typeof v === 'string' && v ? v : null);
 
-/** Avatar and banner come as a media hash; the image lives at `<server>/media/<hash>.webp`. */
+/**
+ * Avatar and banner: the porteiro sends the relative path `/media/<hash>.webp` (older builds a
+ * bare hash). Both become an absolute URL on the server; a relative path would hit tauri.localhost.
+ */
 const midia = (v: unknown, base?: string) => {
   const s = opt(v);
-  return s && base && /^[0-9a-f]{64}$/.test(s) ? `${base}/media/${s}.webp` : s;
+  if (!s || !base) return s;
+  if (/^[0-9a-f]{64}$/.test(s)) return `${base}/media/${s}.webp`;
+  return s.startsWith('/media/') ? base + s : s;
 };
 
 export function lerUsuario(o: Record<string, unknown>, base?: string): Usuario {
@@ -136,8 +163,9 @@ export function servidorReal(url: string): Servidor {
       throw new ApiError(0, typeof e === 'string' ? e : MENSAGENS[0]);
     }
     if (r.status >= 400) {
+      if (r.status === 401 && !rotaDeCodigo(metodo, rota)) ouvintesSessao.forEach((f) => f(url));
       const msg = (r.corpo as Obj | null)?.erro;
-      throw new ApiError(r.status, typeof msg === 'string' ? msg : MENSAGENS[r.status] ?? `Erro do servidor (${r.status}).`);
+      throw new ApiError(r.status, typeof msg === 'string' && msg ? msg : mensagemDe(r.status));
     }
     return (r.corpo ?? {}) as Obj;
   }
@@ -182,7 +210,8 @@ export function servidorReal(url: string): Servidor {
     convites: async () => lista(await chamar('GET', '/api/convites'), 'convites')
       .filter((o) => !o.revogado && !(typeof o.expira_em === 'number' && o.expira_em * 1000 < Date.now()) && Number(o.usos) < Number(o.usos_max ?? 1))
       .map(lerConvite),
-    criarConvite: async () => lerConvite(await chamar('POST', '/api/convites')),
+    // The porteiro reads a JSON body here (axum answers 415 without one), so send an empty object.
+    criarConvite: async () => lerConvite(await chamar('POST', '/api/convites', {})),
     revogarConvite: async (id) => void (await chamar('DELETE', `/api/convites/${c(id)}`)),
   };
 }
