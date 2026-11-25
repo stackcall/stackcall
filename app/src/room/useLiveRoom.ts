@@ -23,6 +23,12 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const MAX_CHAT = 200;
 const MIC_ERROR = 'Microfone indisponível. Confira a permissão do Windows e o dispositivo.';
+/** Disconnects that a retry would only repeat: same account elsewhere, removed, room gone. */
+const FIM: Partial<Record<number, string>> = {
+  2: 'Você entrou nesta sala por outro aparelho.',
+  4: 'Você foi tirado da sala.',
+  5: 'A sala foi apagada.',
+};
 
 export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomActions {
   const roomRef = useRef<Room | null>(null);
@@ -31,6 +37,7 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
   const rerender = useCallback(() => setTick((t) => t + 1), []);
   const [state, setState] = useState<RoomModel['state']>('connecting');
   const [error, setError] = useState<string>();
+  const [autoRetry, setAutoRetry] = useState(true);
   const [micError, setMicError] = useState<string>();
   const [streamError, setStreamError] = useState<string>();
   const [chat, setChat] = useState<ChatMessage[]>([]);
@@ -83,6 +90,7 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
     const audioElements = new Set<HTMLMediaElement>();
     setState('connecting');
     setError(undefined);
+    setAutoRetry(true);
     setStreamError(undefined);
     setChat([]);
     watchMap.current.clear();
@@ -173,8 +181,10 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
         if (closed) return;
         screenAccess.current = null;
         if (native.current) void stopTransmission(native.current.id).catch(() => undefined);
+        const fim = reason !== undefined ? FIM[reason] : undefined;
+        setAutoRetry(!fim);
         setState('error');
-        setError(`A conexão com a sala caiu${reason !== undefined ? ` (motivo ${reason})` : ''}. Troque de aba para tentar de novo.`);
+        setError(fim ?? 'A conexão com a sala caiu.');
       });
 
     (async () => {
@@ -403,7 +413,7 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
   };
 
   return {
-    room: roomId, state, error, people, streams, chat, deafened, micError, streamError, ping, stageStats,
+    room: roomId, state, error, autoRetry, people, streams, chat, deafened, micError, streamError, ping, stageStats,
     micOn: !!lp?.isMicrophoneEnabled,
     cameraOn: !!lp?.isCameraEnabled,
     ...actions,

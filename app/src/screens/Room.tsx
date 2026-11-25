@@ -12,6 +12,7 @@ import { useTema } from '../lib/tema';
 import type { Attachable, ChatMessage, Person, RoomActions, RoomModel, Stream } from '../room/model';
 import { useDemoRoom } from '../room/demo';
 import { useLiveRoom } from '../room/useLiveRoom';
+import { RECUO_MS, useReconexao } from '../room/reconexao';
 import { GoLive } from './GoLive';
 
 export type RoomProps = {
@@ -51,12 +52,15 @@ function LiveRoom(props: ComSala) {
   const [tentativa, setTentativa] = useState(0);
   const session = useMemo(() => ({ servidor: props.servidor }), [props.servidor, tentativa]);
   const model = useLiveRoom(session, props.sala.id);
-  return <RoomView {...props} model={model} onRetry={() => setTentativa((n) => n + 1)} />;
+  const rec = useReconexao(model.state, model.autoRetry !== false, () => setTentativa((n) => n + 1));
+  return <RoomView {...props} model={model} reconexao={rec} onRetry={rec.reconectar} />;
 }
+
+type Reconexao = { falhas: number; esgotou: boolean };
 
 function DemoRoom(props: ComSala) {
   const model = useDemoRoom(props.sala.id, { id: props.eu.id, name: props.eu.nome });
-  return <RoomView {...props} model={model} onRetry={() => undefined} />;
+  return <RoomView {...props} model={model} reconexao={{ falhas: 0, esgotou: true }} onRetry={() => undefined} />;
 }
 
 const fmt = (n: number, d = 1) => n.toLocaleString('pt-BR', { maximumFractionDigits: d });
@@ -172,7 +176,7 @@ function Saguao({ nomeServidor, salas, onSala, pessoas }: RoomProps) {
   );
 }
 
-function RoomView(props: ComSala & { model: RoomModel & RoomActions; onRetry(): void }) {
+function RoomView(props: ComSala & { model: RoomModel & RoomActions; reconexao: Reconexao; onRetry(): void }) {
   const { model, sala, nomeServidor, salas, pessoas, eu, demo, onSala, onCartao, onConvidar } = props;
   const [goLive, setGoLive] = useState(() => demo && demoScreen() === 'ar');
   const [fallback, setFallback] = useState(false);
@@ -221,7 +225,7 @@ function RoomView(props: ComSala & { model: RoomModel & RoomActions; onRetry(): 
                 </button>
               </div>
             </div>
-            <Palco model={model} stage={stage} onPick={setStageId} onGoLive={() => setGoLive(true)} onRetry={props.onRetry} />
+            <Palco model={model} stage={stage} reconexao={props.reconexao} onPick={setStageId} onGoLive={() => setGoLive(true)} onRetry={props.onRetry} />
           </section>
           <Lateral sala={sala.nome} model={model} pessoas={pessoas} eu={eu} onCartao={onCartao} onAmigo={props.onAmigo} />
         </main>
@@ -284,8 +288,8 @@ async function toggleFullscreen(el: HTMLElement) {
   if (isTauri()) await getCurrentWindow().setFullscreen(on).catch(() => undefined);
 }
 
-function Palco({ model, stage, onPick, onGoLive, onRetry }: {
-  model: RoomModel & RoomActions; stage?: Stream; onPick(id: string): void; onGoLive(): void; onRetry(): void;
+function Palco({ model, stage, reconexao, onPick, onGoLive, onRetry }: {
+  model: RoomModel & RoomActions; stage?: Stream; reconexao: Reconexao; onPick(id: string): void; onGoLive(): void; onRetry(): void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -297,12 +301,19 @@ function Palco({ model, stage, onPick, onGoLive, onRetry }: {
   }, []);
 
   if (model.state === 'error') {
+    const proxima = RECUO_MS[reconexao.falhas] / 1000;
     return (
       <div className="janela flex min-h-0 flex-1 flex-col">
-        <div className="barra">Palco<span className="ml-auto font-medium">sem conexão</span></div>
+        <div className="barra barra-ar">Palco<span className="ml-auto font-medium">sem conexão</span></div>
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-          <p role="alert" className="m-0 max-w-[480px] text-perigo">{model.error}</p>
-          <button type="button" className="btn" onClick={onRetry}>Tentar de novo</button>
+          <b className="font-display text-[32px]">Sem conexão com a sala</b>
+          <p role="alert" className="m-0 max-w-[480px]">{model.error}</p>
+          <p role="status" className="m-0 text-[14px] text-texto-fraco">
+            {reconexao.esgotou ? 'Toque em Reconectar quando a internet voltar.'
+              : typeof navigator !== 'undefined' && !navigator.onLine ? 'Sem internet. Reconecta sozinho quando a rede voltar.'
+                : `Reconectando sozinho em ${proxima} s (tentativa ${reconexao.falhas + 1} de ${RECUO_MS.length}).`}
+          </p>
+          <button type="button" className="btn btn-prim btn-lg" onClick={onRetry}>Reconectar</button>
         </div>
       </div>
     );

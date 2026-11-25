@@ -42,6 +42,8 @@ export type RoomModel = {
   room: string;
   state: 'connecting' | 'connected' | 'reconnecting' | 'error';
   error?: string;
+  /** false when retrying would only repeat the disconnect (removed, duplicate login, room deleted). */
+  autoRetry?: boolean;
   people: Person[];
   streams: Stream[];
   chat: ChatMessage[];

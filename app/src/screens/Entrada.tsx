@@ -138,7 +138,7 @@ function ComLink({ link, servidor, onTrocar, onEntrou }: {
             <label htmlFor="nome" className="font-bold">Seu nome</label>
             <input id="nome" className="campo" value={nome} onChange={(e) => setNome(e.target.value)} autoComplete="nickname" maxLength={32}
               aria-invalid={!!erro} aria-describedby="nome-ajuda" autoFocus />
-            <span id="nome-ajuda" className="text-[13px] text-texto-fraco">É como a galera vê você. Dá para trocar depois no perfil.</span>
+            <span id="nome-ajuda" className="text-[13px] text-texto-fraco">É como a galera vê você.</span>
           </div>
         )}
         {erro && <p role="alert" className="m-0 text-perigo">{erro}</p>}
