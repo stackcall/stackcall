@@ -464,7 +464,7 @@ function SalaLivre({ model, others, porId, pessoas, salas, sala, onCartao, onMen
             ))}
           </ul>
         ) : (
-          <Vazio titulo="Só você por aqui" texto="Chame a galera em Convidar. O link vale 7 dias e 1 uso.">
+          <Vazio titulo="Só você por aqui" texto="Chame a galera em Convidar: o link vale 7 dias e 1 uso. Para o grupo todo, gere um link de grupo em Configurações › Geral e convites.">
             {fora.length > 0 && (
               <div className="mt-3 flex flex-col items-center gap-2">
                 <span className="rotulo">Online em outro lugar · {fora.length}</span>
@@ -650,6 +650,13 @@ function Palco({ model, stage, reconexao, jogo, onPick, onRetry }: {
             {!stage.watching && (
               <button type="button" className="btn btn-prim btn-lg" onClick={() => model.watch(stage.owner.id)}>Assistir</button>
             )}
+          </div>
+        )}
+        {stage.owner.isLocal && model.videoPaused && (
+          // The core stops encoding with no viewers, so the own preview freezes or goes black.
+          <div className="absolute inset-0 z-[5] flex flex-col items-center justify-center gap-2 bg-palco/85 p-6 text-center">
+            <span className="rotulo text-lima">Pausado</span>
+            <span className="text-[14px] text-sobre-palco">Ninguém assistindo agora. A imagem volta sozinha quando alguém clicar em Assistir.</span>
           </div>
         )}
         {model.redeRuim && !stage.owner.isLocal && <VozPrimeiro model={model} />}

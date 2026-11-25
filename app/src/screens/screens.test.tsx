@@ -127,9 +127,8 @@ test('go live: Escape closes, Enter on a tile goes live, arrows move the choice'
   await userEvent.keyboard('{ArrowRight}');
   expect(screen.getByRole('radio', { name: /Tela 2/ })).toHaveAttribute('aria-checked', 'true');
   expect(screen.getByRole('radio', { name: /Tela 2/ })).toHaveFocus();
-  // Tela 2 is 1080p: 1440p and 4K stay in the list, locked, with the reason.
-  expect(screen.getByRole('radio', { name: /^1440p/ })).toBeDisabled();
-  expect(screen.getByRole('radio', { name: /^1440p/ })).toHaveTextContent('Fonte com 1080 linhas');
+  // Tela 2 is 1080p: in native mode 1440p is not locked by the source size (the core scales).
+  expect(screen.getByRole('radio', { name: /^1440p/ })).not.toHaveTextContent('Fonte com');
   await userEvent.keyboard('{Enter}');
   expect(onCancel).toHaveBeenCalledTimes(1); // demo: going live only closes
   await userEvent.keyboard('{Escape}');

@@ -63,9 +63,11 @@ export function evaluatePresets({ codec, uploadMbps, sourceHeight, sourceWidth, 
     const lock = (full: string, brief: string) => { reason = full; short = brief; };
     if (!trials && p.lockedReason) {
       lock(p.lockedReason, p.height > 1440 ? 'Só no modo nativo' : 'Ainda em teste');
-    } else if (sourceHeight !== null && sourceHeight < p.height * 0.9) {
+    // In native mode the core scales any source to the chosen resolution, like a stream canvas,
+    // so the source size only limits the WebView2 fallback.
+    } else if (!trials && sourceHeight !== null && sourceHeight < p.height * 0.9) {
       lock(`A fonte escolhida tem ${sourceHeight} linhas. Escolha uma tela maior para ${p.height}p.`, `Fonte com ${sourceHeight} linhas`);
-    } else if (sourceWidth !== undefined && sourceWidth < p.width * 0.9) {
+    } else if (!trials && sourceWidth !== undefined && sourceWidth < p.width * 0.9) {
       lock(`A fonte escolhida tem ${sourceWidth} pixels de largura. Escolha uma tela maior.`, `Fonte com ${sourceWidth} px de largura`);
     } else if (trials) {
       const label = codec === 'av1' ? 'AV1' : 'H.264';

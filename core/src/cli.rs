@@ -78,6 +78,11 @@ pub struct Publish {
     pub cpu_path: bool,
     #[arg(long, help = "Reuse BGRA-to-NV12 scaling state on the CPU path")]
     pub cache_cpu_scaler: bool,
+    #[arg(
+        long,
+        help = "Stretch the source to fill the output instead of keeping its aspect ratio"
+    )]
+    pub stretch: bool,
     #[arg(long, value_parser = clap::value_parser!(u64).range(1..))]
     pub duration: Option<u64>,
 }

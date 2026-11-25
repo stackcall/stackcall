@@ -137,6 +137,8 @@ struct Session {
     encoder: encoder::Session,
     conversion: Conversion,
     input_size: (u32, u32),
+    /// Fill the output (screens and fullscreen games) instead of keeping the aspect ratio.
+    fill: bool,
     pending: BTreeMap<i64, (i64, Instant, Instant)>,
 }
 
@@ -216,13 +218,40 @@ fn resolve_target(source: &Source) -> Result<CaptureTarget> {
             CaptureTarget::Window(window)
         }
         Source::MonitorHandle(handle) => {
-            let monitor = Monitor::enumerate()?
+            let found = Monitor::enumerate()?
                 .into_iter()
-                .find(|monitor| monitor.as_raw_hmonitor() as usize == *handle)
-                .context("A tela escolhida foi desconectada.")?;
+                .find(|monitor| monitor.as_raw_hmonitor() as usize == *handle);
+            // A mode change (game in exclusive fullscreen, Parsec) can renumber the monitor.
+            let monitor = match found {
+                Some(monitor) => monitor,
+                None => Monitor::primary().context("A tela escolhida foi desconectada.")?,
+            };
             CaptureTarget::Monitor(monitor)
         }
     })
+}
+
+/// Screens fill the stream exactly like the monitor shows them; a game in fullscreen does too,
+/// even at 1280×960 stretched by the monitor. Only a window smaller than its screen keeps its shape.
+fn fills_screen(source: &Source, frame: (u32, u32)) -> bool {
+    match resolve_target(source) {
+        Ok(CaptureTarget::Monitor(_)) => true,
+        Ok(CaptureTarget::Window(window)) => window
+            .monitor()
+            .and_then(|monitor| Some((monitor.width().ok()?, monitor.height().ok()?)))
+            .is_some_and(|screen| {
+                screen.0.abs_diff(frame.0) <= 16 && screen.1.abs_diff(frame.1) <= 16
+            }),
+        Err(_) => false,
+    }
+}
+
+/// Current size of a monitor source; `None` for windows (their resizes are handled per frame).
+fn monitor_dimensions(source: &Source) -> Option<(u32, u32)> {
+    match resolve_target(source).ok()? {
+        CaptureTarget::Monitor(monitor) => Some((monitor.width().ok()?, monitor.height().ok()?)),
+        CaptureTarget::Window(_) => None,
+    }
 }
 
 fn local_dimensions(target: &CaptureTarget, preset: (u32, u32)) -> Result<(u32, u32)> {
@@ -501,6 +530,8 @@ pub async fn run(mut args: Publish) -> Result<()> {
             let signal = tokio::signal::ctrl_c();
             tokio::pin!(signal);
             let mut started = !controlled;
+            let mut monitor_size = monitor_dimensions(&setup.args.source);
+            let mut size_check = Instant::now();
             loop {
                 tokio::select! {
                     result = &mut signal => { result?; break; }
@@ -554,7 +585,8 @@ pub async fn run(mut args: Publish) -> Result<()> {
                     }
                     _ = timer.tick() => {
                         audio.check().await.context("A captura do som do app foi interrompida")?;
-                        if control.as_ref().is_some_and(Control::is_finished) {
+                        // A monitor capture that ends is rebuilt below; a closed window ends the stream.
+                        if monitor_size.is_none() && control.as_ref().is_some_and(Control::is_finished) {
                             if controlled { anyhow::bail!("A captura foi encerrada pela janela ou pelo codificador."); }
                             break;
                         }
@@ -622,6 +654,20 @@ pub async fn run(mut args: Publish) -> Result<()> {
                     } else {
                         // A new encoder session sends a keyframe first. Keep the published track.
                         control = Some(start_capture(setup.clone()).context("Não foi possível retomar a captura")?);
+                    }
+                }
+                // A game in exclusive fullscreen (CS2 at 1280×960) or Parsec changes the monitor mode.
+                // WGC keeps sending the old surface (black), so rebuild the capture on a new size.
+                if control.is_some() && size_check.elapsed() >= Duration::from_secs(1) {
+                    size_check = Instant::now();
+                    let current = monitor_dimensions(&setup.args.source);
+                    let finished = control.as_ref().is_some_and(Control::is_finished);
+                    if (current.is_some() && current != monitor_size) || (finished && monitor_size.is_some()) {
+                        eprintln!("A tela mudou de resolução ({monitor_size:?} -> {current:?}); refazendo a captura.");
+                        monitor_size = current;
+                        if let Some(capture) = control.take() { let _ = stop_capture(capture); }
+                        control = Some(start_capture(setup.clone()).context("Não foi possível refazer a captura da tela")?);
+                        requests.keyframe.store(true, Ordering::Relaxed);
                     }
                 }
                 if let Some(room) = &room { light.update(room, &setup).await; }
@@ -795,7 +841,7 @@ impl GraphicsCaptureApiHandler for Capture {
                 };
                 let scaler = match cache {
                     Some(scaler) => scaler,
-                    None => cache.insert(Scaler::new(dimensions, self.setup.size)?),
+                    None => cache.insert(Scaler::new(dimensions, self.setup.size, session.fill)?),
                 };
                 cpu_convert(frame, scaler)?
             }
@@ -859,6 +905,7 @@ impl Capture {
         reusable: Option<(&'static str, Conversion)>,
     ) -> Result<Session> {
         let args = &self.setup.args;
+        let fill = args.stretch || fills_screen(&args.source, (frame.width(), frame.height()));
         let open = |name, conversion: Conversion| {
             let encoder = encoder::open(
                 name,
@@ -873,6 +920,7 @@ impl Capture {
                 encoder,
                 conversion,
                 input_size: (frame.width(), frame.height()),
+                fill,
                 pending: BTreeMap::new(),
             })
         };
@@ -888,7 +936,7 @@ impl Capture {
                 open(name, Conversion::default())
             } else {
                 let (width, height) = self.setup.size;
-                gpu::Converter::new(frame, width, height, args.fps, name.ends_with("_qsv"))
+                gpu::Converter::new(frame, width, height, args.fps, name.ends_with("_qsv"), fill)
                     .and_then(|gpu| {
                         open(
                             name,

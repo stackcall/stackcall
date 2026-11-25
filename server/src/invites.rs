@@ -122,6 +122,10 @@ async fn create(
     if !(1..=365).contains(&days) || !(1..=1000).contains(&limit) {
         return Err(StatusCode::BAD_REQUEST);
     }
+    // A group link (more than one use) can spread beyond the group: only managers create it.
+    if limit > 1 {
+        user.manager()?;
+    }
     let code = auth::id();
     let url = invite_url(&config.public_url, &code);
     db::run(config, move |conn| {

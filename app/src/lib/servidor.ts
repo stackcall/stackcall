@@ -108,7 +108,8 @@ export interface Servidor {
   /** POST /api/salas/{pai}/cs2/token: the id of the team sub-room (the voice token comes from `token`). */
   tokenCs2(paiId: string, time: 'ct' | 'tr'): Promise<string>;
   convites(): Promise<Convite[]>;
-  criarConvite(): Promise<Convite>;
+  /** `usos` > 1 makes a group link (owner and admins only). Defaults: 1 use, 7 days. */
+  criarConvite(opcoes?: { usos?: number; dias?: number }): Promise<Convite>;
   revogarConvite(id: string): Promise<void>;
   /** PUT /api/eu/jogo; "" clears. */
   jogo(nome: string): Promise<void>;
@@ -263,7 +264,8 @@ export function servidorReal(url: string): Servidor {
       .filter((o) => !o.revogado && !(typeof o.expira_em === 'number' && o.expira_em * 1000 < Date.now()) && Number(o.usos) < Number(o.usos_max ?? 1))
       .map(lerConvite),
     // The porteiro reads a JSON body here (axum answers 415 without one), so send an empty object.
-    criarConvite: async () => lerConvite(await chamar('POST', '/api/convites', {})),
+    criarConvite: async (opcoes) =>
+      lerConvite(await chamar('POST', '/api/convites', { usos_max: opcoes?.usos ?? 1, dias: opcoes?.dias ?? 7 })),
     revogarConvite: async (id) => void (await chamar('DELETE', `/api/convites/${c(id)}`)),
     jogo: async (nome) => void (await chamar('PUT', '/api/eu/jogo', { jogo: nome })),
     cutucadas: async () => receberDe((await chamar('GET', '/api/eu/cutucadas')).receber),

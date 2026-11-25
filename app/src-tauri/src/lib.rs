@@ -74,6 +74,59 @@ fn update_visibility(window: &WebviewWindow, visible: bool) {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// A game in exclusive fullscreen (CS2 at 1280×960) or Parsec shrinks the monitor; the window
+/// then hangs off the screen, cut. Every 2 s, bring it back inside the monitor it is on.
+fn manter_na_tela(app: tauri::AppHandle) {
+    use tauri::{PhysicalPosition, PhysicalSize};
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        let Some(window) = app.get_webview_window("main") else {
+            continue;
+        };
+        let livre = window.is_visible().unwrap_or(false)
+            && !window.is_minimized().unwrap_or(true)
+            && !window.is_maximized().unwrap_or(true)
+            && !window.is_fullscreen().unwrap_or(true);
+        if !livre {
+            continue;
+        }
+        let monitor = window
+            .current_monitor()
+            .ok()
+            .flatten()
+            .or_else(|| window.primary_monitor().ok().flatten());
+        let (Some(monitor), Ok(pos), Ok(size)) =
+            (monitor, window.outer_position(), window.outer_size())
+        else {
+            continue;
+        };
+        let area = monitor.work_area();
+        let (ax, ay) = (area.position.x, area.position.y);
+        let (aw, ah) = (area.size.width as i32, area.size.height as i32);
+        // Only fix what the resolution change broke: a window bigger than the screen or with its
+        // center off it. A window the user dragged half off-screen on purpose stays where it is.
+        let (cx, cy) = (
+            pos.x + size.width as i32 / 2,
+            pos.y + size.height as i32 / 2,
+        );
+        let maior = size.width as i32 > aw || size.height as i32 > ah;
+        let fora = cx < ax || cx > ax + aw || cy < ay || cy > ay + ah;
+        if !maior && !fora {
+            continue;
+        }
+        let w = (size.width as i32).min(aw);
+        let h = (size.height as i32).min(ah);
+        let x = pos.x.clamp(ax, ax + aw - w);
+        let y = pos.y.clamp(ay, ay + ah - h);
+        if (w, h) != (size.width as i32, size.height as i32) {
+            let _ = window.set_size(PhysicalSize::new(w as u32, h as u32));
+        }
+        if (x, y) != (pos.x, pos.y) {
+            let _ = window.set_position(PhysicalPosition::new(x, y));
+        }
+    });
+}
+
 pub fn run() {
     let builder = tauri::Builder::default();
     #[cfg(windows)]
@@ -127,6 +180,7 @@ pub fn run() {
                 .build(app)?;
             modo_jogo::iniciar(app.handle().clone());
             gsi::restore(app.handle().clone());
+            manter_na_tela(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {

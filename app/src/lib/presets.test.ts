@@ -26,14 +26,11 @@ test('unlocks AV1 through 1440p60 at 26.4 Mbps when the source and GPU support i
   expect(cards.find((c) => c.recommended)?.id).toBe('1080p60');
 });
 
-test('shows higher native presets locked by the height of a 1080p source', () => {
-  const cards = evaluatePresets({ ...base, sourceWidth: 1920, uploadMbps: 26.4, trials: nativeTrials });
-  const higher = cards.filter((c) => c.height > 1080);
-  expect(higher.map((c) => c.id)).toEqual(['1440p60', '4k30', '4k60']);
-  for (const card of higher) {
-    expect(card.locked).toBe(true);
-    expect(card.reason).toMatch(/A fonte escolhida tem 1080 linhas/);
-  }
+test('native mode does not lock by source size: the core scales to the chosen resolution', () => {
+  // Parsec puts the screen at 1366×768; CS2 runs at 1280×960. 1080p must stay available.
+  const cards = evaluatePresets({ ...base, sourceHeight: 768, sourceWidth: 1366, uploadMbps: 26.4, trials: nativeTrials });
+  expect(cards.find((c) => c.id === '1080p60')?.locked).toBe(false);
+  expect(cards.every((c) => !/linhas|largura/.test(c.reason ?? ''))).toBe(true);
 });
 
 test('only unlocks 720p30 at 5 Mbps and reports the chosen codec requirement', () => {

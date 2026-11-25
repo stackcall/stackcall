@@ -6,7 +6,7 @@ import { updateButtonLabel } from '../components/UpdateBanner';
 import { Avatar } from '../components/Avatar';
 import { Icone } from '../components/Icone';
 import { Faixa } from '../components/Faixa';
-import { Cabecalho } from '../components/Controles';
+import { Cabecalho, Segmento } from '../components/Controles';
 import { testMachine } from '../lib/sidecar';
 import type { Convite, Dorme, Pessoa, Sala, Servidor, Usuario } from '../lib/servidor';
 import { escolherServidor, lerServidores, servidorAtual } from '../lib/servidores';
@@ -281,6 +281,9 @@ function Convites({ servidor }: { servidor: Servidor }) {
   const [falha, setFalha] = useState<{ texto: string; refazer?(): void }>();
   const setErro = (texto?: string, refazer?: () => void) => setFalha(texto ? { texto, refazer } : undefined);
   const [copiado, setCopiado] = useState<string>();
+  // 1 = personal link; 50 = one link for a whole group chat. Group links are owner/admin only.
+  const [usos, setUsos] = useState<1 | 50>(1);
+  const [dias, setDias] = useState<1 | 7 | 30>(7);
   const carregar = () => {
     setErro(undefined);
     return servidor.convites().then(setLista, (e: Error) => { setLista([]); setErro(e.message, () => void carregar()); });
@@ -289,7 +292,7 @@ function Convites({ servidor }: { servidor: Servidor }) {
   const gerar = async () => {
     setErro(undefined);
     try {
-      const c = await servidor.criarConvite();
+      const c = await servidor.criarConvite({ usos, dias });
       setLista((l) => [c, ...(l ?? [])]);
       await copiar(c);
     } catch (e) {
@@ -303,9 +306,16 @@ function Convites({ servidor }: { servidor: Servidor }) {
   };
   return (
     <section className="janela flex flex-col" aria-busy={lista === null}>
-      <div className="barra">Convites<span className="ml-auto font-medium">1 uso · 7 dias</span></div>
+      <div className="barra">Convites<span className="ml-auto font-medium">{usos === 1 ? '1 pessoa' : `até ${usos} pessoas`} · {dias} {dias === 1 ? 'dia' : 'dias'}</span></div>
       <div className="flex flex-col gap-3 p-4">
-        <button type="button" className="btn btn-prim self-start" onClick={() => void gerar()}><Icone nome="link" />Gerar convite</button>
+        <div className="flex flex-wrap items-center gap-3">
+          <Segmento<1 | 50> rotulo="Para quem" valor={usos} opcoes={[[1, '1 pessoa'], [50, 'Grupo (até 50)']]} onMudar={setUsos} />
+          <Segmento<1 | 7 | 30> rotulo="Vale por" valor={dias} opcoes={[[1, '1 dia'], [7, '7 dias'], [30, '30 dias']]} onMudar={setDias} />
+          <button type="button" className="btn btn-prim" onClick={() => void gerar()}><Icone nome="link" />Gerar convite</button>
+        </div>
+        {usos > 1 && (
+          <p className="m-0 text-[13px] text-texto-fraco">Um link só para mandar no grupo. Quem tiver o link entra até completar {usos} pessoas ou vencer. Se vazar, clique em Revogar.</p>
+        )}
         <Erro texto={falha?.texto} onTentar={falha?.refazer} />
         {lista === null && <div className="skeleton h-11" />}
         {lista?.length === 0 && !falha && <p className="m-0 text-[14px] text-texto-fraco">Nenhum convite ativo. Gere um e mande no WhatsApp.</p>}

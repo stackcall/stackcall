@@ -2,7 +2,7 @@ use anyhow::{Context, Result, ensure};
 use ffmpeg_sys_next::*;
 use std::{
     ffi::{CStr, c_char, c_int},
-    ptr::NonNull,
+    ptr::{self, NonNull},
 };
 
 pub use ffmpeg_sys_next::{AVPictureType as Picture, AVPixelFormat as Pixel};
@@ -230,18 +230,40 @@ impl Drop for Frame {
     }
 }
 
+/// Where the source lands inside the fixed output canvas: `(x, y, width, height)`, all even
+/// (NV12 chroma is subsampled 2×2). `stretch` fills the canvas; otherwise the aspect ratio is
+/// kept and the rest is black, like a stream canvas in OBS. Upscaling is allowed.
+pub fn fit_rect(source: (u32, u32), canvas: (u32, u32), stretch: bool) -> (u32, u32, u32, u32) {
+    let (cw, ch) = canvas;
+    let (sw, sh) = (source.0.max(1) as u64, source.1.max(1) as u64);
+    let (wide, tall) = (sw * u64::from(ch), sh * u64::from(cw));
+    // Under 1% off (1366×768 vs 16:9) a 1-pixel bar is noise: fill.
+    if stretch || wide.abs_diff(tall) * 100 <= tall {
+        return (0, 0, cw, ch);
+    }
+    let even = |value: u64| (value as u32 & !1).max(2);
+    let (w, h) = if sw * u64::from(ch) > sh * u64::from(cw) {
+        (cw, even(u64::from(cw) * sh / sw).min(ch))
+    } else {
+        (even(u64::from(ch) * sw / sh).min(cw), ch)
+    };
+    (((cw - w) / 2) & !1, ((ch - h) / 2) & !1, w, h)
+}
+
 pub struct Scaler {
     context: NonNull<SwsContext>,
     input: Frame,
     size: (u32, u32),
+    rect: (u32, u32, u32, u32),
 }
 
 // The capture thread owns the scaler and only uses it through &mut self.
 unsafe impl Send for Scaler {}
 
 impl Scaler {
-    pub fn new((input_w, input_h): (u32, u32), size: (u32, u32)) -> Result<Self> {
-        let (width, height) = size;
+    pub fn new((input_w, input_h): (u32, u32), size: (u32, u32), stretch: bool) -> Result<Self> {
+        let rect = fit_rect((input_w, input_h), size, stretch);
+        let (_, _, width, height) = rect;
         let input = Frame::new(Pixel::AV_PIX_FMT_BGRA, input_w, input_h)?;
         let context = unsafe {
             sws_getContext(
@@ -263,6 +285,7 @@ impl Scaler {
             context,
             input,
             size,
+            rect,
         })
     }
 
@@ -282,22 +305,35 @@ impl Scaler {
 
     pub fn scale_nv12(&mut self) -> Result<Frame> {
         let (width, height) = self.size;
+        let (x, y, _, rect_h) = self.rect;
         let mut output = Frame::new(Pixel::AV_PIX_FMT_NV12, width, height)?;
+        if (rect_h, self.rect.2) != (height, width) {
+            // Black bars: Y = 16 and neutral chroma (128) in limited range.
+            output.plane_mut(0, height as usize).fill(16);
+            output.plane_mut(1, height as usize / 2).fill(128);
+        }
         let rows = unsafe {
             let src = &*self.input.as_ptr();
             let dst = output.raw_mut();
+            let (luma, chroma) = (dst.linesize[0] as usize, dst.linesize[1] as usize);
+            let planes = [
+                dst.data[0].add(y as usize * luma + x as usize),
+                dst.data[1].add((y / 2) as usize * chroma + x as usize),
+                ptr::null_mut(),
+                ptr::null_mut(),
+            ];
             sws_scale(
                 self.context.as_ptr(),
                 src.data.as_ptr().cast(),
                 src.linesize.as_ptr(),
                 0,
                 src.height,
-                dst.data.as_ptr(),
+                planes.as_ptr(),
                 dst.linesize.as_ptr(),
             )
         };
         check(rows)?;
-        ensure!(rows == height as i32, "FFmpeg converted only {rows} rows");
+        ensure!(rows == rect_h as i32, "FFmpeg converted only {rows} rows");
         Ok(output)
     }
 }
@@ -315,7 +351,7 @@ mod tests {
     #[test]
     fn converts_bgra_to_nv12_with_lgpl_dlls() -> Result<()> {
         init()?;
-        let mut scaler = Scaler::new((16, 16), (16, 16))?;
+        let mut scaler = Scaler::new((16, 16), (16, 16), false)?;
         scaler.copy_bgra(&[0; 16 * 16 * 4], 16 * 4);
         let mut output = scaler.scale_nv12()?;
         assert_eq!(output.raw_mut().format, Pixel::AV_PIX_FMT_NV12 as i32);
@@ -323,6 +359,45 @@ mod tests {
         assert_eq!(output.plane_mut(1, 8)[0], 128);
         scaler.copy_bgra(&[255; 16 * 16 * 4], 16 * 4);
         assert_eq!(scaler.scale_nv12()?.plane_mut(0, 16)[0], 235);
+        Ok(())
+    }
+
+    #[test]
+    fn fits_source_inside_the_canvas() {
+        // CS2 4:3 (1280×960) in 1080p: pillarbox, centered.
+        assert_eq!(
+            fit_rect((1280, 960), (1920, 1080), false),
+            (240, 0, 1440, 1080)
+        );
+        // Same aspect ratio, upscaled, fills everything.
+        assert_eq!(
+            fit_rect((1366, 768), (1920, 1080), false),
+            (0, 0, 1920, 1080)
+        );
+        // Wider than 16:9: letterbox.
+        assert_eq!(
+            fit_rect((2560, 1080), (1920, 1080), false),
+            (0, 134, 1920, 810)
+        );
+        // Stretch ignores the aspect ratio.
+        assert_eq!(
+            fit_rect((1280, 960), (1920, 1080), true),
+            (0, 0, 1920, 1080)
+        );
+        // Odd window sizes stay even.
+        let (x, y, w, h) = fit_rect((1023, 719), (1280, 720), false);
+        assert!(x % 2 == 0 && y % 2 == 0 && w % 2 == 0 && h % 2 == 0);
+    }
+
+    #[test]
+    fn letterboxes_on_the_cpu_path() -> Result<()> {
+        init()?;
+        let mut scaler = Scaler::new((12, 16), (32, 16), false)?;
+        scaler.copy_bgra(&[255; 12 * 16 * 4], 12 * 4);
+        let mut output = scaler.scale_nv12()?;
+        let row = output.plane_mut(0, 16)[..32].to_vec();
+        assert_eq!(row[0], 16, "bar stays black");
+        assert_eq!(row[16], 235, "center has the source");
         Ok(())
     }
 }

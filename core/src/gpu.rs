@@ -69,7 +69,14 @@ impl Converter {
         self.qsv_pool.as_ref().unwrap_or(&self.d3d_pool)
     }
 
-    pub fn new(frame: &Frame, width: u32, height: u32, fps: u32, qsv: bool) -> Result<Self> {
+    pub fn new(
+        frame: &Frame,
+        width: u32,
+        height: u32,
+        fps: u32,
+        qsv: bool,
+        stretch: bool,
+    ) -> Result<Self> {
         unsafe {
             let device: ID3D11VideoDevice = frame.device().cast()?;
             let context: ID3D11VideoContext = frame.device_context().cast()?;
@@ -97,9 +104,32 @@ impl Converter {
             };
             let input = rect(frame.width(), frame.height());
             let output = rect(width, height);
+            let (x, y, w, h) =
+                crate::media::fit_rect((frame.width(), frame.height()), (width, height), stretch);
+            let placed = RECT {
+                left: x as i32,
+                top: y as i32,
+                right: (x + w) as i32,
+                bottom: (y + h) as i32,
+            };
             context.VideoProcessorSetStreamSourceRect(&processor, 0, true, Some(&input));
-            context.VideoProcessorSetStreamDestRect(&processor, 0, true, Some(&output));
+            context.VideoProcessorSetStreamDestRect(&processor, 0, true, Some(&placed));
             context.VideoProcessorSetOutputTargetRect(&processor, true, Some(&output));
+            // The area outside the placed rectangle is the background: black bars.
+            context.VideoProcessorSetOutputBackgroundColor(
+                &processor,
+                false,
+                &D3D11_VIDEO_COLOR {
+                    Anonymous: D3D11_VIDEO_COLOR_0 {
+                        RGBA: D3D11_VIDEO_COLOR_RGBA {
+                            R: 0.0,
+                            G: 0.0,
+                            B: 0.0,
+                            A: 1.0,
+                        },
+                    },
+                },
+            );
             context.VideoProcessorSetStreamAutoProcessingMode(&processor, 0, false);
 
             let hardware = Buffer(av_hwdevice_ctx_alloc(
