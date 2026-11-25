@@ -4,11 +4,11 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Avatar } from '../components/Avatar';
+import { Faixa } from '../components/Faixa';
 import { Icone } from '../components/Icone';
 import { useInterfaceAtiva } from '../lib/leveza';
 import { demoScreen } from '../lib/config';
 import type { Pessoa, Sala, Servidor, Usuario } from '../lib/servidor';
-import { useTema } from '../lib/tema';
 import type { Attachable, ChatMessage, Person, RoomActions, RoomModel, Stream } from '../room/model';
 import { useDemoRoom } from '../room/demo';
 import { useLiveRoom } from '../room/useLiveRoom';
@@ -65,50 +65,44 @@ function DemoRoom(props: ComSala) {
 
 const fmt = (n: number, d = 1) => n.toLocaleString('pt-BR', { maximumFractionDigits: d });
 const qualidadePing = (ms: number) => (ms <= 150 ? 'bom' : ms <= 250 ? 'ok' : 'alto');
+const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
 
 function Topo({ nomeServidor, salas, sala, pessoas, onSala, onConfig, onPerfil, eu }: RoomProps) {
-  const [tema, setTema] = useTema();
   const online = pessoas.filter((p) => p.online).length;
   return (
-    <header className="flex min-w-0 flex-wrap items-center gap-3">
-      <div className="janela flex h-[52px] items-center gap-3 pr-1 pl-3">
+    <header className="flex min-w-0 items-center gap-3">
+      <div className="janela flex h-[52px] shrink-0 items-center gap-3 pr-1 pl-3">
         <span className="font-display text-[26px] leading-none">stack<span className="text-destaque">call</span></span>
         <span aria-hidden="true" className="h-[26px] w-px bg-texto" />
         <button type="button" onClick={onConfig} className="flex h-11 flex-col items-start justify-center border-0 bg-transparent px-2 text-left leading-[1.15] hover:bg-superficie-alta"
           aria-label={`Servidor ${nomeServidor}, ${pessoas.length} membros. Abrir configurações do servidor`}>
-          <b className="text-[14px]">{nomeServidor}</b>
-          <span className="rotulo text-[10px]">{pessoas.length} membros · {online} online</span>
+          <b className="max-w-[180px] truncate text-[14px]">{nomeServidor}</b>
+          <span className="rotulo text-[11px]">{pessoas.length} membros · {online} online</span>
         </button>
       </div>
 
-      <nav aria-label="Salas" className="janela flex min-w-0 flex-wrap">
-        {salas.map((r, i) => {
+      <nav aria-label="Salas" className="janela flex min-w-0 overflow-x-auto">
+        {salas.map((r) => {
           const ativa = r.id === sala;
           const ponto = r.noAr ? 'bg-destaque' : r.pessoas > 0 ? 'bg-lima outline outline-1 outline-texto' : 'bg-borda';
           const dica = r.noAr ? 'alguém no ar' : r.pessoas > 0 ? 'tem gente' : 'vazia';
           return (
             <button key={r.id} type="button" aria-current={ativa ? 'true' : undefined} onClick={() => onSala(r.id)}
-              aria-label={`Sala ${r.nome}, ${r.pessoas} ${r.pessoas === 1 ? 'pessoa' : 'pessoas'}, ${dica}${ativa ? ', você está aqui' : ''}`}
-              className={`flex h-[50px] min-w-[112px] flex-col items-start justify-center gap-px border-0 px-3 text-left [&+&]:border-l [&+&]:border-texto ${ativa ? 'bg-texto text-superficie' : 'bg-transparent hover:bg-superficie-alta'}`}>
+              aria-label={`Sala ${r.nome}, ${plural(r.pessoas, 'pessoa', 'pessoas')}, ${dica}${ativa ? ', você está aqui' : ''}`}
+              className={`flex h-[50px] min-w-[104px] shrink-0 flex-col items-start justify-center border-0 px-3 text-left [&+&]:border-l [&+&]:border-texto ${ativa ? 'bg-texto text-superficie' : 'bg-transparent hover:bg-superficie-alta'}`}>
               <span className="flex w-full items-center gap-2">
-                <span className={`rotulo text-[10px] ${ativa ? 'text-superficie opacity-70' : ''}`}>{String(i + 1).padStart(2, '0')}</span>
-                <span aria-hidden="true" title={dica} className={`ml-auto inline-block size-2 ${ponto}`} />
+                <b className="max-w-[140px] truncate text-[14px]">{r.nome}</b>
+                <span aria-hidden="true" className={`ml-auto inline-block size-2 shrink-0 ${ponto}`} />
               </span>
-              <span className="flex items-baseline gap-1.5">
-                <b className="text-[14px]">{r.nome}</b>
-                <span className="tabular-nums text-[12px] opacity-70">{r.pessoas}</span>
+              <span className={`text-[12px] tabular-nums ${ativa ? 'opacity-80' : 'text-texto-fraco'}`}>
+                {r.noAr ? `${r.pessoas} · no ar` : r.pessoas > 0 ? `${r.pessoas} na sala` : 'vazia'}
               </span>
             </button>
           );
         })}
       </nav>
 
-      <div className="ml-auto flex items-center gap-2.5">
-        <PingJanela />
-        <div className="abas" role="group" aria-label="Tema">
-          <button type="button" aria-pressed={tema === 'claro'} onClick={() => setTema('claro')}>Claro</button>
-          <button type="button" aria-pressed={tema === 'escuro'} onClick={() => setTema('escuro')}>Escuro</button>
-        </div>
+      <div className="ml-auto flex shrink-0 items-center gap-2.5">
         <button type="button" className="btn btn-icone" aria-label="Configurações" title="Configurações" onClick={onConfig}><Icone nome="ajustes" /></button>
         <button type="button" className="border-0 bg-transparent p-0" aria-label="Seu perfil" title="Seu perfil" onClick={onPerfil}>
           <Avatar pessoa={eu} tamanho={44} />
@@ -118,80 +112,126 @@ function Topo({ nomeServidor, salas, sala, pessoas, onSala, onConfig, onPerfil, 
   );
 }
 
-/** The ping lives in the room model; outside a room the top bar shows a dash. */
-let pingAtual: number | null = null;
-const ouvintesPing = new Set<(v: number | null) => void>();
-function publicarPing(v: number | null) {
-  pingAtual = v;
-  ouvintesPing.forEach((f) => f(v));
-}
-function PingJanela() {
-  const [ping, setPing] = useState(pingAtual);
-  useEffect(() => {
-    ouvintesPing.add(setPing);
-    return () => void ouvintesPing.delete(setPing);
-  }, []);
-  const rotulo = ping === null ? 'Ping ainda não medido' : `Ping ${ping} milissegundos, ${qualidadePing(ping)}`;
-  return (
-    <div className="janela flex h-[52px] min-w-[116px] flex-col" role="status" aria-label={rotulo}>
-      <span className="barra barra-lima min-h-[18px] px-2 text-[10px]">Ping<span className="ml-auto font-medium">{ping === null ? '—' : qualidadePing(ping)}</span></span>
-      <span className="flex flex-1 items-center gap-1 px-2.5 whitespace-nowrap">
-        <b className="font-display tabular-nums text-[22px] leading-none">{ping ?? '—'}</b>
-        <span className="rotulo text-[10px]">ms</span>
-      </span>
-    </div>
-  );
+/** One red button only: the room with the most people (or the first one) is the suggested way in. */
+function salaSugerida(salas: Sala[]) {
+  return salas.reduce<Sala | undefined>((m, s) => (!m || s.pessoas > m.pessoas ? s : m), undefined)?.id;
 }
 
-function Saguao({ nomeServidor, salas, onSala, pessoas }: RoomProps) {
+function Saguao({ salas, onSala, pessoas, eu, onCartao }: RoomProps) {
+  const sugerida = salaSugerida(salas);
+  const emVoz = pessoas.filter((p) => p.online && p.sala).length;
   return (
-    <main className="flex min-h-0 flex-col gap-5 overflow-y-auto">
-      <div className="flex flex-col gap-1.5">
-        <span className="rotulo">/ {nomeServidor} · fora da voz</span>
-        <h1 className="text-[64px]">Escolha uma sala</h1>
-        <p className="m-0 text-texto-fraco">Você não está em nenhuma sala. Entre numa para falar, assistir e conversar.</p>
-      </div>
-      {salas.length === 0 ? (
-        <Vazio titulo="Nenhuma sala ainda" texto="O dono ou um admin cria as salas em Configurações > Servidor." />
-      ) : (
-        <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4 p-0">
-          {salas.map((s) => {
-            const nela = pessoas.filter((p) => p.sala === s.id);
-            return (
-              <li key={s.id} className="janela flex flex-col">
-                <div className={`barra ${s.noAr ? 'barra-ar' : ''}`}>{s.nome}<span className="ml-auto font-medium">{s.noAr ? 'no ar' : `${s.pessoas} na sala`}</span></div>
-                <div className="flex flex-1 flex-col gap-3 p-3.5">
-                  <div className="flex min-h-11 items-center gap-1.5">
-                    {nela.length === 0 && <span className="text-[14px] text-texto-fraco">Vazia agora.</span>}
-                    {nela.slice(0, 6).map((p) => <Avatar key={p.id} pessoa={p} tamanho={36} />)}
+    <main className="grid min-h-0 grid-cols-[minmax(0,1fr)_320px] gap-4">
+      <section className="flex min-h-0 flex-col gap-4 overflow-y-auto">
+        <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-1">
+          <h1 className="text-[56px]">Escolha uma sala</h1>
+          <p className="m-0 pb-2 text-texto-fraco">
+            {emVoz ? `${plural(emVoz, 'pessoa', 'pessoas')} em voz agora.` : 'Ninguém em voz agora. Entre e chame a galera.'}
+          </p>
+        </header>
+        {salas.length === 0 ? (
+          <div className="janela flex flex-1"><Vazio titulo="Nenhuma sala ainda" texto="O dono ou um admin cria as salas em Configurações > Servidor." /></div>
+        ) : (
+          <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(230px,1fr))] content-start gap-3 p-0">
+            {salas.map((s) => {
+              const nela = pessoas.filter((p) => p.sala === s.id);
+              const total = Math.max(s.pessoas, nela.length);
+              return (
+                <li key={s.id} className="janela flex flex-col">
+                  <div className={`barra ${s.noAr ? 'barra-ar' : ''}`}>
+                    <span className="truncate">{s.nome}</span>
+                    <span className="ml-auto font-medium">{s.noAr ? 'no ar' : total ? `${total} na sala` : 'vazia'}</span>
                   </div>
-                  <button type="button" className="btn btn-prim" onClick={() => onSala(s.id)}>Entrar na sala {s.nome}</button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+                  <div className="flex flex-1 flex-col gap-3 p-3">
+                    {nela.length === 0 ? (
+                      <span className="flex min-h-9 items-center text-[14px] text-texto-fraco">{total ? plural(total, 'pessoa', 'pessoas') : 'Ninguém agora'}</span>
+                    ) : (
+                      <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+                        {nela.slice(0, 4).map((p) => (
+                          <li key={p.id} className="flex min-w-0 items-center gap-2 text-[14px]">
+                            <Avatar pessoa={p} tamanho={24} /><span className="truncate">{p.nome}</span>
+                          </li>
+                        ))}
+                        {nela.length > 4 && <li className="text-[13px] text-texto-fraco">e mais {nela.length - 4}</li>}
+                      </ul>
+                    )}
+                    <button type="button" className={`btn mt-auto w-full ${s.id === sugerida ? 'btn-prim' : ''}`} aria-label={`Entrar na sala ${s.nome}`} onClick={() => onSala(s.id)}>
+                      Entrar
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+      <Presenca pessoas={pessoas} salas={salas} eu={eu} onCartao={onCartao} />
     </main>
   );
 }
 
+/** Who is online and in which room: the lobby's side panel. */
+function Presenca({ pessoas, salas, eu, onCartao }: { pessoas: Pessoa[]; salas: Sala[]; eu: Usuario; onCartao(id: string): void }) {
+  const nomeSala = new Map(salas.map((s) => [s.id, s.nome] as const));
+  const online = pessoas.filter((p) => p.online && p.id !== eu.id).sort((a, b) => Number(!!b.sala) - Number(!!a.sala));
+  return (
+    <aside className="janela flex min-h-0 flex-col" aria-label="Quem está online">
+      <div className="barra">Online agora<span className="ml-auto font-medium">{online.length}</span></div>
+      {online.length === 0 ? (
+        <Vazio titulo="Ninguém online" texto="Quando alguém abrir o app, aparece aqui com a sala em que está." />
+      ) : (
+        <ul className="m-0 min-h-0 flex-1 list-none overflow-y-auto p-0">
+          {online.map((p) => (
+            <li key={p.id}>
+              <button type="button" className="flex min-h-12 w-full items-center gap-2.5 border-0 bg-transparent px-3.5 py-1.5 text-left hover:bg-superficie-alta"
+                onClick={() => onCartao(p.id)} aria-label={`Ver perfil de ${p.nome}`}>
+                <Avatar pessoa={p} tamanho={32} />
+                <span className="flex min-w-0 flex-col leading-tight">
+                  <b className="truncate text-[14px]">{p.nome}</b>
+                  <span className="text-[12px] text-texto-fraco">{p.sala ? `em ${nomeSala.get(p.sala) ?? 'outra sala'}` : 'fora da voz'}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </aside>
+  );
+}
+
 function RoomView(props: ComSala & { model: RoomModel & RoomActions; reconexao: Reconexao; onRetry(): void }) {
-  const { model, sala, nomeServidor, salas, pessoas, eu, demo, onSala, onCartao, onConvidar } = props;
+  const { model, sala, salas, pessoas, eu, demo, onSala, onCartao, onConvidar } = props;
   const [goLive, setGoLive] = useState(() => demo && demoScreen() === 'ar');
   const [fallback, setFallback] = useState(false);
   const [stageId, setStageId] = useState<string | null>(null);
-  const [convite, setConvite] = useState<'' | 'gerando' | 'copiado' | string>('');
+  const [convite, setConvite] = useState<'' | 'gerando' | 'copiado' | { erro: string }>('');
   const me = model.people.find((p) => p.isLocal);
   const imLive = !!me?.live;
   const stage = model.streams.find((s) => s.owner.id === stageId) ?? model.streams[0];
   const others = model.people.filter((p) => !p.isLocal);
   const porId = new Map(pessoas.map((p) => [p.id, p] as const));
-  const numero = String(salas.findIndex((s) => s.id === sala.id) + 1).padStart(2, '0');
-  const linha = [`${model.people.length} na sala`, stage && `${stage.owner.isLocal ? 'você' : stage.owner.name} transmitindo`].filter(Boolean).join(' · ');
+  const conectada = model.state === 'connected';
+  const linha = stage ? `${stage.owner.isLocal ? 'você' : stage.owner.name} no ar` : 'ninguém no ar';
 
-  useEffect(() => publicarPing(model.ping), [model.ping]);
-  useEffect(() => () => publicarPing(null), []);
+  // Keyboard: M mic, S sound, T transmit. Never while typing or with a dialog open.
+  const atual = useRef({ model, conectada, imLive, goLive });
+  atual.current = { model, conectada, imLive, goLive };
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => {
+      const alvo = e.target as HTMLElement | null;
+      if (e.ctrlKey || e.altKey || e.metaKey || e.repeat) return;
+      if (alvo?.closest('input, textarea, select, [contenteditable="true"]') || document.querySelector('[aria-modal="true"]')) return;
+      const a = atual.current;
+      const k = e.key.toLowerCase();
+      if (k === 'm') a.model.toggleMic();
+      else if (k === 's') a.model.toggleDeafen();
+      else if (k === 't' && a.conectada && !a.imLive && !a.goLive) setGoLive(true);
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', tecla);
+    return () => window.removeEventListener('keydown', tecla);
+  }, []);
 
   async function convidar() {
     setConvite('gerando');
@@ -199,48 +239,56 @@ function RoomView(props: ComSala & { model: RoomModel & RoomActions; reconexao: 
       await onConvidar();
       setConvite('copiado');
     } catch (e) {
-      setConvite(e instanceof Error ? e.message : String(e));
+      setConvite({ erro: e instanceof Error ? e.message : String(e) });
     }
   }
+
+  const abrirGoLive = () => setGoLive(true);
+  const vivo = model.state === 'connected' || model.state === 'reconnecting';
 
   return (
     <>
       <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-4">
         <main className="grid min-h-0 grid-cols-[minmax(0,1fr)_340px] gap-4">
           <section className="flex min-h-0 min-w-0 flex-col gap-3">
-            <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
-              <div className="flex min-w-0 flex-col gap-1.5">
-                <span className="rotulo">/ {nomeServidor} · sala {numero}</span>
-                <h1 className="truncate text-[64px]">{sala.nome}</h1>
-              </div>
-              <span className="pb-2 text-[14px] text-texto-fraco">{linha}</span>
-              <div className="ml-auto flex items-center gap-2 pb-1">
-                {convite && convite !== 'gerando' && (
-                  <span role="status" className={`text-[13px] ${convite === 'copiado' ? 'text-texto-fraco' : 'text-perigo'}`}>
-                    {convite === 'copiado' ? 'Link copiado. Vale 7 dias, 1 uso.' : convite}
-                  </span>
-                )}
+            <div className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-2">
+              <h1 className="sr-only">Sala {sala.nome}</h1>
+              <span className="text-[15px]"><b>{plural(model.people.length, 'pessoa', 'pessoas')} na sala</b> <span className="text-texto-fraco">· {linha}</span></span>
+              <div className="ml-auto flex items-center gap-2">
+                {convite === 'copiado' && <span role="status" className="text-[13px] text-texto-fraco">Link copiado. Vale 7 dias e 1 uso.</span>}
                 <button type="button" className="btn" disabled={convite === 'gerando'} onClick={() => void convidar()}>
                   <Icone nome="link" />{convite === 'gerando' ? 'Gerando…' : 'Convidar'}
                 </button>
               </div>
+              {typeof convite === 'object' && (
+                <Faixa className="basis-full" acoes={[{ rotulo: 'Tentar de novo', onClick: () => void convidar() }]} onFechar={() => setConvite('')}>
+                  Não deu para gerar o convite. {convite.erro}
+                </Faixa>
+              )}
             </div>
-            <Palco model={model} stage={stage} reconexao={props.reconexao} onPick={setStageId} onGoLive={() => setGoLive(true)} onRetry={props.onRetry} />
+            {stage || !vivo ? (
+              <Palco model={model} stage={stage} reconexao={props.reconexao} onPick={setStageId} onRetry={props.onRetry} />
+            ) : (
+              <SalaLivre model={model} others={others} porId={porId} pessoas={pessoas} salas={salas} sala={sala} conectada={conectada}
+                onGoLive={abrirGoLive} onCartao={onCartao} />
+            )}
           </section>
-          <Lateral sala={sala.nome} model={model} pessoas={pessoas} eu={eu} onCartao={onCartao} onAmigo={props.onAmigo} />
+          <Lateral sala={sala.nome} model={model} pessoas={pessoas} salas={salas} eu={eu} onCartao={onCartao} onAmigo={props.onAmigo} />
         </main>
 
         <footer className="grid min-w-0 grid-cols-[340px_minmax(0,1fr)] gap-4">
-          <Voce model={model} nome={eu.nome} sala={sala.nome} imLive={imLive}
-            onGoLive={() => setGoLive(true)} onSair={() => onSala(null)} onFallback={() => { model.clearStreamError?.(); setFallback(true); setGoLive(true); }} />
-          <ul aria-label="Pessoas na sala" className="m-0 flex min-w-0 list-none gap-3 overflow-x-auto p-0 pb-1">
-            {others.map((p) => (
-              <Canal key={p.id} person={p} perfil={porId.get(p.id)} onVolume={(v) => model.setVolume(p.id, v)} onCartao={() => onCartao(p.id)} />
-            ))}
-            <li className="flex min-w-[140px] flex-1 items-center justify-center border border-dashed border-texto bg-superficie px-3 text-center text-[13px] text-texto-fraco">
-              {others.length === 0 ? 'Só você por aqui. Chame alguém com o link de convite.' : 'Canal livre para mais um'}
-            </li>
-          </ul>
+          <Voce model={model} nome={eu.nome} sala={sala.nome} imLive={imLive} temPalco={!!stage}
+            onGoLive={abrirGoLive} onSair={() => onSala(null)} onFallback={() => { model.clearStreamError?.(); setFallback(true); setGoLive(true); }} />
+          {stage ? (
+            <ul aria-label="Pessoas na sala" className="m-0 flex min-w-0 list-none gap-3 overflow-x-auto p-0 pb-1">
+              {others.map((p) => (
+                <Canal key={p.id} person={p} perfil={porId.get(p.id)} onVolume={(v) => model.setVolume(p.id, v)} onCartao={() => onCartao(p.id)} />
+              ))}
+              {others.length === 0 && <li className="flex items-center px-2 text-[14px] text-texto-fraco">Só você na sala.</li>}
+            </ul>
+          ) : (
+            <Atalhos />
+          )}
         </footer>
       </div>
 
@@ -267,6 +315,72 @@ function RoomView(props: ComSala & { model: RoomModel & RoomActions; reconexao: 
   );
 }
 
+function Atalhos() {
+  const itens: [string, string][] = [['M', 'liga e desliga o microfone'], ['S', 'silencia tudo'], ['T', 'transmite a tela']];
+  return (
+    <section className="janela flex min-w-0 flex-col" aria-label="Atalhos do teclado">
+      <div className="barra">Atalhos<span className="ml-auto font-medium">fora da conversa</span></div>
+      <ul className="m-0 flex flex-1 list-none flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
+        {itens.map(([k, t]) => (
+          <li key={k} className="flex items-center gap-2 text-[14px]">
+            <kbd className="inline-flex size-8 items-center justify-center border border-texto bg-superficie-alta font-mono text-[13px] font-bold">{k}</kbd>
+            <span className="text-texto-fraco">{t}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** Empty stage: a slim strip with the one Transmit button, and the room's people get the space. */
+function SalaLivre({ model, others, porId, pessoas, salas, sala, conectada, onGoLive, onCartao }: {
+  model: RoomModel & RoomActions; others: Person[]; porId: Map<string, Pessoa>; pessoas: Pessoa[]; salas: Sala[]; sala: Sala;
+  conectada: boolean; onGoLive(): void; onCartao(id: string): void;
+}) {
+  const nomeSala = new Map(salas.map((s) => [s.id, s.nome] as const));
+  const naVoz = new Set(model.people.map((p) => p.id));
+  const fora = pessoas.filter((p) => p.online && !naVoz.has(p.id) && p.sala !== sala.id);
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="janela flex flex-wrap items-center gap-x-4 gap-y-2 py-3 pr-3 pl-4">
+        <b className="font-display text-[28px]">Palco livre</b>
+        <span className="text-texto-fraco">Ninguém transmitindo. Mostre seu jogo para a sala.</span>
+        <button type="button" className="btn btn-prim btn-lg ml-auto" disabled={!conectada} onClick={onGoLive}>
+          <Icone nome="tela" />Transmitir
+        </button>
+      </div>
+      <section className="janela flex min-h-0 flex-1 flex-col" aria-label="Pessoas na sala">
+        <div className="barra">Na sala<span className="ml-auto font-medium">{plural(model.people.length, 'pessoa', 'pessoas')}</span></div>
+        {others.length > 0 ? (
+          <ul className="m-0 grid min-h-0 flex-1 list-none grid-cols-[repeat(auto-fill,minmax(200px,1fr))] content-start gap-3 overflow-y-auto p-3">
+            {others.map((p) => (
+              <Canal key={p.id} largo person={p} perfil={porId.get(p.id)} onVolume={(v) => model.setVolume(p.id, v)} onCartao={() => onCartao(p.id)} />
+            ))}
+          </ul>
+        ) : (
+          <Vazio titulo="Só você por aqui" texto="Chame a galera em Convidar. O link vale 7 dias e 1 uso.">
+            {fora.length > 0 && (
+              <div className="mt-3 flex flex-col items-center gap-2">
+                <span className="rotulo">Online em outro lugar · {fora.length}</span>
+                <ul className="m-0 flex list-none flex-wrap justify-center gap-2 p-0">
+                  {fora.slice(0, 8).map((p) => (
+                    <li key={p.id}>
+                      <button type="button" className="btn btn-fant gap-2 px-2" onClick={() => onCartao(p.id)} aria-label={`Ver perfil de ${p.nome}`}>
+                        <Avatar pessoa={p} tamanho={28} />
+                        <span className="text-[13px]">{p.nome}<span className="text-texto-fraco"> · {p.sala ? nomeSala.get(p.sala) ?? 'outra sala' : 'fora da voz'}</span></span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </Vazio>
+        )}
+      </section>
+    </div>
+  );
+}
+
 export function TrackVideo({ track, className, muted = true }: { track?: Attachable; className?: string; muted?: boolean }) {
   const ref = useRef<HTMLVideoElement>(null);
   const ativa = useInterfaceAtiva();
@@ -288,8 +402,8 @@ async function toggleFullscreen(el: HTMLElement) {
   if (isTauri()) await getCurrentWindow().setFullscreen(on).catch(() => undefined);
 }
 
-function Palco({ model, stage, reconexao, onPick, onGoLive, onRetry }: {
-  model: RoomModel & RoomActions; stage?: Stream; reconexao: Reconexao; onPick(id: string): void; onGoLive(): void; onRetry(): void;
+function Palco({ model, stage, reconexao, onPick, onRetry }: {
+  model: RoomModel & RoomActions; stage?: Stream; reconexao: Reconexao; onPick(id: string): void; onRetry(): void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -310,7 +424,7 @@ function Palco({ model, stage, reconexao, onPick, onGoLive, onRetry }: {
           <p role="alert" className="m-0 max-w-[480px]">{model.error}</p>
           <p role="status" className="m-0 text-[14px] text-texto-fraco">
             {reconexao.esgotou ? 'Toque em Reconectar quando a internet voltar.'
-              : typeof navigator !== 'undefined' && !navigator.onLine ? 'Sem internet. Reconecta sozinho quando a rede voltar.'
+              : !navigator.onLine ? 'Sem internet. Reconecta sozinho quando a rede voltar.'
                 : `Reconectando sozinho em ${proxima} s (tentativa ${reconexao.falhas + 1} de ${RECUO_MS.length}).`}
           </p>
           <button type="button" className="btn btn-prim btn-lg" onClick={onRetry}>Reconectar</button>
@@ -318,25 +432,11 @@ function Palco({ model, stage, reconexao, onPick, onGoLive, onRetry }: {
       </div>
     );
   }
-  if (model.state === 'connecting') {
+  if (model.state === 'connecting' || !stage) {
     return (
       <div className="janela flex min-h-0 flex-1 flex-col" aria-busy="true">
         <div className="barra">Palco<span className="ml-auto font-medium">conectando</span></div>
         <div className="skeleton m-4 flex-1" />
-      </div>
-    );
-  }
-  if (!stage) {
-    return (
-      <div className="janela flex min-h-0 flex-1 flex-col">
-        <div className="barra">Palco<span className="ml-auto font-medium">livre</span></div>
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-          <b className="font-display text-[40px]">Ninguém no ar</b>
-          <span className="text-texto-fraco">O palco está livre. Mostra o teu jogo pra galera.</span>
-          <button type="button" className="btn btn-prim btn-lg" disabled={model.state !== 'connected'} onClick={onGoLive}>
-            <Icone nome="tela" />Transmitir
-          </button>
-        </div>
       </div>
     );
   }
@@ -349,15 +449,15 @@ function Palco({ model, stage, reconexao, onPick, onGoLive, onRetry }: {
     <div ref={ref} className="janela flex min-h-0 flex-1 flex-col">
       <div className="barra barra-ar">
         <span aria-hidden="true" className="size-[7px] bg-sobre-destaque" />No ar · {nome}
-        <span className="ml-auto truncate font-medium">{[numeros, `${stage.watchers} assistindo`].filter(Boolean).join(' · ')}</span>
+        <span className="ml-auto truncate font-medium normal-case">{[numeros, `${stage.watchers} assistindo`].filter(Boolean).join(' · ')}</span>
       </div>
       <div className="relative min-h-0 flex-1 overflow-hidden bg-palco">
         {stage.track ? (
           <TrackVideo track={stage.track} className="absolute inset-0 size-full object-contain" />
         ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center">
             <span className="font-pincel -rotate-6 text-[40px] text-lima">ao vivo!</span>
-            <span className="text-[13px] text-[#b3b3ab]">Tela de {nome}. Assistir gasta internet só de quem assiste.</span>
+            <span className="text-[14px] text-sobre-palco">Tela de {nome}. Assistir gasta internet só de quem assiste.</span>
             {!stage.watching && (
               <button type="button" className="btn btn-prim btn-lg" onClick={() => model.watch(stage.owner.id)}>Assistir</button>
             )}
@@ -383,46 +483,55 @@ function Palco({ model, stage, reconexao, onPick, onGoLive, onRetry }: {
   );
 }
 
-function Voce({ model, nome, sala, imLive, onGoLive, onSair, onFallback }: {
-  model: RoomModel & RoomActions; nome: string; sala: string; imLive: boolean; onGoLive(): void; onSair(): void; onFallback(): void;
+function Voce({ model, nome, sala, imLive, temPalco, onGoLive, onSair, onFallback }: {
+  model: RoomModel & RoomActions; nome: string; sala: string; imLive: boolean; temPalco: boolean; onGoLive(): void; onSair(): void; onFallback(): void;
 }) {
+  const ativa = useInterfaceAtiva();
+  const me = model.people.find((p) => p.isLocal);
   const estado = { connecting: 'conectando…', connected: `na voz · ${sala}`, reconnecting: 'reconectando…', error: 'fora da voz' }[model.state];
+  const ping = model.ping;
   return (
     <div className="janela flex flex-col">
       <div className="barra">
-        Você · {nome}
+        <span className="truncate">Você · {nome}</span>
         <span className="ml-auto inline-flex items-center gap-1.5 font-medium" role="status">
           <span aria-hidden="true" className={`size-[7px] ${model.state === 'connected' ? 'bg-lima' : 'bg-superficie-topo'}`} />{estado}
         </span>
+        {ping !== null && (
+          <span role="status" aria-label={`Ping ${ping} milissegundos, ${qualidadePing(ping)}`} title="Ida e volta até o servidor de voz"
+            className={`font-medium tabular-nums normal-case ${ping > 250 ? 'text-destaque' : ''}`}>· {ping} ms</span>
+        )}
       </div>
       <div className="flex flex-1 items-center gap-2 px-3 py-2">
         <button type="button" className={`btn btn-lg btn-icone ${model.micOn ? '' : 'btn-off'}`} aria-pressed={!model.micOn}
-          aria-label={model.micOn ? 'Desligar microfone' : 'Ligar microfone'} title={model.micOn ? 'Microfone ligado' : 'Microfone desligado'} onClick={model.toggleMic}>
+          aria-label={model.micOn ? 'Desligar microfone' : 'Ligar microfone'} title={model.micOn ? 'Microfone ligado (M)' : 'Microfone desligado (M)'} onClick={model.toggleMic}>
           <Icone nome={model.micOn ? 'mic' : 'mic-off'} tamanho={20} />
         </button>
         <button type="button" className={`btn btn-lg btn-icone ${model.deafened ? 'btn-off' : ''}`} aria-pressed={model.deafened}
-          aria-label={model.deafened ? 'Ligar o som' : 'Silenciar tudo'} title={model.deafened ? 'Som desligado' : 'Silenciar tudo'} onClick={model.toggleDeafen}>
+          aria-label={model.deafened ? 'Ligar o som' : 'Silenciar tudo'} title={model.deafened ? 'Som desligado (S)' : 'Silenciar tudo (S)'} onClick={model.toggleDeafen}>
           <Icone nome={model.deafened ? 'fone-off' : 'fone'} tamanho={20} />
         </button>
         {imLive ? (
           <button type="button" className="btn btn-lg flex-1" onClick={model.stopLive}><Icone nome="tela" />Sair do ar</button>
+        ) : temPalco ? (
+          <button type="button" className="btn btn-lg flex-1" disabled={model.state !== 'connected'} onClick={onGoLive}><Icone nome="tela" />Transmitir</button>
         ) : (
-          <button type="button" className="btn btn-lg btn-prim flex-1" disabled={model.state !== 'connected'} onClick={onGoLive}><Icone nome="tela" />Transmitir</button>
+          <span className="flex min-w-0 flex-1 items-center gap-2 px-1" title="Nível do seu microfone">
+            <span className="text-[12px] text-texto-fraco">{model.micOn ? 'seu mic' : 'mudo'}</span>
+            {me && <Medidor person={me} ativo={ativa && model.micOn} className="h-3 flex-1 !flex-row" />}
+          </span>
         )}
         <button type="button" className="btn btn-lg btn-icone text-perigo" aria-label="Sair da sala" title="Sair da sala" onClick={onSair}>
           <Icone nome="sair" tamanho={20} />
         </button>
       </div>
-      <p className="rotulo m-0 border-t border-borda px-3 py-2 text-[10px]">
-        mic {model.micOn ? 'ligado' : 'desligado'} · som {model.deafened ? 'desligado' : 'ligado'} · {imLive ? 'você está no ar' : 'fora do ar'}
-      </p>
       {(model.micError || model.streamError) && (
         <div role="alert" className="flex flex-col gap-2 border-t border-texto px-3 py-2 text-[13px] text-perigo">
           {model.micError && <span>{model.micError}</span>}
           {model.streamError && (
             <>
               <span>{model.streamError}</span>
-              <button type="button" className="btn self-start" disabled={model.state !== 'connected'} onClick={onFallback}>Transmitir pelo modo de reserva</button>
+              <button type="button" className="btn btn-sm self-start" disabled={model.state !== 'connected'} onClick={onFallback}>Transmitir pelo modo de reserva</button>
             </>
           )}
         </div>
@@ -466,7 +575,7 @@ export function Medidor({ person, ativo, className = 'h-14 w-2.5' }: { person: P
 
 const TEMA_CLASSE = { papel: '', noite: 'tema-noite', lima: 'tema-lima' } as const;
 
-type CanalProps = { person: Person; perfil?: Pessoa; onVolume(v: number): void; onCartao(): void };
+type CanalProps = { person: Person; perfil?: Pessoa; largo?: boolean; onVolume(v: number): void; onCartao(): void };
 const mesmaPessoa = (a: Person, b: Person) =>
   a.id === b.id && a.name === b.name && a.speaking === b.speaking && (a.nivel ? true : a.level === b.level)
   && a.muted === b.muted && a.live === b.live && a.volume === b.volume;
@@ -474,25 +583,25 @@ const mesmaPessoa = (a: Person, b: Person) =>
  * Memoized: a speaker event re-renders only the channels whose voice data changed.
  * The callbacks are skipped on purpose; they only forward the person's id to stable actions.
  */
-const Canal = memo(CanalView, (a: CanalProps, b: CanalProps) => mesmaPessoa(a.person, b.person) && a.perfil === b.perfil);
+const Canal = memo(CanalView, (a: CanalProps, b: CanalProps) => mesmaPessoa(a.person, b.person) && a.perfil === b.perfil && a.largo === b.largo);
 
-function CanalView({ person, perfil, onVolume, onCartao }: CanalProps) {
+function CanalView({ person, perfil, largo, onVolume, onCartao }: CanalProps) {
   const ativa = useInterfaceAtiva();
   const pct = Math.round(person.volume * 100);
   const status = person.speaking ? 'falando' : person.muted ? 'mic desligado' : 'ouvindo';
   return (
-    <li className={`janela flex w-[184px] shrink-0 flex-col ${perfil ? TEMA_CLASSE[perfil.tema] : ''}`}>
+    <li className={`janela flex flex-col ${largo ? 'w-full' : 'w-[184px] shrink-0'} ${perfil ? TEMA_CLASSE[perfil.tema] : ''}`}>
       <div className={`barra ${person.live ? 'barra-ar' : ''}`}>
         <span className="truncate">{person.name}</span>{person.live && <span className="ml-auto font-medium">no ar</span>}
       </div>
-      <div className="flex items-end gap-2.5 px-3 pt-2.5 pb-2">
+      <div className="flex items-end gap-2.5 px-3 pt-2.5 pb-1">
         <button type="button" className="border-0 bg-transparent p-0" aria-label={`Ver perfil de ${person.name}`} onClick={onCartao}>
-          <Avatar pessoa={{ nome: person.name, avatar: perfil?.avatar ?? null }} tamanho={56} />
+          <Avatar pessoa={{ nome: person.name, avatar: perfil?.avatar ?? null }} tamanho={largo ? 56 : 44} />
         </button>
-        <Medidor person={person} ativo={ativa} />
+        <Medidor person={person} ativo={ativa} className={largo ? 'h-14 w-2.5' : 'h-11 w-2.5'} />
         <span className={`ml-auto self-start text-right text-[12px] leading-tight font-bold ${person.muted ? 'text-perigo' : person.speaking ? 'text-texto' : 'text-texto-fraco'}`}>{status}</span>
       </div>
-      <div className="flex items-center gap-2 px-3 pb-3">
+      <div className="flex items-center gap-2 px-3 pb-1.5">
         <Slider.Root className="relative flex h-11 flex-1 touch-none items-center select-none" min={0} max={200} step={5}
           value={[pct]} onValueChange={([v]) => onVolume(v / 100)}>
           <Slider.Track className="relative h-1 grow bg-superficie-topo">
@@ -500,14 +609,14 @@ function CanalView({ person, perfil, onVolume, onCartao }: CanalProps) {
           </Slider.Track>
           <Slider.Thumb aria-label={`Volume de ${person.name}`} aria-valuetext={`${pct}%`} className="block h-4 w-3 border border-texto bg-superficie" />
         </Slider.Root>
-        <span className="rotulo tabular-nums w-9 text-right text-[10px]">{pct}%</span>
+        <span className="rotulo tabular-nums w-10 text-right text-[11px]">{pct}%</span>
       </div>
     </li>
   );
 }
 
-function Lateral({ sala, model, pessoas, eu, onCartao, onAmigo }: {
-  sala: string; model: RoomModel & RoomActions; pessoas: Pessoa[]; eu: Usuario; onCartao(id: string): void; onAmigo(id: string, sim: boolean): void;
+function Lateral({ sala, model, pessoas, salas, eu, onCartao, onAmigo }: {
+  sala: string; model: RoomModel & RoomActions; pessoas: Pessoa[]; salas: Sala[]; eu: Usuario; onCartao(id: string): void; onAmigo(id: string, sim: boolean): void;
 }) {
   const [aba, setAba] = useState<'conversa' | 'pessoas'>('conversa');
   return (
@@ -516,11 +625,13 @@ function Lateral({ sala, model, pessoas, eu, onCartao, onAmigo }: {
         {(['conversa', 'pessoas'] as const).map((a) => (
           <button key={a} type="button" role="tab" aria-selected={aba === a} onClick={() => setAba(a)}
             className={`min-h-11 flex-1 border-0 font-mono text-[11px] font-bold tracking-[0.04em] uppercase [&+&]:border-l [&+&]:border-texto ${aba === a ? 'bg-texto text-superficie' : 'bg-transparent text-texto-fraco hover:bg-superficie-alta'}`}>
-            {a === 'conversa' ? `Conversa · ${sala}` : `Pessoas · ${pessoas.filter((p) => p.online).length} on`}
+            {a === 'conversa' ? 'Conversa' : `Pessoas · ${pessoas.filter((p) => p.online).length} on`}
           </button>
         ))}
       </div>
-      {aba === 'conversa' ? <Conversa sala={sala} chat={model.chat} onSend={model.sendChat} /> : <Pessoas pessoas={pessoas} eu={eu} onCartao={onCartao} onAmigo={onAmigo} />}
+      {aba === 'conversa'
+        ? <Conversa sala={sala} chat={model.chat} onSend={model.sendChat} />
+        : <Pessoas pessoas={pessoas} salas={salas} eu={eu} onCartao={onCartao} onAmigo={onAmigo} />}
     </aside>
   );
 }
@@ -531,7 +642,7 @@ const Mensagem = memo(function Mensagem({ m }: { m: ChatMessage }) {
     <>
       <Avatar pessoa={{ nome: m.who, avatar: null }} tamanho={30} />
       <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="flex items-baseline gap-2"><b className="text-[14px]">{m.who}</b><span className="rotulo text-[10px]">{m.hora}</span></span>
+        <span className="flex items-baseline gap-2"><b className="text-[14px]">{m.who}</b><span className="rotulo text-[11px]">{m.hora}</span></span>
         <span className="text-[14px] leading-[1.45] break-words">{m.text}</span>
       </div>
     </>
@@ -566,24 +677,24 @@ function ConversaView({ sala, chat, onSend }: { sala: string; chat: ChatMessage[
                 <div key={m.id} data-index={item.index} ref={v.measureElement} className="absolute left-0 grid w-full grid-cols-[30px_minmax(0,1fr)] gap-2.5 pb-3.5"
                   style={{ transform: `translateY(${item.start}px)` }}>
                   <Mensagem m={m} />
-
                 </div>
               );
             })}
           </div>
         )}
       </div>
-      <form onSubmit={submit} className="mx-3.5 mb-3.5 flex min-h-11 items-center gap-2 rounded-[2px] border border-texto bg-superficie py-1 pr-1 pl-3 focus-within:outline-2 focus-within:outline-destaque">
+      <form onSubmit={submit} className="mx-3.5 mb-3.5 flex items-center gap-2 rounded-[2px] border border-texto bg-superficie py-1 pr-1 pl-3 focus-within:outline-2 focus-within:outline-destaque">
         <label htmlFor="msg" className="sr-only">Mensagem</label>
-        <input id="msg" className="min-w-0 flex-1 border-0 bg-transparent text-[14px] text-texto outline-none" placeholder={`Mensagem para ${sala}`}
+        <input id="msg" className="min-h-11 min-w-0 flex-1 border-0 bg-transparent text-[14px] text-texto outline-none" placeholder={`Mensagem para ${sala}`}
           value={text} maxLength={2000} onChange={(e) => setText(e.target.value)} autoComplete="off" />
-        <button type="submit" className="btn btn-prim btn-icone min-h-9 w-9" aria-label="Enviar"><Icone nome="enviar" tamanho={16} /></button>
+        <button type="submit" className="btn btn-prim btn-icone" aria-label="Enviar" disabled={!text.trim()}><Icone nome="enviar" tamanho={16} /></button>
       </form>
     </>
   );
 }
 
-function Pessoas({ pessoas, eu, onCartao, onAmigo }: { pessoas: Pessoa[]; eu: Usuario; onCartao(id: string): void; onAmigo(id: string, sim: boolean): void }) {
+function Pessoas({ pessoas, salas, eu, onCartao, onAmigo }: { pessoas: Pessoa[]; salas: Sala[]; eu: Usuario; onCartao(id: string): void; onAmigo(id: string, sim: boolean): void }) {
+  const nomeSala = new Map(salas.map((s) => [s.id, s.nome] as const));
   const outras = pessoas.filter((p) => p.id !== eu.id);
   const grupos: [string, Pessoa[]][] = [
     ['Amigos', outras.filter((p) => p.amigo)],
@@ -598,14 +709,14 @@ function Pessoas({ pessoas, eu, onCartao, onAmigo }: { pessoas: Pessoa[]; eu: Us
           {lista.length === 0 && <p className="m-0 px-3.5 py-2 text-[13px] text-texto-fraco">{titulo === 'Amigos' ? 'Adicione amigos para vê-los aqui em cima.' : 'Todo mundo já é seu amigo.'}</p>}
           <ul className="m-0 list-none p-0">
             {[...lista].sort((a, b) => Number(b.online) - Number(a.online)).map((p) => (
-              <li key={p.id} className="flex items-center gap-2.5 px-3.5 py-1.5">
+              <li key={p.id} className="flex items-center gap-2.5 px-3.5 py-1">
                 <button type="button" className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 border-0 bg-transparent p-0 text-left" onClick={() => onCartao(p.id)} aria-label={`Ver perfil de ${p.nome}`}>
                   <Avatar pessoa={p} tamanho={32} />
                   <span className="flex min-w-0 flex-col leading-tight">
                     <b className="truncate text-[14px]">{p.nome}</b>
-                    <span className="rotulo inline-flex items-center gap-1.5 text-[10px]">
-                      <span aria-hidden="true" className={`size-1.5 ${p.online ? 'bg-lima outline outline-1 outline-texto' : 'bg-borda'}`} />
-                      {p.online ? (p.sala ? 'online · numa sala' : 'online') : 'offline'}
+                    <span className="inline-flex items-center gap-1.5 text-[12px] text-texto-fraco">
+                      <span aria-hidden="true" className={`size-1.5 shrink-0 ${p.online ? 'bg-lima outline outline-1 outline-texto' : 'bg-borda'}`} />
+                      <span className="truncate">{p.online ? (p.sala ? `em ${nomeSala.get(p.sala) ?? 'outra sala'}` : 'online') : 'offline'}</span>
                     </span>
                   </span>
                 </button>

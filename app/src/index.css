@@ -30,6 +30,8 @@
   --color-vitoria: #1a7f37;
   --color-aviso: #9a6a00;
   --color-palco: #101012;
+  /* Texto sobre o palco (sempre escuro, nos dois temas). */
+  --color-sobre-palco: #b3b3ab;
 
   --radius-pequeno: 2px;
 }
@@ -109,8 +111,13 @@ h2,
   font-synthesis: none;
   text-transform: uppercase;
   letter-spacing: 0.005em;
-  line-height: 0.95;
+  /* 1.05 + respiro em cima: til e acento agudo das maiúsculas (Õ, É) não cortam. */
+  line-height: 1.05;
   margin: 0;
+}
+h1,
+h2 {
+  padding-top: 0.08em;
 }
 .font-pincel {
   font-family: var(--font-pincel);
@@ -119,6 +126,11 @@ h2,
 .tabular-nums {
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
+}
+
+::placeholder {
+  color: var(--color-texto-fraco);
+  opacity: 0.85;
 }
 
 ::selection {
@@ -213,8 +225,11 @@ button:disabled {
   &:active:not(:disabled) {
     transform: translateY(1px);
   }
+  /* Desabilitado: cinza chapado, nunca vermelho lavado (o rosa lia como erro). */
   &:disabled {
-    opacity: 0.45;
+    background: var(--color-superficie-alta);
+    color: var(--color-texto-fraco);
+    border-color: var(--color-borda);
   }
 }
 @utility btn-prim {
@@ -223,6 +238,11 @@ button:disabled {
   &:hover:not(:disabled) {
     background: var(--color-destaque-forte);
     color: var(--color-sobre-destaque);
+  }
+  &:disabled {
+    background: var(--color-superficie-alta);
+    color: var(--color-texto-fraco);
+    border-color: var(--color-borda);
   }
 }
 @utility btn-fant {
@@ -281,6 +301,10 @@ button:disabled {
   }
   & > button + button {
     border-left: 1px solid var(--color-texto);
+  }
+  & > button:disabled {
+    color: var(--color-texto-fraco);
+    background: var(--color-superficie-alta);
   }
   & > button[aria-selected='true'],
   & > button[aria-pressed='true'] {

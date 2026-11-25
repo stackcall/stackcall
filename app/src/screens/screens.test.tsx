@@ -104,7 +104,8 @@ test('room: tabs with live dot, stage numbers, watch, chat, mic and volume', asy
   await userEvent.click(screen.getByRole('button', { name: 'Sair da sala' }));
   expect(await screen.findByRole('heading', { name: 'Escolha uma sala' })).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Entrar na sala Lobby' }));
-  expect(await screen.findByText('Ninguém no ar')).toBeInTheDocument();
+  expect(await screen.findByText('Palco livre')).toBeInTheDocument();
+  expect(screen.getAllByRole('button', { name: /Transmitir/ })).toHaveLength(1);
 });
 
 test('room: transmit opens go live with locked presets', async () => {

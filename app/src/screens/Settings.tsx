@@ -5,6 +5,7 @@ import type { useUpdater } from '../lib/updater';
 import { updateButtonLabel } from '../components/UpdateBanner';
 import { Avatar } from '../components/Avatar';
 import { Icone } from '../components/Icone';
+import { Faixa } from '../components/Faixa';
 import { testMachine } from '../lib/sidecar';
 import type { Convite, Pessoa, Sala, Servidor, Usuario } from '../lib/servidor';
 import { escolherServidor, lerServidores, servidorAtual } from '../lib/servidores';
@@ -61,7 +62,7 @@ export function Settings(props: Props) {
   return (
     <div role="dialog" aria-modal="true" aria-label="Configurações" className="absolute inset-0 z-20 grid grid-cols-[260px_minmax(0,1fr)] bg-fundo">
       <nav aria-label="Seções" className="flex flex-col gap-2 border-r border-texto bg-superficie p-4">
-        <span className="rotulo px-1 pb-2">/ Configurações</span>
+        <h2 className="px-1 pb-2 text-[28px]">Configurações</h2>
         {itens.map(([id, rotulo]) => (
           <button key={id} type="button" aria-current={secao === id ? 'page' : undefined} onClick={() => setSecao(id)}
             className={`btn justify-start ${secao === id ? 'bg-texto text-superficie' : ''}`}>{rotulo}</button>
@@ -78,8 +79,9 @@ export function Settings(props: Props) {
   );
 }
 
-function Erro({ texto }: { texto?: string }) {
-  return texto ? <p role="alert" className="m-0 text-[14px] text-perigo">{texto}</p> : null;
+/** Error strip with a way out: "Tentar de novo" when the action can be repeated. */
+function Erro({ texto, onTentar }: { texto?: string; onTentar?(): void }) {
+  return texto ? <Faixa acoes={onTentar ? [{ rotulo: 'Tentar de novo', onClick: onTentar }] : []}>{texto}</Faixa> : null;
 }
 
 function SecaoServidor({ servidor, eu, salas, pessoas, onSalas, onPessoas, onSair }: Props & { servidor: Servidor; eu: Usuario }) {
@@ -133,10 +135,24 @@ function SecaoServidor({ servidor, eu, salas, pessoas, onSalas, onPessoas, onSai
 
 function Convites({ servidor }: { servidor: Servidor }) {
   const [lista, setLista] = useState<Convite[] | null>(null);
-  const [erro, setErro] = useState<string>();
+  const [falha, setFalha] = useState<{ texto: string; refazer?(): void }>();
+  const setErro = (texto?: string, refazer?: () => void) => setFalha(texto ? { texto, refazer } : undefined);
   const [copiado, setCopiado] = useState<string>();
-  const carregar = () => servidor.convites().then(setLista, (e: Error) => { setLista([]); setErro(e.message); });
+  const carregar = () => {
+    setErro(undefined);
+    return servidor.convites().then(setLista, (e: Error) => { setLista([]); setErro(e.message, () => void carregar()); });
+  };
   useEffect(() => void carregar(), [servidor]);
+  const gerar = async () => {
+    setErro(undefined);
+    try {
+      const c = await servidor.criarConvite();
+      setLista((l) => [c, ...(l ?? [])]);
+      await copiar(c);
+    } catch (e) {
+      setErro(`Não deu para gerar o convite. ${e instanceof Error ? e.message : String(e)}`, () => void gerar());
+    }
+  };
   const copiar = async (c: Convite) => {
     if (!c.link) return;
     await navigator.clipboard.writeText(c.link).catch(() => undefined);
@@ -146,19 +162,10 @@ function Convites({ servidor }: { servidor: Servidor }) {
     <section className="janela flex flex-col" aria-busy={lista === null}>
       <div className="barra">Convites<span className="ml-auto font-medium">1 uso · 7 dias</span></div>
       <div className="flex flex-col gap-3 p-4">
-        <button type="button" className="btn btn-prim self-start" onClick={async () => {
-          setErro(undefined);
-          try {
-            const c = await servidor.criarConvite();
-            setLista((l) => [c, ...(l ?? [])]);
-            await copiar(c);
-          } catch (e) {
-            setErro(e instanceof Error ? e.message : String(e));
-          }
-        }}><Icone nome="link" />Gerar convite</button>
-        <Erro texto={erro} />
+        <button type="button" className="btn btn-prim self-start" onClick={() => void gerar()}><Icone nome="link" />Gerar convite</button>
+        <Erro texto={falha?.texto} onTentar={falha?.refazer} />
         {lista === null && <div className="skeleton h-11" />}
-        {lista?.length === 0 && !erro && <p className="m-0 text-[14px] text-texto-fraco">Nenhum convite ativo. Gere um e mande no WhatsApp.</p>}
+        {lista?.length === 0 && !falha && <p className="m-0 text-[14px] text-texto-fraco">Nenhum convite ativo. Gere um e mande no WhatsApp.</p>}
         <ul className="m-0 flex list-none flex-col p-0">
           {lista?.map((c) => (
             <li key={c.id} className="flex min-h-11 items-center gap-3 border-t border-borda py-1.5 first:border-t-0">
