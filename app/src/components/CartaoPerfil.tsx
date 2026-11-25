@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Pessoa, Usuario } from '../lib/servidor';
 import { Avatar } from './Avatar';
+import { Icone } from './Icone';
 
 type Props = {
   pessoa: Usuario | Pessoa;
@@ -31,7 +32,7 @@ export function CartaoPerfil({ pessoa, souEu = false, podeRemover = false, onAmi
         {pessoa.banner && <img src={pessoa.banner} alt="" className="h-full w-full object-cover" />}
         {comoDialogo && (
           <button type="button" aria-label="Fechar" onClick={onFechar} className="btn btn-icone absolute right-2 top-2">
-            ✕
+            <Icone nome="fechar" />
           </button>
         )}
       </div>
