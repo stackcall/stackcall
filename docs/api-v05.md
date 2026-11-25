@@ -25,3 +25,12 @@ O porteiro chama `MoveParticipant` primeiro. A edição aberta do LiveKit 1.13.1
 `POST /api/chamar` recebe `{"sala_id":"…","mensagem":"Bora?"}` e retorna `201` com `{id,sala_id,mensagem,expira_em}`. A mensagem é opcional, tem até 120 caracteres após retirar espaços nas pontas e deve ser livre de caracteres de controle. O limite por pessoa é uma chamada a cada 60 s, somando todos os aparelhos. O excesso recebe `429`.
 
 Recebem o chamado os amigos que o remetente adicionou e que estavam em alguma sala de voz quando o convite foi emitido. No `GET /api/pessoas` de cada destinatário, o perfil do remetente traz `chamados`, uma lista desses objetos de resposta. A lista fica vazia quando não há convites para a sessão solicitante. Os chamados reaparecem durante 120 s para tolerar falhas de rede. Deduplique notificações por `id` e use `sala_id` no fluxo de entrada ao aceitar.
+
+## Soundboard
+
+- `GET /api/soundboard` lista os sons do grupo. Cada item tem `{id,nome,emoji,tipo,duracao_ms,url}`. O campo `url` é relativo ao servidor. Baixe com a sessão pelo `GET /api/soundboard/{id}/arquivo`, que retorna `audio/ogg` ou `audio/mpeg` com cache privado de 24 h.
+- `POST /api/soundboard?nome=…&emoji=…` recebe nome e emoji na query em UTF-8 percent-encoded. Envie o arquivo diretamente no corpo e defina o tipo de áudio correspondente. O nome tem até 32 caracteres e o emoji deve ser um único emoji Unicode. O porteiro identifica o formato pelo conteúdo e aceita MP3 ou Opus em Ogg (mono, estéreo ou surround padrão). Resposta `201` com o item criado.
+- `DELETE /api/soundboard/{id}` libera a vaga e retorna `204`. Apenas dono e admin podem enviar e excluir. O app deve descartar o item quando ele sumir da lista, mesmo se ainda tiver os bytes em cache.
+- `400` indica nome ou emoji inválido, `409` indica que as 24 vagas estão ocupadas, `413` indica mais de 300.000 bytes, `415` indica áudio incompatível ou inválido e `422` indica áudio acima de 5 s.
+
+O app toca localmente e publica um pacote de dados confiável do LiveKit no tópico `stackcall.soundboard.v1`, com JSON UTF-8 `{"som_id":"<id do item>"}`. O receptor usa a identidade de quem enviou o pacote, reconhece apenas IDs da lista do grupo e aplica o limite de toques por remetente no cliente. Use os bytes já em cache ou faça o download autenticado. O pacote é enviado somente à sala de voz atual.
