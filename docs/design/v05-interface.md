@@ -4,7 +4,7 @@ Arquitetura da interface para as funcionalidades da 0.5. Direção visual travad
 
 Pedido do Filippe: "com esse tanto de funcionalidades e configurações dentro do app, tem que pensar em uma interface que não fica poluída, fácil acesso às funcionalidades e configurações e também seja bonita".
 
-Decidido em 25/11/2026. Revisado no mesmo dia depois da revisão do Filippe: soundboard removido, janela quem fala configurável, nenhum atalho de fábrica. Este documento não reabre as decisões D1 a D6 do `PLANO.md`.
+Decidido em 25/11/2026. Revisado no mesmo dia depois da revisão do Filippe: soundboard removido, janela quem fala configurável, nenhum atalho de fábrica, "Chamar para jogar" trocado por "Cutucar". Este documento não reabre as decisões D1 a D6 do `PLANO.md`.
 
 ## 1. Princípios
 
@@ -15,8 +15,8 @@ A sala é a tela onde o grupo passa horas com um jogo ou um filme na frente. Ela
 | Camada | O que entra | Regra para entrar |
 |---|---|---|
 | **À vista** (sala) | Quem está, quem fala, quem está no ar, a tela assistida, a conversa, os seus botões de voz, aviso de replay, rede ruim de alguém | Muda durante a sessão **e** alguém precisa notar sem procurar |
-| **A um clique** | Menu da pessoa (clique direito), menu da sala (⋯), quem me ouve, controles da tela assistida, galeria de clipes, chamar para jogar | Usado várias vezes na sessão, mas não o tempo todo |
-| **Configurações** | Tudo que se ajusta uma vez e esquece: atalhos, replay, sons de entrada, janela quem fala, mapa do CS2, servidor dorme | Muda o comportamento, não a sessão de hoje |
+| **A um clique** | Menu da pessoa (clique direito), menu da sala (⋯), quem me ouve, cutucar, controles da tela assistida, galeria de clipes | Usado várias vezes na sessão, mas não o tempo todo |
+| **Configurações** | Tudo que se ajusta uma vez e esquece: atalhos, replay, cutucadas, sons de entrada, janela quem fala, mapa do CS2, servidor dorme | Muda o comportamento, não a sessão de hoje |
 
 Quatro portas levam a qualquer coisa, e cada função tem uma só casa principal:
 
@@ -40,10 +40,10 @@ Quatro portas levam a qualquer coisa, e cada função tem uma só casa principal
 ```
 Topo (sempre): marca/servidor → saguão · abas das salas · busca e comandos · Clipes · Configurações · você
 │
-├── Saguão (fora da voz)      salas com quem está e o jogo · galera online · chamar para jogar
+├── Saguão (fora da voz)      salas com quem está e o jogo · galera online · faixa de cutucada recebida
 ├── Sala                       faixa da sala · palco · conversa/pessoas · mesa (Você + canais)
 │   ├── menu da sala (⋯)       silenciar todos (admin) · mapa do CS2 · sair
-│   ├── menu da pessoa         volume · perfil · assistir · silenciar para mim · moderação
+│   ├── menu da pessoa         volume · perfil · assistir · cutucar… · silenciar para mim · moderação
 │   ├── quem me ouve           a partir do rodapé da janela Você
 │   └── Entrar no ar           tela atual de Go Live (sem mudança na 0.5)
 ├── Clipes                     galeria com corte por faixa e envio na conversa
@@ -63,7 +63,7 @@ A barra do topo perde o seletor Claro/Escuro e o medidor de ping solto da 0.4. O
 | 2b | Grade de telas | Seletor "Uma · Grade" que aparece na faixa da sala quando 2 ou mais pessoas estão no ar | Paleta "grade" | O som vem da tela marcada (contorno vermelho). Clique numa tela para trocar o som. Cada tela tem sua qualidade. |
 | 3 | Moderação | Menu da pessoa, seção "Moderação · você é admin" | Menu da sala: "Silenciar todos" | Só aparece para dono e admin. "Tirar da sala…" pede confirmação. "Mover para" abre submenu com as salas. |
 | 4 | Som de entrada e saída | Configurações › Sons e avisos | — | Ligado por padrão, volume próprio. |
-| 4b | Chamar para jogar | Saguão (painel à direita) | Botão na faixa da sala; paleta "chamar" | Jogo vem do jogo detectado; sala vem da atual; lista de quem avisar; prévia da notificação. Limite: um chamado a cada 10 min. |
+| 4b | Cutucar | Menu da pessoa › "Cutucar…" (na sala, na lista de pessoas e na galera do saguão) | Paleta: "cutucar Léo" | Abre um campo pequeno sobre o canal da pessoa: recado de até 80 caracteres com contador, sugestões rápidas ("a sala tá pronta", "bora jogar", "volta pra call") e a frase exata que a pessoa vai ouvir. Limite visível no próprio campo: uma cutucada a cada 30 s para a mesma pessoa; depois de enviar, o item do menu mostra "Cutucar… em 22 s". Detalhes na seção 4. |
 | 5 | Jogo detectado | Corpo do canal ("jogando CS2"); lista da galera no saguão | Menu da pessoa; cartão de perfil | Cada pessoa pode desligar em Configurações › Perfil ("mostrar o jogo"). |
 | 7 | Clipes (salvar) | Botão Clipe na janela Você | Paleta; tecla, se o usuário definir uma | Ao salvar, linha de sistema na conversa: "Rafa salvou um clipe de 45 s · Ver". |
 | 7b | Aviso de replay | Chip "Replay ligado: Rafa e Duda" na faixa da sala; ícone ⟲ vermelho no canal de quem grava | Janela quem fala | O aviso **não desliga**. É a contrapartida de gravar a voz de todos. |
@@ -82,7 +82,7 @@ A barra do topo perde o seletor Claro/Escuro e o medidor de ping solto da 0.4. O
 ┌ topo 48 ─────────────────────────────────────────────────────────────────────────────┐
 │ STACKCALL│Galera  [CS·5 ▪][Lobby][Cinema][Ranked]  [⌕ Buscar sala, pessoa, ação…]  [🎞][⚙][B] │
 ├ faixa 36 ────────────────────────────────────────────────────────────────────────────┤
-│ CS  5 NA SALA · …   [⟲ Replay ligado: Rafa e Duda]       [Chamar para jogar][Convidar][⋯] │
+│ CS  5 NA SALA · …   [⟲ Replay ligado: Rafa e Duda]                          [Convidar][⋯] │
 ├ palco ─────────────────────────────────────────────────┬ conversa 330 ───────────────┤
 │ ■ NO AR · RAFA                       1080p60 · AV1 · 3 │ CONVERSA · CS │ PESSOAS     │
 │                                                        │ …                           │
@@ -99,6 +99,24 @@ A barra do topo perde o seletor Claro/Escuro e o medidor de ping solto da 0.4. O
 - A janela Você tem 372 px e seis botões: microfone, som, **Transmitir** (vermelho, o único), clipe (com marca vermelha quando o replay está ligado), mais (⋯) e sair. Os botões de ícone têm largura fixa de 40 px; só Transmitir estica. O ⋯ abre: janela quem fala, modo internet ruim, teste de rede, entrar no ar com outra fonte.
 - Os canais mantêm a linguagem da 0.4: barra vermelha e corpo escuro para quem está no ar; corpo lima para quem fala.
 
+### Cutucar
+
+Ideia do "poke" do TeamSpeak: chamar quem tirou o som do Stackcall, sem depender de a pessoa olhar a tela.
+
+**Quem cutuca**
+1. Clique direito na pessoa › "Cutucar…", ou a paleta ("cutucar Léo").
+2. Um campo pequeno abre sobre o canal da pessoa, já com o cursor. Recado de até 80 caracteres, com contador e três sugestões rápidas. O recado é opcional; sem ele, a voz diz só "Bronze te cutucou".
+3. A linha de prévia mostra a frase exata que a pessoa vai ouvir.
+4. O rodapé mostra o limite: uma cutucada a cada 30 s para a mesma pessoa. Enter envia; Esc fecha.
+5. Quem não aceita cutucadas de você aparece com "Cutucar…" apagado e a dica "não recebe cutucadas agora", sem dizer se é por escolha.
+
+**Quem recebe**
+1. Uma voz lê em voz alta: "Bronze te cutucou: a sala tá pronta". Toca **mesmo com o som do Stackcall silenciado** (padrão ligado). O mudo do próprio Windows continua valendo.
+2. Aviso do Windows com "Entrar na sala".
+3. Faixa no topo do app, abaixo da barra das salas, com a voz destacada em vermelho, o nome, o recado e os botões **Entrar na sala CS**, **Cutucar de volta** e fechar. A faixa fica até ser fechada ou até a pessoa entrar na sala.
+
+A voz é a síntese de fala do próprio Windows (Web Speech API do WebView2, voz pt-BR instalada no sistema). Roda no PC de quem recebe; o recado não vai para nenhum serviço de fora. Se o PC não tiver voz em português, o app avisa em Configurações › Cutucadas e toca só um som curto.
+
 ### Paleta de comandos
 
 - Abre de qualquer tela, inclusive das Configurações.
@@ -109,7 +127,7 @@ A barra do topo perde o seletor Claro/Escuro e o medidor de ping solto da 0.4. O
 
 ### Menu da pessoa
 
-Ordem: cabeçalho com jogo, ping e perda → volume → Ver perfil → Assistir tela → Silenciar para mim → **Moderação** (só dono e admin): Mover para ›, Silenciar na sala, Tirar da sala…. Itens de moderação ficam abaixo de uma linha forte, com o rótulo do seu cargo, para ninguém clicar por engano. "Tirar da sala…" usa `perigo` e confirma.
+Ordem: cabeçalho com jogo, ping e perda → volume → Ver perfil → Assistir tela → Cutucar… → Silenciar para mim → **Moderação** (só dono e admin): Mover para ›, Silenciar na sala, Tirar da sala…. Itens de moderação ficam abaixo de uma linha forte, com o rótulo do seu cargo, para ninguém clicar por engano. "Tirar da sala…" usa `perigo` e confirma.
 
 ## 5. Configurações reorganizadas
 
@@ -117,7 +135,7 @@ Três grupos, na ordem de quem mais mexe:
 
 | Grupo | Páginas |
 |---|---|
-| **Você** | Perfil · Voz e rede · Atalhos · Clipes e replay · Sons e avisos · Janela quem fala · Aparência |
+| **Você** | Perfil · Voz e rede · Atalhos · Clipes e replay · Cutucadas · Sons e avisos · Janela quem fala · Aparência |
 | **Servidor Galera** (só dono e admin; mostra o cargo) | Geral e convites (servidor dorme) · Salas e mapa do CS2 · Membros e cargos |
 | **App** | Servidores · Sobre e atualizações |
 
@@ -133,6 +151,8 @@ De onde veio cada página atual:
 
 **Busca** no topo da lateral. Procura no nome do ajuste, na descrição e em apelidos ("ptt" acha Apertar para falar; "mute" acha microfone; "gravação" acha replay). O resultado mostra o caminho ("Voz e rede › Microfone") e o próprio controle, para mudar ali mesmo sem abrir a página.
 
+**Você › Cutucadas**: receber cutucadas de (todos do grupo, só amigos, ninguém) · ler o recado em voz alta (ligado ou desligado) · volume da voz, separado do volume da sala, com botão Testar · tocar mesmo com o som silenciado (ligado por padrão) · aviso do Windows (ligado por padrão). Rodapé: "Quem cutuca espera 30 s para cutucar a mesma pessoa de novo."
+
 Cada página segue o mesmo molde: cabeçalho (rótulo com dado + manchete), depois linhas em janela com nome, uma frase do que muda e o controle à direita.
 
 ## 6. Estados vazios e de borda
@@ -145,10 +165,12 @@ Cada página segue o mesmo molde: cabeçalho (rótulo com dado + manchete), depo
 | Sala do CS2 | GSI sem sinal | Mesa normal; na faixa: "mapa do CS2 sem sinal · confira o arquivo do GSI" (link para Configurações) |
 | Clipes | Nenhum clipe | "Nenhum clipe ainda. Ligue o replay e use o botão Clipe depois de uma jogada boa." + **Ligar replay** |
 | Clipes | Disco cheio | Bloco Espaço em `perigo`: "Limite de 20 GB cheio. O clipe mais antigo vai sair no próximo." |
-| Quem me ouve | Sozinho na sala | "Ninguém mais aqui. **Chamar para jogar**" |
-| Saguão | Sala vazia | "Ninguém aqui. A primeira pessoa a entrar escolhe o filme." |
+| Quem me ouve | Sozinho na sala | "Ninguém mais aqui. Para chamar alguém, clique com o botão direito no nome e escolha Cutucar." |
+| Saguão | Sala vazia | "Ninguém aqui. A primeira pessoa a entrar escolhe o filme." / "Vazia. Entre e cutuque a galera." |
 | Saguão | Servidor dormindo | Cartões com "dormindo · acorda quando você entrar" |
-| Chamar para jogar | Ninguém disponível | "A galera toda já está numa sala." O botão some. |
+| Cutucar | Limite de 30 s | Campo fechado; item do menu mostra "Cutucar… em 22 s" |
+| Cutucar | Pessoa não aceita | Item apagado: "não recebe cutucadas agora" |
+| Cutucadas | PC sem voz em português | "Este PC não tem voz em português. A cutucada toca um som curto." + link para as vozes do Windows |
 | Atalhos | Nenhum definido | Topo da página: "Nenhum atalho vem pronto. Defina só os que você vai usar." |
 | Atalhos | Tecla em uso | "Ctrl+Shift+O já é usado por outro programa. Aperte outra tecla." |
 | Janela quem fala | "Só quem fala" e ninguém falando | A janela fica vazia e transparente, sem moldura. |
@@ -184,11 +206,12 @@ A sugestão é só texto: o app não grava a tecla sozinho. Ao definir, o app te
 8. A janela quem fala é uma janela do sistema, nunca um gancho no jogo, e tudo nela é configurável.
 9. Soundboard fora da 0.5 (revisão do Filippe em 25/11/2026).
 10. Nenhum atalho de fábrica; só sugestão escrita.
+11. "Chamar para jogar" saiu. No lugar entra "Cutucar", uma pessoa por vez, com recado lido em voz alta mesmo com o som silenciado.
 
 ## 9. Protótipo
 
 - Abra `docs/design/v05/index.html` no navegador. A barra fina embaixo troca de tela e de tema (passe o mouse).
-- Endereços diretos: `#sala`, `#grade`, `#menu-pessoa`, `#paleta`, `#clipes`, `#saguao`, `#config-atalhos`, `#config-clipes`, `#config-quemfala`, `#config-busca`, `#quem-fala`. `?tema=escuro` abre no escuro; `?print` esconde a barra do protótipo.
+- Endereços diretos: `#sala`, `#grade`, `#menu-pessoa`, `#cutucar`, `#paleta`, `#clipes`, `#saguao`, `#config-atalhos`, `#config-clipes`, `#config-cutucadas`, `#config-quemfala`, `#config-busca`, `#quem-fala`. `?tema=escuro` abre no escuro; `?print` esconde a barra do protótipo.
 - HTML e CSS puros. As telas trocam por `:target`. O único script lê o tema e o modo captura.
 - Fontes locais em `v05/fontes/` (as mesmas do app, licença OFL, via @fontsource).
 - As cenas de jogo são formas chapadas em CSS, só para dar escala. Nomes e números são fictícios.

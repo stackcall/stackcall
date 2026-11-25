@@ -106,13 +106,13 @@ kbd { font: 700 10.5px/1 var(--mono); border: 1px solid var(--tinta); background
 
 /* ---------- Visibilidade das telas ---------- */
 .v-clipes, .v-saguao, .v-config, .v-quemfala, .cf-main, .palco-grade, .so-split, .lateral-fina,
-.pop-ouvem, .menu-ctx, .veu, .paleta, .palco-fraco { display: none !important; }
+.pop-ouvem, .menu-ctx, .cutucar, .veu, .paleta, .palco-fraco { display: none !important; }
 body:has(#clipes:target) .v-sala, body:has(#saguao:target) .v-sala { display: none; }
 body:has(#clipes:target) .v-clipes { display: grid !important; }
 body:has(#saguao:target) .v-saguao { display: grid !important; }
 body:has([id^='config-']:target) .app, body:has(#quem-fala:target) .app { display: none; }
 body:has([id^='config-']:target) .v-config { display: grid !important; }
-body:has(#config-quemfala:target) .cf-quemfala, body:has(#config-atalhos:target) .cf-atalhos, body:has(#config-clipes:target) .cf-clipes, body:has(#config-busca:target) .cf-busca-r { display: flex !important; }
+body:has(#config-cutucadas:target) .cf-cutucadas, body:has(#config-quemfala:target) .cf-quemfala, body:has(#config-atalhos:target) .cf-atalhos, body:has(#config-clipes:target) .cf-clipes, body:has(#config-busca:target) .cf-busca-r { display: flex !important; }
 body:has(#quem-fala:target) .v-quemfala { display: block !important; }
 body:has(#grade:target) .palco-uma, body:has(#grade:target) .sem-split, body:has(#grade:target) .lateral { display: none; }
 body:has(#grade:target) .palco-grade { display: flex !important; }
@@ -122,6 +122,7 @@ body:has(#grade:target) .lateral-fina { display: flex !important; }
 body:has(#grade:target) .centro { grid-template-columns: minmax(0, 1fr) 44px; }
 body:not(:has(.alvo:target)) .pop-ouvem, body:has(#sala:target) .pop-ouvem { display: block !important; }
 body:has(#menu-pessoa:target) .menu-ctx { display: block !important; }
+body:has(#cutucar:target) .cutucar { display: flex !important; }
 body:has(#paleta:target) .veu, body:has(#paleta:target) .palco-fraco { display: grid !important; }
 body:has(#paleta:target) .paleta { display: flex !important; }
 
@@ -348,7 +349,7 @@ body:has(#paleta:target) .paleta { display: flex !important; }
 .cl-acoes .btn.prim { flex: 1; }
 
 /* ---------- Saguão ---------- */
-.v-saguao { grid-template-columns: minmax(0, 1fr) 400px; gap: 16px; min-height: 0; }
+.v-saguao { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 12px; min-height: 0; }
 .sg-esq { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
 .sg-cab p { color: var(--fraco); font-size: 15px; }
 .sg-salas { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
@@ -366,21 +367,6 @@ body:has(#paleta:target) .paleta { display: flex !important; }
 .pres { font-size: 13px; color: var(--fraco); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pres.jogo::before { content: ''; display: inline-block; width: 7px; height: 7px; background: var(--lima); outline: 1px solid var(--tinta); margin-right: 7px; vertical-align: 1px; }
 .amigos li.off { opacity: .55; }
-.chamar { display: flex; flex-direction: column; min-height: 0; }
-.chamar-c { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 14px; min-height: 0; }
-.campo-l { display: flex; flex-direction: column; gap: 5px; }
-.campo { min-height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 1px solid var(--tinta); border-radius: 2px; }
-.campo .rotulo { margin-left: auto; text-transform: none; letter-spacing: 0; }
-.campo .tag-lima { margin-left: auto; }
-.avisar { border: 1px solid var(--tinta); }
-.avisar li { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 12px; }
-.avisar li + li { border-top: 1px solid var(--borda); }
-.avisar .rotulo { margin-left: auto; text-transform: none; letter-spacing: 0; }
-.previa { display: flex; flex-direction: column; gap: 5px; }
-.notif { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; background: var(--sup-alta); border: 1px dashed var(--tinta); font-size: 13px; }
-.notif-a { color: var(--fraco); margin-top: 4px; }
-.chamar-c .btn.grande { margin-top: auto; }
-.centro-t { text-align: center; text-transform: none; letter-spacing: 0; }
 
 /* ---------- Configurações ---------- */
 .v-config { position: fixed; inset: 0; grid-template-columns: 272px minmax(0, 1fr); }
@@ -394,7 +380,7 @@ body:has(#config-busca:target) .cf-q { display: inline; }
 .cf-g { margin-top: 10px; padding: 4px 10px; font: 700 10.5px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--fraco); display: flex; align-items: center; }
 .cf-nav > a { height: 31px; display: flex; align-items: center; padding: 0 10px; font-size: 14px; font-weight: 500; }
 .cf-nav > a:hover { background: var(--sup-alta); }
-body:has(#config-quemfala:target) .on-quemfala, body:has(#config-atalhos:target) .on-atalhos, body:has(#config-clipes:target) .on-clipes { background: var(--tinta); color: var(--sup); font-weight: 700; }
+body:has(#config-cutucadas:target) .on-cutucadas, body:has(#config-quemfala:target) .on-quemfala, body:has(#config-atalhos:target) .on-atalhos, body:has(#config-clipes:target) .on-clipes { background: var(--tinta); color: var(--sup); font-weight: 700; }
 .cf-voltar { margin-top: auto; gap: 8px; border-top: 1px solid var(--borda); height: 40px !important; }
 .cf-voltar kbd { margin-left: auto; font-weight: 500; }
 .cf-main { flex-direction: column; gap: 12px; padding: 22px 32px 20px; min-height: 0; overflow: hidden; max-width: 1040px; }
@@ -482,3 +468,23 @@ mark { background: var(--lima); color: var(--sobre-lima); padding: 0 2px; }
 .qf.mini .qf-l .av { width: 14px; height: 14px; font-size: 8px; }
 .qf.mini .qf-l b { font-size: 10px; }
 .qf.mini .qf-l .nv { width: 16px; height: 6px; }
+
+/* Cutucar */
+.cutucar { position: absolute; z-index: 20; right: 0; bottom: 174px; width: 400px; flex-direction: column; }
+.cut-c { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
+.cut-campo { display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 12px; border: 2px solid var(--destaque); border-radius: 2px; font-size: 15px; }
+.cut-n { margin-left: auto; color: var(--fraco); }
+.cut-sug { display: flex; flex-wrap: wrap; gap: 6px; }
+.cut-sug a { height: 30px; display: inline-flex; align-items: center; padding: 0 10px; border: 1px solid var(--tinta); font-size: 13px; font-weight: 500; }
+.cut-sug a:hover, .cut-sug a.on { background: var(--tinta); color: var(--sup); }
+.cut-previa { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--fraco); }
+.cut-previa b { color: var(--tinta); font-weight: 500; }
+.cut-pe { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--borda); }
+.cut-pe .rotulo { flex: 1; text-transform: none; letter-spacing: 0; }
+.cutucada { display: flex; align-items: center; gap: 14px; padding: 10px 10px 10px 0; border: 2px solid var(--destaque); }
+.cut-voz { align-self: stretch; width: 52px; margin: -10px 0; display: grid; place-items: center; background: var(--destaque); color: var(--sobre-destaque); }
+.cut-voz .ic { width: 24px; height: 24px; }
+.cut-txt { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; font-size: 17px; }
+.cut-txt .rotulo { flex-basis: 100%; text-transform: none; letter-spacing: 0; margin-top: 2px; }
+.menu-ctx a .rotulo { margin-left: auto; }
+.cf-nota { text-transform: none; letter-spacing: 0; }

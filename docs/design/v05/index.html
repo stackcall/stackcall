@@ -22,7 +22,7 @@
 <body>
 <!-- Alvos das telas (:target). Cada tela liga uma variação do mesmo DOM. -->
 <i id="sala" class="alvo"></i><i id="grade" class="alvo"></i><i id="menu-pessoa" class="alvo"></i>
-<i id="paleta" class="alvo"></i><i id="config-quemfala" class="alvo"></i><i id="clipes" class="alvo"></i>
+<i id="paleta" class="alvo"></i><i id="config-quemfala" class="alvo"></i><i id="cutucar" class="alvo"></i><i id="config-cutucadas" class="alvo"></i><i id="clipes" class="alvo"></i>
 <i id="saguao" class="alvo"></i><i id="config-atalhos" class="alvo"></i><i id="config-clipes" class="alvo"></i>
 <i id="config-busca" class="alvo"></i><i id="quem-fala" class="alvo"></i>
 
@@ -41,7 +41,8 @@
     <symbol id="i-uma" viewBox="0 0 24 24"><path d="M3 5h18v14H3z"/></symbol>
     <symbol id="i-mais-z" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="i-menos-z" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
-    <symbol id="i-sino" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4zM10 21h4"/></symbol>
+    <symbol id="i-cutuca" viewBox="0 0 24 24"><path d="M9 11V4.5a1.5 1.5 0 0 1 3 0V11M12 10V8.5a1.5 1.5 0 0 1 3 0V11M15 10.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7L3.5 14a1.5 1.5 0 0 1 2.4-1.8L9 15"/></symbol>
+    <symbol id="i-fala" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></symbol>
     <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14l4-4M8 11l-3 3a3 3 0 0 0 4 4l3-3M16 13l3-3a3 3 0 0 0-4-4l-3 3"/></symbol>
     <symbol id="i-ajustes" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4"/></symbol>
     <symbol id="i-filme" viewBox="0 0 24 24"><path d="M3 5h18v14H3zM7 5v14M17 5v14M3 9.5h4M3 14.5h4M17 9.5h4M17 14.5h4"/></symbol>
@@ -93,7 +94,6 @@
         <svg class="ic"><use href="#i-replay"/></svg><span><b>Replay ligado:</b> <span class="sem-split">Rafa e Duda</span><span class="so-split">Duda</span></span>
       </a>
       <span class="faixa-acoes">
-        <a class="btn sm" href="#saguao"><svg class="ic"><use href="#i-sino"/></svg>Chamar para jogar</a>
         <a class="btn sm" href="#sala"><svg class="ic"><use href="#i-link"/></svg>Convidar</a>
         <a class="btn sm ic" href="#sala" aria-label="Menu da sala" title="Menu da sala: silenciar todos, mapa do CS2"><svg class="ic"><use href="#i-mais"/></svg></a>
       </span>
@@ -185,7 +185,7 @@
           <div class="cc"><span class="av av-g" style="--c:#c9d6f5">L</span><div class="ci"><b>ouvindo</b><span class="aviso-rede">rede ruim · 210 ms · 3% perda</span></div><span class="nivel" style="--n:0"></span></div>
           <div class="vol"><span class="trilho" style="--v:64%"><i></i></span><span>64%</span></div></article>
         <article class="canal"><header class="barra"><b>Nanda</b><span class="tags"><span class="rede r2" title="Ping 95 ms · perda 0,5%"><i></i><i></i><i></i></span></span></header>
-          <div class="cc"><span class="av av-g" style="--c:#ead2a8">N</span><div class="ci"><b class="mudo">mic desligado</b><span class="jogo">jogando CS2</span></div><span class="nivel" style="--n:0"></span></div>
+          <div class="cc"><span class="av av-g" style="--c:#ead2a8">N</span><div class="ci"><b class="mudo">som desligado</b><span class="jogo">jogando CS2</span></div><span class="nivel" style="--n:0"></span></div>
           <div class="vol"><span class="trilho" style="--v:90%"><i></i></span><span>90%</span></div></article>
       </div>
 
@@ -225,6 +225,7 @@
       <div class="menu-vol"><svg class="ic s"><use href="#i-volume"/></svg><span class="trilho" style="--v:72%"><i></i></span><span class="mono">72%</span></div>
       <a role="menuitem" href="#menu-pessoa"><svg class="ic s"><use href="#i-pessoa"/></svg>Ver perfil</a>
       <a role="menuitem" href="#menu-pessoa"><svg class="ic s"><use href="#i-tela"/></svg>Assistir tela<kbd>clique duplo</kbd></a>
+      <a role="menuitem" href="#cutucar"><svg class="ic s"><use href="#i-cutuca"/></svg>Cutucar…<span class="rotulo">voz alta</span></a>
       <a role="menuitem" href="#menu-pessoa"><svg class="ic s"><use href="#i-mudo"/></svg>Silenciar para mim</a>
       <div class="menu-sep"><svg class="ic s"><use href="#i-escudo"/></svg>Moderação · você é admin</div>
       <a role="menuitem" class="sub" href="#menu-pessoa"><svg class="ic s"><use href="#i-mover"/></svg>Mover para<svg class="ic s dir"><use href="#i-dir"/></svg></a>
@@ -236,6 +237,17 @@
       <a role="menuitem" class="foco" href="#menu-pessoa">Cinema<span class="rotulo">vazia</span></a>
       <a role="menuitem" href="#menu-pessoa">Ranked<span class="rotulo">vazia</span></a>
       <a role="menuitem" href="#menu-pessoa">Saguão<span class="rotulo">fora da voz</span></a>
+    </div>
+
+    <!-- Cutucar (aberto a partir de "Cutucar…" no menu de Nanda) -->
+    <div class="janela cutucar" role="dialog" aria-label="Cutucar Nanda">
+      <div class="barra"><span>Cutucar Nanda</span><span>som desligado · ela ouve mesmo assim</span></div>
+      <div class="cut-c">
+        <div class="cut-campo"><span class="digitado">a sala tá pronta</span><span class="cursor"></span><span class="mono cut-n">16/80</span></div>
+        <div class="cut-sug" role="group" aria-label="Recados rápidos"><a class="on" href="#cutucar">a sala tá pronta</a><a href="#cutucar">bora jogar</a><a href="#cutucar">volta pra call</a></div>
+        <p class="cut-previa"><svg class="ic s"><use href="#i-fala"/></svg><span>Nanda vai ouvir: <b>“bronze te cutucou: a sala tá pronta”</b></span></p>
+      </div>
+      <div class="cut-pe"><span class="rotulo">Uma cutucada a cada 30 s para a mesma pessoa</span><a class="btn sm" href="#sala">Cancelar</a><a class="btn sm prim" href="#sala"><svg class="ic"><use href="#i-cutuca"/></svg>Cutucar</a></div>
     </div>
 
     <!-- Paleta de comandos -->
@@ -306,8 +318,16 @@
 
   <!-- ================================================ SAGUÃO -->
   <section class="v-saguao" aria-label="Saguão">
+    <div class="janela cutucada" role="alert">
+      <span class="cut-voz"><svg class="ic"><use href="#i-fala"/></svg></span>
+      <span class="av av-g" style="--c:#f3c8d8">R</span>
+      <div class="cut-txt"><b>Rafa te cutucou:</b> <span>“a sala tá pronta”</span><span class="rotulo">sala CS · agora · lido em voz alta com o seu som desligado</span></div>
+      <a class="btn prim" href="#sala"><svg class="ic"><use href="#i-seta"/></svg>Entrar na sala CS</a>
+      <a class="btn" href="#cutucar">Cutucar de volta</a>
+      <a class="btn ic" href="#saguao" aria-label="Fechar"><svg class="ic"><use href="#i-x"/></svg></a>
+    </div>
     <div class="sg-esq">
-      <div class="sg-cab"><span class="rotulo">/ Galera · fora da voz</span><h1>Escolha uma sala</h1><p>Entre numa sala para falar, assistir e conversar. Ou chame a galera para jogar.</p></div>
+      <div class="sg-cab"><span class="rotulo">/ Galera · fora da voz</span><h1>Escolha uma sala</h1><p>Entre numa sala para falar, assistir e conversar. Para chamar alguém, clique com o botão direito no nome e escolha Cutucar.</p></div>
       <div class="sg-salas">
         <div class="janela sala-c"><div class="barra ar"><span>CS</span><span>no ar · 4</span></div>
           <div class="sala-gente"><span class="av av-g" style="--c:#f3c8d8">R</span><span class="av av-g" style="--c:#c9d6f5">D</span><span class="av av-g" style="--c:#c9d6f5">L</span><span class="av av-g" style="--c:#ead2a8">N</span></div>
@@ -318,7 +338,7 @@
         <div class="janela sala-c vazia"><div class="barra"><span>Cinema</span><span>vazia</span></div>
           <p class="sala-vazia">Ninguém aqui. A primeira pessoa a entrar escolhe o filme.</p><a class="btn cheio" href="#sala">Entrar na sala Cinema</a></div>
         <div class="janela sala-c vazia"><div class="barra"><span>Ranked</span><span>vazia</span></div>
-          <p class="sala-vazia">Vazia. Bom lugar para um chamado.</p><a class="btn cheio" href="#sala">Entrar na sala Ranked</a></div>
+          <p class="sala-vazia">Vazia. Entre e cutuque a galera.</p><a class="btn cheio" href="#sala">Entrar na sala Ranked</a></div>
       </div>
       <div class="janela amigos">
         <div class="barra"><span>Galera · 7 online</span><span>8 membros</span></div>
@@ -335,24 +355,6 @@
       </div>
     </div>
 
-    <div class="janela chamar">
-      <div class="barra"><span>Chamar para jogar</span><span>avisa no Windows</span></div>
-      <div class="chamar-c">
-        <div class="campo-l"><span class="rotulo">Jogo</span><div class="campo"><b>Counter-Strike 2</b><span class="tag-lima">detectado agora</span></div></div>
-        <div class="campo-l"><span class="rotulo">Sala</span><div class="campo"><b>CS</b><span class="rotulo">4 na sala · falta 1 para 5v5</span><svg class="ic s"><use href="#i-dir"/></svg></div></div>
-        <div class="campo-l"><span class="rotulo">Quem avisar · 3</span>
-          <ul class="avisar">
-            <li class="on"><span class="cx"><svg class="ic s"><use href="#i-check"/></svg></span><b>Tiago</b><span class="rotulo">online</span></li>
-            <li class="on"><span class="cx"><svg class="ic s"><use href="#i-check"/></svg></span><b>Kaio</b><span class="rotulo">online</span></li>
-            <li class="on"><span class="cx"><svg class="ic s"><use href="#i-check"/></svg></span><b>Renan</b><span class="rotulo">ausente · recebe depois</span></li>
-            <li><span class="cx"></span><b>Mari</b><span class="rotulo">jogando Forza</span></li>
-          </ul></div>
-        <div class="campo-l"><span class="rotulo">Recado (opcional)</span><div class="campo"><span>bora 5v5? falta um</span></div></div>
-        <div class="previa"><span class="rotulo">Eles recebem</span><div class="notif"><b>bronze chamou para jogar CS2</b><span>“bora 5v5? falta um” · sala CS · 4 lá</span><span class="notif-a"><u>Entrar</u> · Agora não</span></div></div>
-        <a class="btn prim cheio grande" href="#sala"><svg class="ic"><use href="#i-sino"/></svg>Chamar 3 pessoas</a>
-        <span class="rotulo centro-t">Um chamado a cada 10 min. Quem silenciou chamados não recebe.</span>
-      </div>
-    </div>
   </section>
 </div>
 
@@ -366,6 +368,7 @@
     <a href="#config-busca">Voz e rede</a>
     <a class="on-atalhos" href="#config-atalhos">Atalhos</a>
     <a class="on-clipes" href="#config-clipes">Clipes e replay</a>
+    <a class="on-cutucadas" href="#config-cutucadas">Cutucadas</a>
     <a href="#config-atalhos">Sons e avisos</a>
     <a class="on-quemfala" href="#config-quemfala">Janela quem fala</a>
     <a href="#config-atalhos">Aparência</a>
@@ -418,6 +421,16 @@
         <p class="previa-nota">Esquerda, no meio: longe do minimapa e do placar na maioria dos jogos.</p>
       </div>
     </div>
+  </main>
+
+  <main class="cf-main cf-cutucadas">
+    <div class="cf-cab"><span class="rotulo">/ Você · para chamar quem tirou o som</span><h1>Cutucadas</h1></div>
+    <div class="janela linha-c"><div><b>Receber cutucadas de</b><p>Quem não pode cutucar você vê “Cutucar…” apagado, sem saber o motivo.</p></div><span class="seg"><a class="on" href="#config-cutucadas">Todos do grupo</a><a href="#config-cutucadas">Só amigos</a><a href="#config-cutucadas">Ninguém</a></span></div>
+    <div class="janela linha-c"><div><b>Ler o recado em voz alta</b><p>Uma voz do Windows lê: “Rafa te cutucou: a sala tá pronta”.</p></div><span class="chave on" role="switch" aria-checked="true"><i></i>Ligada</span></div>
+    <div class="janela linha-c"><div><b>Volume da voz</b><p>Separado do volume da sala.</p></div><span class="opac"><span class="trilho" style="--v:70%"><i></i></span><b class="mono">70%</b><a class="btn sm" href="#config-cutucadas"><svg class="ic"><use href="#i-play"/></svg>Testar</a></span></div>
+    <div class="janela linha-c"><div><b>Tocar mesmo com o som silenciado</b><p>É para isso que a cutucada serve: chamar quem tirou o som do Stackcall. O mudo do Windows continua valendo.</p></div><span class="chave on" role="switch" aria-checked="true"><i></i>Ligado</span></div>
+    <div class="janela linha-c"><div><b>Aviso do Windows</b><p>Mostra a cutucada na central de notificações, com “Entrar na sala”.</p></div><span class="chave on" role="switch" aria-checked="true"><i></i>Ligado</span></div>
+    <p class="rotulo cf-nota">Quem cutuca espera 30 s para cutucar a mesma pessoa de novo.</p>
   </main>
 
   <main class="cf-main cf-clipes">
@@ -473,7 +486,7 @@
 <!-- Navegação do protótipo (some com ?print) -->
 <nav class="proto" aria-label="Telas do protótipo">
   <b>v0.5</b>
-  <a href="#sala">Sala</a><a href="#grade">Grade</a><a href="#menu-pessoa">Menu</a><a href="#paleta">Comandos</a><a href="#clipes">Clipes</a><a href="#saguao">Saguão</a><a href="#config-atalhos">Atalhos</a><a href="#config-clipes">Cfg clipes</a><a href="#config-quemfala">Cfg quem fala</a><a href="#config-busca">Busca</a><a href="#quem-fala">Quem fala</a>
+  <a href="#sala">Sala</a><a href="#grade">Grade</a><a href="#menu-pessoa">Menu</a><a href="#cutucar">Cutucar</a><a href="#paleta">Comandos</a><a href="#clipes">Clipes</a><a href="#saguao">Saguão</a><a href="#config-atalhos">Atalhos</a><a href="#config-clipes">Cfg clipes</a><a href="#config-cutucadas">Cfg cutucadas</a><a href="#config-quemfala">Cfg quem fala</a><a href="#config-busca">Busca</a><a href="#quem-fala">Quem fala</a>
   <button type="button" onclick="trocarTema()">Tema</button>
 </nav>
 </body>
