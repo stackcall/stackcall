@@ -19,6 +19,7 @@
         "minWidth": 1100,
         "minHeight": 700,
         "backgroundColor": "#f4f4f1",
+        "visible": false,
         "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required"
       }
     ],

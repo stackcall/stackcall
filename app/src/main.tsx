@@ -9,7 +9,7 @@ import '@fontsource/jetbrains-mono/500.css';
 import '@fontsource/jetbrains-mono/700.css';
 import '@fontsource/permanent-marker/400.css';
 import './index.css';
-import { aplicarTema } from './lib/tema';
+import { aplicarTema, mostrarJanela } from './lib/tema';
 import { iniciarLeveza } from './lib/leveza';
 import { App } from './App';
 
@@ -24,3 +24,4 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 );
+mostrarJanela();
