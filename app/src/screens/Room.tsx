@@ -75,9 +75,9 @@ function Topo({ nomeServidor, salas, sala, pessoas, onSala, onConfig, onPerfil, 
         <span className="font-display text-[26px] leading-none">stack<span className="text-destaque">call</span></span>
         <span aria-hidden="true" className="h-[26px] w-px bg-texto" />
         <button type="button" onClick={onConfig} className="flex h-11 flex-col items-start justify-center border-0 bg-transparent px-2 text-left leading-[1.15] hover:bg-superficie-alta"
-          aria-label={`Servidor ${nomeServidor}, ${pessoas.length} membros. Abrir configurações do servidor`}>
+          aria-label={`Servidor ${nomeServidor}, ${plural(pessoas.length, 'membro', 'membros')}. Abrir configurações do servidor`}>
           <b className="max-w-[180px] truncate text-[14px]">{nomeServidor}</b>
-          <span className="rotulo text-[11px]">{pessoas.length} membros · {online} online</span>
+          <span className="rotulo text-[11px]">{plural(pessoas.length, 'membro', 'membros')} · {online} online</span>
         </button>
       </div>
 
@@ -132,7 +132,7 @@ function salaSugerida(salas: Sala[], nela: (id: string) => number) {
  * the screen height is used by names, not by empty boxes. Empty rooms and the people outside
  * voice stack in one narrow column at the end.
  */
-function Saguao({ salas, onSala, pessoas, eu, onCartao }: RoomProps) {
+function Saguao({ salas, onSala, pessoas, eu, onCartao, onConvidar }: RoomProps) {
   const porSala = new Map<string, Pessoa[]>();
   for (const p of pessoas) if (p.online && p.sala && p.id !== eu.id) porSala.set(p.sala, [...(porSala.get(p.sala) ?? []), p]);
   const contagem = (s: Sala) => Math.max(s.pessoas, porSala.get(s.id)?.length ?? 0);
@@ -141,6 +141,8 @@ function Saguao({ salas, onSala, pessoas, eu, onCartao }: RoomProps) {
   const vazias = salas.filter((s) => !ocupadas.includes(s));
   const fora = pessoas.filter((p) => p.id !== eu.id && !(p.online && p.sala));
   const emVoz = ocupadas.reduce((n, s) => n + contagem(s), 0);
+  const podeConvidar = eu.papel === 'dono' || eu.papel === 'admin';
+  const foraDaVoz = <ForaDaVoz fora={fora} onCartao={onCartao} />;
   const entrar = (s: Sala) => (
     <button type="button" className={`btn w-full ${s.id === sugerida ? 'btn-prim' : ''}`} aria-label={`Entrar na sala ${s.nome}`} onClick={() => onSala(s.id)}>
       Entrar
@@ -157,9 +159,37 @@ function Saguao({ salas, onSala, pessoas, eu, onCartao }: RoomProps) {
       </header>
       {salas.length === 0 ? (
         <div className="janela flex flex-1"><Vazio titulo="Nenhuma sala ainda" texto="O dono ou um admin cria as salas em Configurações > Servidor." /></div>
+      ) : ocupadas.length === 0 ? (
+        // Nobody in voice (the common case of a small group): blocks as tall as their content,
+        // centered; the leftover space is the paper, never an empty box.
+        <div className="flex min-h-0 flex-1 overflow-y-auto">
+          <div className="m-auto grid w-full max-w-[1180px] grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] items-start gap-4 py-2">
+            <div className="flex flex-col gap-4">
+              <section className="janela flex flex-col" aria-label="Salas">
+                <div className="barra">Salas<span className="ml-auto font-medium">{plural(salas.length, 'sala', 'salas')} · ninguém em voz</span></div>
+                <ul className="m-0 list-none p-0">
+                  {salas.map((s) => (
+                    <li key={s.id} className="flex items-center gap-4 border-t border-borda px-4 py-3 first:border-t-0">
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <b className="font-display truncate text-[32px]">{s.nome}</b>
+                        <span className="text-[14px] text-texto-fraco">Vazia. Quem entra primeiro abre a conversa.</span>
+                      </span>
+                      <button type="button" className={`btn btn-lg ${s.id === sugerida ? 'btn-prim' : ''}`} aria-label={`Entrar na sala ${s.nome}`} onClick={() => onSala(s.id)}>Entrar</button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+              <Atalhos />
+            </div>
+            <div className="flex flex-col gap-4">
+              <ChameGalera grande podeConvidar={podeConvidar} onConvidar={onConvidar} />
+              {foraDaVoz}
+            </div>
+          </div>
+        </div>
       ) : (
         <div className="grid min-h-0 flex-1 gap-3 overflow-x-auto pb-1"
-          style={{ gridTemplateColumns: ocupadas.length ? `repeat(${ocupadas.length}, minmax(240px, 1fr)) 300px` : 'minmax(0, 1fr)' }}>
+          style={{ gridTemplateColumns: `repeat(${ocupadas.length}, minmax(240px, 1fr)) 300px` }}>
           {ocupadas.map((s) => {
             const nela = porSala.get(s.id) ?? [];
             return (
@@ -173,7 +203,7 @@ function Saguao({ salas, onSala, pessoas, eu, onCartao }: RoomProps) {
                     <span aria-hidden="true" className="size-2 bg-destaque" />Tem tela no ar. Entre para assistir.
                   </p>
                 )}
-                <ul className="m-0 grid min-h-0 flex-1 list-none grid-cols-[repeat(auto-fill,minmax(max(110px,30%),1fr))] content-start gap-2 overflow-y-auto p-3">
+                <ul className="m-0 grid min-h-0 flex-1 list-none grid-cols-[repeat(auto-fill,minmax(max(110px,30%),1fr))] content-start gap-2 overflow-y-auto p-2.5">
                   {nela.map((p) => (
                     <li key={p.id} className={p.tema === 'noite' ? 'tema-noite' : p.tema === 'lima' ? 'tema-lima' : ''}>
                       <button type="button" className="flex w-full flex-col border border-texto bg-superficie text-left text-texto hover:bg-superficie-alta"
@@ -211,29 +241,79 @@ function Saguao({ salas, onSala, pessoas, eu, onCartao }: RoomProps) {
                 </ul>
               </section>
             )}
-            <section className="janela flex min-h-0 flex-1 flex-col" aria-label="Fora da voz">
-              <div className="barra">Fora da voz<span className="ml-auto font-medium">{fora.filter((p) => p.online).length} online</span></div>
-              {fora.length === 0 ? (
-                <p className="m-0 p-3 text-[14px] text-texto-fraco">Todo mundo do servidor está numa sala.</p>
-              ) : (
-                <ul className="m-0 min-h-0 flex-1 list-none overflow-y-auto p-0">
-                  {[...fora].sort((a, b) => Number(b.online) - Number(a.online)).map((p) => (
-                    <li key={p.id}>
-                      <button type="button" className="flex min-h-11 w-full items-center gap-2.5 border-0 bg-transparent px-3 py-1 text-left hover:bg-superficie-alta"
-                        onClick={() => onCartao(p.id)} aria-label={`Ver perfil de ${p.nome}`}>
-                        <Avatar pessoa={p} tamanho={28} />
-                        <span className={`min-w-0 flex-1 truncate text-[14px] ${p.online ? '' : 'text-texto-fraco'}`}>{p.nome}</span>
-                        <span className="text-[12px] text-texto-fraco">{p.online ? 'online' : 'offline'}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
+            {foraDaVoz}
+            <ChameGalera podeConvidar={podeConvidar} onConvidar={onConvidar} />
           </div>
         </div>
       )}
     </main>
+  );
+}
+
+/** People outside voice, as tall as the list (online first). */
+function ForaDaVoz({ fora, onCartao }: { fora: Pessoa[]; onCartao(id: string): void }) {
+  return (
+    <section className="janela flex flex-col" aria-label="Fora da voz">
+      <div className="barra">Fora da voz<span className="ml-auto font-medium">{fora.filter((p) => p.online).length} online</span></div>
+      {fora.length === 0 ? (
+        <p className="m-0 p-3 text-[14px] text-texto-fraco">Todo mundo do servidor está numa sala.</p>
+      ) : (
+        <ul className="m-0 list-none p-0">
+          {[...fora].sort((a, b) => Number(b.online) - Number(a.online)).map((p) => (
+            <li key={p.id}>
+              <button type="button" className="flex min-h-11 w-full items-center gap-2.5 border-0 bg-transparent px-3 py-1 text-left hover:bg-superficie-alta"
+                onClick={() => onCartao(p.id)} aria-label={`Ver perfil de ${p.nome}`}>
+                <Avatar pessoa={p} tamanho={28} />
+                <span className={`min-w-0 flex-1 truncate text-[14px] ${p.online ? '' : 'text-texto-fraco'}`}>{p.nome}</span>
+                <span className="text-[12px] text-texto-fraco">{p.online ? 'online' : 'offline'}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** Invite call to action. Only the owner and admins can create invites (the porteiro answers 403 otherwise). */
+function ChameGalera({ grande = false, podeConvidar, onConvidar }: { grande?: boolean; podeConvidar: boolean; onConvidar(): Promise<void> }) {
+  const [estado, setEstado] = useState<'' | 'gerando' | 'copiado' | { erro: string }>('');
+  async function convidar() {
+    setEstado('gerando');
+    try {
+      await onConvidar();
+      setEstado('copiado');
+    } catch (e) {
+      setEstado({ erro: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return (
+    <section className="janela flex flex-col" aria-label="Chame a galera">
+      <div className="barra barra-lima">Convite<span className="ml-auto font-medium">7 dias · 1 uso</span></div>
+      <div className={`flex flex-col gap-3 ${grande ? 'p-5' : 'p-3'}`}>
+        <b className={`font-display ${grande ? 'text-[48px]' : 'text-[24px]'}`}>Chame a galera</b>
+        {podeConvidar ? (
+          <>
+            <p className="m-0 text-[14px] text-texto-fraco">
+              {grande ? 'O link vai para a área de transferência. Mande no grupo: quem abrir entra direto neste servidor.' : 'Gere um link e mande no grupo.'}
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <button type="button" className={`btn ${grande ? 'btn-lg' : ''}`} disabled={estado === 'gerando'} onClick={() => void convidar()}>
+                <Icone nome="link" />{estado === 'gerando' ? 'Gerando…' : 'Convidar'}
+              </button>
+              {estado === 'copiado' && <span role="status" className="text-[14px] text-texto-fraco">Link copiado.</span>}
+            </div>
+            {typeof estado === 'object' && (
+              <Faixa acoes={[{ rotulo: 'Tentar de novo', onClick: () => void convidar() }]} onFechar={() => setEstado('')}>
+                Não deu para gerar o convite. {estado.erro}
+              </Faixa>
+            )}
+          </>
+        ) : (
+          <p className="m-0 text-[14px] text-texto-fraco">Só o dono ou um admin gera convites. Peça o link a eles e mande para quem você quer chamar.</p>
+        )}
+      </div>
+    </section>
   );
 }
 
