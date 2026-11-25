@@ -15,7 +15,6 @@ import { iniciarAtalhos } from './lib/atalhos';
 import { App } from './App';
 import { JanelaQuemFala } from './screens/QuemFala';
 import { sincronizarJanelaQuemFala, sincronizarReplay } from './lib/nucleo';
-import { iniciarClipes } from './lib/clipes';
 import { listSources } from './lib/sidecar';
 import { isTauri } from '@tauri-apps/api/core';
 import { aoMudarPreferencias, lerPreferencias } from './lib/preferencias';
@@ -32,7 +31,6 @@ if (janelaQuemFala) {
   iniciarLeveza();
   iniciarAtalhos();
   sincronizarJanelaQuemFala(lerPreferencias, aoMudarPreferencias);
-  iniciarClipes();
   // "Replay sempre ligado" records the primary monitor outside the air (the core needs a source).
   sincronizarReplay(lerPreferencias, aoMudarPreferencias, async () => {
     if (!isTauri()) return null;

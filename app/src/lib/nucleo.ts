@@ -1,7 +1,7 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { primaryMonitor } from '@tauri-apps/api/window';
-import type { PosicaoQuemFala, Preferencias } from './preferencias';
+import type { PosicaoQuemFala, Preferencias, TamanhoQuemFala } from './preferencias';
+import { aoPublicarQuemFala, linhasQuemFala, type EstadoQuemFala } from './quemfala';
 
 /**
  * Commands and events of the 0.5 core, as in docs/api-v05-app.md. Inside the app every call goes
@@ -10,8 +10,10 @@ import type { PosicaoQuemFala, Preferencias } from './preferencias';
  */
 const falso = () => !isTauri();
 
-/** Size the core gives the "falantes" window (logical pixels). */
-export const JANELA_FALANTES = { largura: 320, altura: 96 };
+/** Width of the "falantes" window per size (logical pixels); the core adds 26 + rows × 26/32/40 of height. */
+export const LARGURA_FALANTES: Record<TamanhoQuemFala, number> = { p: 260, m: 320, g: 400 };
+/** The core sizes the window for at most this many rows. */
+export const MAX_LINHAS_FALANTES = 8;
 
 export type JogoDetectado = { executavel: string; nome: string };
 
@@ -27,6 +29,9 @@ export const nucleo = {
   gsiInstalar: (): Promise<string> => (falso() ? nucleo.gsiLocalizar().then((c) => c!) : invoke<string>('gsi_cs2_instalar', { confirmado: true })),
   falantesAbrir: () => (falso() ? Promise.resolve() : invoke<void>('falantes_abrir')),
   falantesFechar: () => (falso() ? Promise.resolve() : invoke<void>('falantes_fechar')),
+  /** Resizes the open window and anchors it to a corner of the primary monitor ("livre" keeps it where it is). */
+  falantesRedimensionar: (tamanho: TamanhoQuemFala, linhas: number, posicao: PosicaoQuemFala) =>
+    (falso() ? Promise.resolve() : invoke<void>('falantes_redimensionar', { tamanho, linhas, posicao })),
   /** Physical pixels on the virtual desktop (may be negative). */
   falantesPosicionar: (x: number, y: number) => (falso() ? Promise.resolve() : invoke<void>('falantes_posicionar', { x, y })),
 };
@@ -111,36 +116,46 @@ export function sincronizarReplay(ler: () => Preferencias, ouvir: (f: (p: Prefer
   return ouvir((p) => void aplicar(p));
 }
 
-type Monitor = { x: number; y: number; largura: number; altura: number; escala: number };
-/** Top-left corner, in physical pixels, for the window in that corner of the monitor; null keeps it where it is. */
-export function posicaoFalantes(posicao: PosicaoQuemFala, m: Monitor): { x: number; y: number } | null {
-  if (posicao === 'livre') return null;
-  const w = JANELA_FALANTES.largura * m.escala;
-  const h = JANELA_FALANTES.altura * m.escala;
-  const margem = Math.round(24 * m.escala);
-  const [v, lado] = posicao.split('-') as ['sup' | 'meio' | 'inf', 'esq' | 'dir'];
-  const x = lado === 'esq' ? m.x + margem : m.x + m.largura - w - margem;
-  const y = v === 'sup' ? m.y + margem : v === 'meio' ? m.y + (m.altura - h) / 2 : m.y + m.altura - h - margem;
-  return { x: Math.round(x), y: Math.round(y) };
+/** What the window must look like: closed, or open with this size, rows and corner. */
+export function pedidoFalantes(p: Preferencias, estado: EstadoQuemFala | null) {
+  if (!p.quemFalaMostrar) return null;
+  const linhas = Math.min(MAX_LINHAS_FALANTES, linhasQuemFala(estado, p.quemFalaConteudo).length);
+  return { tamanho: p.quemFalaTamanho, linhas, posicao: p.quemFalaPosicao };
 }
 
-/** Main window: opens, closes and places the "falantes" window from the preferences. */
+/**
+ * Main window: opens, closes and sizes the "falantes" window from the preferences and the rows it
+ * shows (everyone in the room, or only who speaks). Calls the core only when that changes.
+ */
 export function sincronizarJanelaQuemFala(ler: () => Preferencias, ouvir: (f: (p: Preferencias) => void) => () => void) {
   let ultimo = '';
-  const aplicar = async (p: Preferencias) => {
-    const chave = JSON.stringify([p.quemFalaMostrar, p.quemFalaPosicao]);
+  let aberta = false;
+  let estado: EstadoQuemFala | null = null;
+  let fila = Promise.resolve();
+  const aplicar = () => {
+    const pedido = pedidoFalantes(ler(), estado);
+    const chave = JSON.stringify(pedido);
     if (chave === ultimo) return;
     ultimo = chave;
-    try {
-      if (!p.quemFalaMostrar) return await nucleo.falantesFechar();
-      await nucleo.falantesAbrir();
-      const mon = falso() ? null : await primaryMonitor();
-      const pos = mon && posicaoFalantes(p.quemFalaPosicao, { x: mon.position.x, y: mon.position.y, largura: mon.size.width, altura: mon.size.height, escala: mon.scaleFactor });
-      if (pos) await nucleo.falantesPosicionar(pos.x, pos.y);
-    } catch (e) {
-      console.error('janela falantes', e);
-    }
+    // One call after the other: an open must finish before the resize that follows it.
+    fila = fila.then(async () => {
+      if (!pedido) {
+        aberta = false;
+        return nucleo.falantesFechar();
+      }
+      if (!aberta) await nucleo.falantesAbrir();
+      aberta = true;
+      await nucleo.falantesRedimensionar(pedido.tamanho, pedido.linhas, pedido.posicao);
+    }).catch((e) => console.error('janela falantes', e));
   };
-  void aplicar(ler());
-  return ouvir((p) => void aplicar(p));
+  aplicar();
+  const pararPrefs = ouvir(aplicar);
+  const pararEstado = aoPublicarQuemFala((e) => {
+    estado = e;
+    aplicar();
+  });
+  return () => {
+    pararPrefs();
+    pararEstado();
+  };
 }

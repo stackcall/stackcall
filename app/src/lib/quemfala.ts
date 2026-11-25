@@ -53,6 +53,14 @@ export function publicarQuemFala(estado: EstadoQuemFala | null) {
   ultimoJson = json;
   ultimo = estado;
   enviar(estado);
+  locais.forEach((f) => f(estado));
+}
+
+/** Main window: the room state changed (the window size follows the number of rows). */
+const locais = new Set<(e: EstadoQuemFala | null) => void>();
+export function aoPublicarQuemFala(f: (e: EstadoQuemFala | null) => void) {
+  locais.add(f);
+  return () => void locais.delete(f);
 }
 
 /** "Quem fala" window: receives every change and asks for the current state once. */

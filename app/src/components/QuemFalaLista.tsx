@@ -2,7 +2,7 @@ import { corDe, inicial } from './Avatar';
 import { linhasQuemFala, type EstadoQuemFala } from '../lib/quemfala';
 import type { Preferencias } from '../lib/preferencias';
 
-/** Row height and type per size; the core sizes the window from LARGURA_QUEM_FALA. */
+/** Row height and type per size: the same numbers the core uses to size the window (docs/api-v05-app.md). */
 const ESCALA = { p: { linha: 26, avatar: 16, fonte: 12 }, m: { linha: 32, avatar: 20, fonte: 13.5 }, g: { linha: 40, avatar: 26, fonte: 16 } };
 
 /**
@@ -33,7 +33,8 @@ export function QuemFalaLista({ estado, prefs, largura }: {
           </li>
         ))}
       </ul>
-      <div className="flex items-center justify-between gap-2 border-t border-[rgba(244,244,241,0.3)] px-2 py-1 font-mono text-[10.5px] font-medium uppercase text-[#b3b3ab]">
+      {/* 24 px + the 2 px frame = the 26 px the core reserves for this footer. */}
+      <div className="flex h-6 items-center justify-between gap-2 border-t border-[rgba(244,244,241,0.3)] px-2 font-mono text-[10.5px] font-medium uppercase text-[#b3b3ab]">
         <span className="truncate">{estado.sala}{estado.ping !== null && ` · ${estado.ping} ms`}</span>
         {estado.replay && <span className="text-[#ff7a6b]">● replay</span>}
       </div>

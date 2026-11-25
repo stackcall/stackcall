@@ -37,17 +37,20 @@ Para rodar no PC do Filippe (RTX 5060), com o instalador da branch `feat/v05-int
 4. Abra o MP4 no player do Windows.
    - A faixa 1 tem jogo, call e a sua voz.
    - A faixa 2 tem só as vozes.
-5. Desligue o microfone (M) e salve outro clipe: a sua voz não deve estar no trecho com o microfone desligado.
-6. Desligue o replay em Configurações: o ponto vermelho some e **Clipe** avisa "Ligue o replay antes de salvar um clipe."
+5. Na galeria, escolha um clipe e clique em **Apagar** › **Apagar**. Ele some da lista e vai para a Lixeira do Windows.
+6. Desligue o microfone (M) e salve outro clipe: a sua voz não deve estar no trecho com o microfone desligado.
+7. Desligue o replay em Configurações: o ponto vermelho some e **Clipe** avisa "Ligue o replay antes de salvar um clipe."
 
 ## 4. Janela quem fala
 
 1. Configurações › **Janela quem fala** › **Mostrar a janela**: Ligada.
-   - Uma faixa transparente de 320 × 96 aparece no canto escolhido do monitor principal.
+   - Uma janela transparente aparece no canto escolhido do monitor principal, com uma linha por pessoa da sala.
 2. Fale: o seu nome acende em lima.
 3. Troque o canto. A janela pula para o canto novo.
-4. Abra um jogo em **janela sem borda**. A janela fica por cima e o clique passa através dela.
-5. Use o atalho, se tiver definido um em Atalhos, para esconder e mostrar.
+4. Troque **Tamanho** entre Pequeno, Médio e Grande com a janela aberta: ela muda na hora, sem piscar nem fechar.
+5. Troque **O que mostrar** para **Só quem fala**: a janela encolhe para quem está falando.
+6. Abra um jogo em **janela sem borda**. A janela fica por cima e o clique passa através dela.
+7. Use o atalho, se tiver definido um em Atalhos, para esconder e mostrar.
 
 ## 5. Quem me ouve (**2 PCs**)
 
