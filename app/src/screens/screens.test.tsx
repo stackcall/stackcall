@@ -6,7 +6,7 @@ import { Entrada } from './Entrada';
 import { GoLive } from './GoLive';
 import { servidorFalso } from '../lib/falso';
 import { lerConvite } from '../lib/convite';
-import { medirUpload, type Servidor } from '../lib/servidor';
+import { uploadMedido, type Servidor } from '../lib/servidor';
 
 vi.mock('../lib/servidor', { spy: true });
 
@@ -107,52 +107,135 @@ test('room: tabs with live dot, stage numbers, watch, chat, mic and volume', asy
   expect(await screen.findByText('Ninguém no ar')).toBeInTheDocument();
 });
 
-test('room: transmit opens go live with locked presets', async () => {
+test('room: transmit opens go live with the native layout and the reason of each lock', async () => {
   history.replaceState(null, '', '/?demo=1');
   render(<App />);
   await userEvent.click(await screen.findByRole('button', { name: 'Transmitir' }));
   const dialog = await screen.findByRole('dialog', { name: 'Entrar no ar' });
-  expect(within(dialog).getAllByText('O modo de reserva suporta até 1080p60.')).toHaveLength(2);
+  expect(await within(dialog).findByRole('radio', { name: /Tela 1/ })).toHaveAttribute('aria-checked', 'true');
+  expect(within(dialog).getByRole('radio', { name: /^4K.*60 fps/ })).toHaveTextContent('Placa acima de 80% de carga');
+  expect(within(dialog).getByRole('radio', { name: /^4K.*30 fps/ })).toBeEnabled();
 });
 
-test('go live shows locked 4K and recommends 1080p60 in demo', async () => {
+test('go live: Escape closes, Enter on a tile goes live, arrows move the choice', async () => {
+  const onCancel = vi.fn();
+  render(<GoLive demo server="demo" roomLabel="CS" viewers={0} onCancel={onCancel} onStart={async () => undefined} />);
+  expect(screen.getByText(/ninguém na sala ainda/)).toBeInTheDocument();
+  const tela1 = await screen.findByRole('radio', { name: /Tela 1/ });
+  tela1.focus();
+  await userEvent.keyboard('{ArrowRight}');
+  expect(screen.getByRole('radio', { name: /Tela 2/ })).toHaveAttribute('aria-checked', 'true');
+  expect(screen.getByRole('radio', { name: /Tela 2/ })).toHaveFocus();
+  // Tela 2 is 1080p: 1440p and 4K stay in the list, locked, with the reason.
+  expect(screen.getByRole('radio', { name: /^1440p/ })).toBeDisabled();
+  expect(screen.getByRole('radio', { name: /^1440p/ })).toHaveTextContent('Fonte com 1080 linhas');
+  await userEvent.keyboard('{Enter}');
+  expect(onCancel).toHaveBeenCalledTimes(1); // demo: going live only closes
+  await userEvent.keyboard('{Escape}');
+  expect(onCancel).toHaveBeenCalledTimes(2);
+});
+
+test('go live layout: only the source list scrolls and the action bar is outside it', async () => {
   render(<GoLive demo server="demo" roomLabel="CS" viewers={4} onCancel={() => undefined} onStart={async () => undefined} />);
-  expect(await screen.findByText(/upload 100 Mb\/s/)).toBeInTheDocument();
-  const radios = screen.getAllByRole('radio');
-  expect(radios).toHaveLength(6);
-  expect(radios.filter((c) => c.hasAttribute('disabled'))).toHaveLength(3);
-  expect(screen.getByRole('radio', { checked: true })).toHaveTextContent('1080p60 fps');
+  const dialog = screen.getByRole('dialog', { name: 'Entrar no ar' });
+  // shortcut: jsdom has no layout; real sizes were checked in the browser at 1920x1080, 1366x768 and 1100x700.
+  expect(dialog.className).toMatch(/grid-rows-\[auto_minmax\(0,1fr\)_auto\]/);
+  expect(dialog.className).not.toMatch(/overflow/);
+  expect((await screen.findByRole('radiogroup', { name: 'Telas e janelas' })).className).toMatch(/overflow-y-auto/);
+  const action = screen.getByRole('button', { name: 'Entrar no ar' });
+  expect(action.closest('.overflow-y-auto')).toBeNull();
+  await vi.waitFor(() => expect(action).toBeEnabled());
 });
 
-test('go live uses the corrected dimensions of a minimized native source', async () => {
+const nativeSources = [
+  { id: 'hmonitor:1', title: 'Tela 1', process_name: null, pid: null, width: 1920, height: 1080, thumbnail: null, minimized: false },
+  { id: 'hwnd:123:456', title: 'Counter-Strike 2', process_name: 'cs2.exe', pid: 456, width: 1920, height: 1080, thumbnail: null, minimized: true },
+];
+const nativeTrials = [
+  { encoder: 'av1_nvenc', resolution: '720p', target_fps: 30, ok: true, fps: 30, encoder_load_percent: 50 },
+  { encoder: 'av1_nvenc', resolution: '1080p', target_fps: 60, ok: true, fps: 60, encoder_load_percent: 60 },
+];
+
+function nativeSetup(core: (command: string) => unknown = () => undefined) {
   vi.stubGlobal('isTauri', true);
-  vi.mocked(medirUpload).mockResolvedValue(26.4);
+  vi.mocked(uploadMedido).mockResolvedValue(26.4);
   onTestFinished(() => {
     clearMocks();
     vi.unstubAllGlobals();
-    vi.mocked(medirUpload).mockRestore();
+    vi.mocked(uploadMedido).mockRestore();
   });
-  const source = {
-    id: 'hwnd:123:456', title: 'Counter-Strike 2', process_name: 'cs2.exe', pid: 456,
-    width: 1920, height: 1080, thumbnail: null, minimized: true,
-  };
+  const calls: string[] = [];
   mockIPC((command) => {
-    if (command === 'listar_fontes') return [source];
-    if (command === 'testar_maquina') return { trials: [
-      { encoder: 'av1_nvenc', resolution: '720p', target_fps: 30, ok: true, fps: 30, encoder_load_percent: 50 },
-      { encoder: 'av1_nvenc', resolution: '1080p', target_fps: 60, ok: true, fps: 60, encoder_load_percent: 60 },
-    ] };
+    calls.push(command);
+    const custom = core(command);
+    if (custom !== undefined) return custom;
+    if (command === 'listar_fontes') return nativeSources;
+    if (command === 'testar_maquina') return { trials: nativeTrials, adapters: [{ name: 'NVIDIA GeForce RTX 5060', driver_version: '1' }] };
     throw new Error(`Unexpected Tauri command: ${command}`);
   });
-  render(<GoLive demo={false} server="demo" roomLabel="CS" viewers={4} onCancel={() => undefined}
-    onStart={async () => undefined} onNativeStart={async () => undefined} />);
+  return calls;
+}
 
-  const button = await screen.findByRole('button', { name: /Counter-Strike 2/ });
-  expect(button).toHaveTextContent('1920×1080');
-  expect(button).toHaveTextContent(/minimizada: volte ao jogo antes de entrar no ar/i);
-  await userEvent.click(button);
-  expect(screen.getByRole('radio', { checked: true })).toHaveTextContent('1080p60 fps');
+const renderNative = (onNativeStart: () => Promise<void> = async () => undefined) => render(
+  <GoLive demo={false} server="demo" roomLabel="CS" viewers={4} onCancel={() => undefined} onStart={async () => undefined} onNativeStart={onNativeStart} />,
+);
+
+test('go live uses the corrected dimensions of a minimized native source and remembers source and preset', async () => {
+  nativeSetup();
+  const { unmount } = renderNative();
+  expect(await screen.findByRole('radio', { name: /Tela 1/ })).toHaveAttribute('aria-checked', 'true');
+  const cs = screen.getByRole('radio', { name: /Counter-Strike 2/ });
+  expect(cs).toHaveTextContent('1920×1080');
+  expect(cs).toHaveTextContent(/minimizada: volte ao jogo antes de entrar no ar/i);
+  await userEvent.click(cs);
+  const p1080 = await screen.findByRole('radio', { name: /^1080p.*60 fps/ });
+  await vi.waitFor(() => expect(p1080).toBeEnabled());
+  await userEvent.click(p1080);
+  expect(p1080).toHaveAttribute('aria-checked', 'true');
   expect(screen.getByRole('button', { name: 'Entrar no ar' })).toBeEnabled();
+  unmount();
+
+  renderNative();
+  expect(await screen.findByRole('radio', { name: /Counter-Strike 2/ })).toHaveAttribute('aria-checked', 'true');
+  expect(screen.getByRole('radio', { name: /^1080p.*60 fps/ })).toHaveAttribute('aria-checked', 'true');
+});
+
+test('go live shows the saved GPU test at once and probes only after the thumbnails', async () => {
+  localStorage.setItem('stackcall.placa', JSON.stringify({ gpu: { name: 'NVIDIA GeForce RTX 5060', driver: '1' }, trials: nativeTrials, at: Date.now() }));
+  let release = () => undefined as void;
+  const gate = new Promise<void>((r) => { release = r; });
+  const calls = nativeSetup((command) => (command === 'listar_fontes' ? gate.then(() => nativeSources) : undefined));
+  renderNative();
+  expect(await screen.findByRole('radio', { name: /^720p/ })).toBeInTheDocument();
+  expect(screen.getByText(/NVIDIA GeForce RTX 5060/)).toBeInTheDocument();
+  expect(calls).toEqual(['listar_fontes']);
+  release();
+  await screen.findByRole('radio', { name: /Tela 1/ });
+  await vi.waitFor(() => expect(calls).toEqual(['listar_fontes', 'testar_maquina']));
+});
+
+test('go live keeps the native mode on a server error and offers to retry', async () => {
+  nativeSetup();
+  const onNativeStart = vi.fn().mockRejectedValueOnce(new Error('Já existe uma transmissão em andamento.')).mockResolvedValue(undefined);
+  renderNative(onNativeStart);
+  await screen.findByRole('radio', { name: /Tela 1/ });
+  await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Entrar no ar' })).toBeEnabled());
+  await userEvent.click(screen.getByRole('button', { name: 'Entrar no ar' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Já existe uma transmissão em andamento');
+  expect(screen.queryByText('Modo de reserva (WebView2)')).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Tentar de novo' }));
+  expect(onNativeStart).toHaveBeenCalledTimes(2);
+});
+
+test('go live falls back to WebView2 with the reason when the core is missing', async () => {
+  nativeSetup((command) => {
+    if (command === 'listar_fontes') return Promise.reject('O núcleo de transmissão não está disponível nesta máquina.');
+  });
+  renderNative();
+  const banner = await screen.findByText('Modo de reserva (WebView2)');
+  expect(banner.parentElement).toHaveTextContent('O núcleo não listou as telas: O núcleo de transmissão não está disponível nesta máquina.');
+  expect(screen.getByRole('button', { name: /Escolher tela ou janela/ })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Tentar o modo nativo' })).toBeInTheDocument();
 });
 
 test('settings: admin generates, copies and revokes an invite; creates a room', async () => {
