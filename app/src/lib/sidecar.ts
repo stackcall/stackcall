@@ -29,13 +29,15 @@ export type MachineReport = { trials: Trial[]; adapters?: Adapter[] };
 
 export type StreamEvent = {
   id: string;
-  event: 'started' | 'stats' | 'stopped' | 'error';
+  event: 'started' | 'stats' | 'stopped' | 'error' | 'pause_changed';
   reason?: string;
+  paused?: boolean;
 };
 
 export const listSources = () => invoke<CaptureSource[]>('listar_fontes');
 export const testMachine = (force = false) => invoke<MachineReport>('testar_maquina', { force });
 export const stopTransmission = (id: string) => invoke('parar_transmissao', { id });
+export const setTransmissionPaused = (id: string, paused: boolean) => invoke('mudar_pausa_transmissao', { id, paused });
 
 export type Gpu = { name: string; driver: string | null };
 export type SavedProbe = { gpu: Gpu | null; trials: Trial[]; at: number };

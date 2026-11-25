@@ -54,6 +54,7 @@ export type RoomModel = {
   cameraOn: boolean;
   micError?: string;
   streamError?: string;
+  videoPaused?: boolean;
   /** Round trip to the media server in ms (ICE candidate pair), null until measured. */
   ping: number | null;
   stageStats: StreamStats | null;

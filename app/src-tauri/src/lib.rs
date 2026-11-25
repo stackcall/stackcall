@@ -142,7 +142,8 @@ pub fn run() {
             sidecar::testar_maquina,
             sidecar::iniciar_transmissao,
             sidecar::parar_transmissao,
-            sidecar::mudar_bitrate
+            sidecar::mudar_bitrate,
+            sidecar::mudar_pausa_transmissao
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Stackcall");

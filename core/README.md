@@ -62,7 +62,7 @@ O índice de monitor começa em zero, `window:` usa o título exato e
 `--encoder auto` tenta NVENC, AMF e QSV em ordem. Use Ctrl+C para parar.
 
 `publish --pause-when-alone` é experimental e vem desligado. Após o primeiro
-quadro, a codificação e o envio de vídeo pausam quando a sala fica sem
+quadro, a captura, a codificação e o envio de vídeo pausam quando a sala fica sem
 participantes remotos e voltam com um quadro-chave quando alguém entra.
 Com participantes presentes, o SDK não informa quando o último espectador
 cancela a inscrição na faixa. A captura de áudio continua durante a pausa.
@@ -104,7 +104,10 @@ medida, em porcentagem, limitada a 100). Os percentis medem da submissão
 até a saída do pacote. O teste cobre os seis presets da seção 3.2 do plano.
 
 `publish --control-stdin` aceita uma linha JSON por comando: `{"cmd":"stop"}`,
-`{"cmd":"bitrate","kbps":4500}` ou `{"cmd":"keyframe"}`. Passe o token como
+`{"cmd":"bitrate","kbps":4500}`, `{"cmd":"keyframe"}`, `{"cmd":"pause"}` ou
+`{"cmd":"resume"}`. O evento `pause_changed` confirma a alteração com o
+campo booleano `paused`. A pausa afeta somente o vídeo. A faixa continua
+publicada e a retomada começa com um quadro-chave. Passe o token como
 primeira linha do stdin antes dos comandos ou por `--token`.
 Fechar o stdin encerra a transmissão. Com essa opção, cada evento ocupa
 uma linha no stdout. `started` é emitido após o primeiro quadro codificado e

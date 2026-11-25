@@ -282,7 +282,7 @@ async fn supervise(
                             emit(app, &args.id, event);
                         }
                     }
-                    Some("stats") => emit(app, &args.id, event),
+                    Some("stats" | "pause_changed") => emit(app, &args.id, event),
                     Some("stopped") => break Ok(()),
                     Some("error") => break Err(event["reason"].as_str().unwrap_or(UNAVAILABLE).into()),
                     _ => (),
@@ -335,6 +335,20 @@ pub async fn mudar_bitrate(
     if !(1..=100_000).contains(&kbps) {
         return Err("Bitrate fora do intervalo de 1 a 100.000 kbps.".into());
     }
+    send_control(&sidecar, &id, json!({"cmd":"bitrate", "kbps": kbps})).await
+}
+
+#[tauri::command]
+pub async fn mudar_pausa_transmissao(
+    sidecar: State<'_, Sidecar>,
+    id: String,
+    paused: bool,
+) -> Result<(), String> {
+    let command = if paused { "pause" } else { "resume" };
+    send_control(&sidecar, &id, json!({"cmd": command})).await
+}
+
+async fn send_control(sidecar: &Sidecar, id: &str, command: Value) -> Result<(), String> {
     let controls = sidecar
         .active
         .lock()
@@ -344,7 +358,7 @@ pub async fn mudar_bitrate(
         .map(|running| running.controls.clone())
         .ok_or("Nenhuma transmissão em andamento.")?;
     controls
-        .send(json!({"cmd":"bitrate", "kbps": kbps}))
+        .send(command)
         .await
         .map_err(|_| "O núcleo parou de responder.".into())
 }

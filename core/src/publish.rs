@@ -33,6 +33,7 @@ use windows_capture::{
 
 type Control = CaptureControl<Capture, anyhow::Error>;
 
+#[derive(Clone)]
 struct Setup {
     args: Publish,
     source: NativeVideoSource,
@@ -45,15 +46,25 @@ struct Setup {
 struct Requests {
     kbps: AtomicU32,
     keyframe: AtomicBool,
-    video_idle: AtomicBool,
 }
 
 #[derive(Deserialize)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
 enum Command {
     Stop,
+    Pause,
+    Resume,
     Bitrate { kbps: u32 },
     Keyframe,
+}
+
+fn stop_capture(control: Control) -> Result<()> {
+    if control.is_finished() {
+        control.wait()
+    } else {
+        control.stop()
+    }
+    .map_err(|err| anyhow::anyhow!("Falha na captura ou na codificação: {err:?}"))
 }
 
 fn stdin_commands() -> tokio::sync::mpsc::Receiver<Command> {
@@ -258,11 +269,10 @@ pub async fn run(args: Publish) -> Result<()> {
         ).await.context("O servidor recusou a publicação da tela")?;
         let stats = Arc::new(Mutex::new(Stats::default()));
         let requests = Arc::new(Requests::default());
-        if pause_when_alone {
-            requests.video_idle.store(room.remote_participants().is_empty(), Ordering::Relaxed);
-        }
-        let control = start_capture(Setup { args, source, stats: stats.clone(), requests: requests.clone(), tuning })
-            .context("Não foi possível iniciar a captura")?;
+        let mut setup = Setup { args, source, stats: stats.clone(), requests: requests.clone(), tuning };
+        let mut control = Some(start_capture(setup.clone()).context("Não foi possível iniciar a captura")?);
+        let mut alone = pause_when_alone && room.remote_participants().is_empty();
+        let mut manual_pause = false;
         let mut audio = crate::audio::Worker::default();
         let result = async {
             if let Some(pid) = audio_pid {
@@ -287,7 +297,10 @@ pub async fn run(args: Publish) -> Result<()> {
                         }
                     } => match command {
                         Some(Command::Stop) | None => break,
+                        Some(Command::Pause) => manual_pause = true,
+                        Some(Command::Resume) => manual_pause = false,
                         Some(Command::Bitrate { kbps }) if (1..=100_000).contains(&kbps) => {
+                            setup.args.bitrate = kbps;
                             requests.kbps.store(kbps, Ordering::Relaxed);
                         }
                         Some(Command::Keyframe) => { requests.keyframe.store(true, Ordering::Relaxed); }
@@ -301,13 +314,12 @@ pub async fn run(args: Publish) -> Result<()> {
                             Some(RoomEvent::ParticipantConnected(_) | RoomEvent::ParticipantDisconnected(_) |
                                 RoomEvent::Reconnecting | RoomEvent::Reconnected) if pause_when_alone => {
                                 // The public SDK reports joins and leaves, but no last-subscriber event.
-                                let idle = room.connection_state() == ConnectionState::Connected
+                                alone = room.connection_state() == ConnectionState::Connected
                                     && room.remote_participants().is_empty();
-                                requests.video_idle.store(idle, Ordering::Relaxed);
                             }
                             Some(RoomEvent::LocalTrackSubscribed { track })
                                 if pause_when_alone && track.source() == TrackSource::Screenshare => {
-                                requests.video_idle.store(false, Ordering::Relaxed);
+                                alone = false;
                                 requests.keyframe.store(true, Ordering::Relaxed);
                             }
                             _ => {}
@@ -315,7 +327,7 @@ pub async fn run(args: Publish) -> Result<()> {
                     }
                     _ = timer.tick() => {
                         audio.check().await.context("A captura do som do app foi interrompida")?;
-                        if control.is_finished() {
+                        if control.as_ref().is_some_and(Control::is_finished) {
                             if controlled { anyhow::bail!("A captura foi encerrada pela janela ou pelo codificador."); }
                             break;
                         }
@@ -369,11 +381,22 @@ pub async fn run(args: Publish) -> Result<()> {
                         }
                     }
                 }
+                let paused = manual_pause || alone;
+                if paused != control.is_none() && stats.lock().unwrap().encoder.is_some() {
+                    if let Some(capture) = control.take() {
+                        stop_capture(capture)?;
+                    } else {
+                        // A new encoder session sends a keyframe first. Keep the published track.
+                        control = Some(start_capture(setup.clone()).context("Não foi possível retomar a captura")?);
+                    }
+                    if controlled {
+                        emit(serde_json::json!({"event":"pause_changed", "paused": paused}));
+                    }
+                }
             }
             Ok::<_, anyhow::Error>(())
         }.await;
-        let capture_result = if control.is_finished() { control.wait() } else { control.stop() }
-            .map_err(|err| anyhow::anyhow!("Falha na captura ou na codificação: {err:?}"));
+        let capture_result = control.map_or(Ok(()), stop_capture);
         let audio_result = audio.stop().await;
         capture_result.and(result).and(audio_result)
     }.await;
@@ -436,13 +459,6 @@ impl GraphicsCaptureApiHandler for Capture {
     fn on_frame_arrived(&mut self, frame: &mut Frame, _: InternalCaptureControl) -> Result<()> {
         let mut stats = self.setup.stats.lock().unwrap();
         stats.captured += 1;
-        // Send the first frame so LiveKit can announce the track and control-stdin can report startup.
-        if stats.encoder.is_some() && self.setup.requests.video_idle.load(Ordering::Relaxed) {
-            drop(stats);
-            self.session = None;
-            self.last_slot = None;
-            return Ok(());
-        }
         let timestamp = frame.timestamp()?.Duration / 10;
         let elapsed_us = timestamp.saturating_sub(*self.first_timestamp.get_or_insert(timestamp));
         let args = &self.setup.args;

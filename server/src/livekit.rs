@@ -111,7 +111,10 @@ impl LiveKit {
             .with_identity(user_id)
             .with_name(name)
             .with_ttl(TOKEN_TTL)
-            .with_grants(grants.clone())
+            .with_grants(VideoGrants {
+                can_update_own_metadata: Some(true),
+                ..grants.clone()
+            })
             .to_jwt()
             .map_err(crate::db::internal)?;
         let screen_token = AccessToken::with_api_key(&self.key, &self.secret)
