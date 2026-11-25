@@ -116,8 +116,7 @@ export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart, on
     sourceWidth: native ? source?.width : undefined,
     encoding,
     trials: native ? trials ?? [] : undefined,
-  }).filter((p) => !native || p.height <= 1080
-    || (p.trial && typeof upload === 'number' && upload * 0.5 >= p.uploadNeeded));
+  });
   const chosen = cards.find((c) => c.id === picked && !c.locked) ?? cards.find((c) => c.recommended);
   const codecLabel = codec.codec === 'av1' ? 'AV1' : 'H.264';
   const surface = SURFACE[track?.getSettings().displaySurface ?? ''] ?? 'fonte';
