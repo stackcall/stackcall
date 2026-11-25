@@ -12,6 +12,7 @@ struct Fixture {
     config: Arc<Config>,
     owner_code: String,
     online: Arc<Mutex<Vec<String>>>,
+    subrooms: Arc<Mutex<HashMap<String, Vec<String>>>>,
     kicked: Arc<Mutex<Vec<String>>>,
     livekit: tokio::task::JoinHandle<()>,
 }
@@ -28,22 +29,46 @@ async fn fixture(members_can_invite: bool) -> Fixture {
         .parse()
         .unwrap();
     let online = Arc::new(Mutex::new(Vec::<String>::new()));
+    let subrooms = Arc::new(Mutex::new(HashMap::<String, Vec<String>>::new()));
     let kicked = Arc::new(Mutex::new(Vec::<String>::new()));
     let livekit = tokio::spawn({
         let online = online.clone();
+        let subrooms = subrooms.clone();
         let kicked = kicked.clone();
         async move {
             let api = Router::new()
                 .route(
                     "/twirp/livekit.RoomService/ListRooms",
-                    post(|| async { Json(json!({"rooms":[{"name":"room-in-use"}]})) }),
+                    post({
+                        let subrooms = subrooms.clone();
+                        move || async move {
+                            let mut rooms = vec![json!({"name":"room-in-use"})];
+                            rooms.extend(
+                                subrooms
+                                    .lock()
+                                    .unwrap()
+                                    .keys()
+                                    .map(|name| json!({"name":name})),
+                            );
+                            Json(json!({"rooms":rooms}))
+                        }
+                    }),
                 )
                 .route(
                     "/twirp/livekit.RoomService/ListParticipants",
-                    post(move || async move {
-                        let identities: Vec<_> = online
-                            .lock()
-                            .unwrap()
+                    post(move |Json(body): Json<Value>| async move {
+                        let room = body["room"].as_str().unwrap();
+                        let people = if room == "room-in-use" {
+                            online.lock().unwrap().clone()
+                        } else {
+                            subrooms
+                                .lock()
+                                .unwrap()
+                                .get(room)
+                                .cloned()
+                                .unwrap_or_default()
+                        };
+                        let identities: Vec<_> = people
                             .iter()
                             .map(|id| {
                                 json!({"identity": id, "tracks": [
@@ -126,6 +151,7 @@ async fn fixture(members_can_invite: bool) -> Fixture {
         config,
         owner_code,
         online,
+        subrooms,
         kicked,
         livekit,
     }
@@ -205,6 +231,109 @@ async fn make_invite(app: &Router, owner: &str) -> Value {
 async fn member(app: &Router, owner: &str) -> Value {
     let invite = make_invite(app, owner).await;
     join(app, invite["codigo"].as_str().unwrap(), "Membro").await
+}
+
+#[tokio::test]
+async fn cs2_rooms_have_stable_team_ids_and_are_listed_only_while_occupied() {
+    let fixture = fixture(false).await;
+    let app = &fixture.app;
+    let owner = join(app, &fixture.owner_code, "Dono").await;
+    let player = member(app, session(&owner)).await;
+    let session = Some(session(&player));
+    fixture
+        .config
+        .db
+        .lock()
+        .unwrap()
+        .execute("INSERT INTO salas VALUES ('cs', 'CS', 1)", [])
+        .unwrap();
+    let enter = |room: &'static str, team: &'static str| async move {
+        send(
+            app,
+            Method::POST,
+            &format!("/api/salas/{room}/cs2/token"),
+            session,
+            json!({"time":team}),
+        )
+        .await
+    };
+    assert_eq!(
+        enter("cs", "invalid").await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    assert_eq!(enter("missing", "ct").await.0, StatusCode::NOT_FOUND);
+    assert_eq!(enter("cs:cs:ct", "ct").await.0, StatusCode::NOT_FOUND);
+    let (status, ct) = enter("cs", "ct").await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, tr) = enter("cs", "tr").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_ne!(ct["sala_id"], tr["sala_id"]);
+    assert_eq!(enter("cs", "ct").await.1["sala_id"], ct["sala_id"]);
+    for field in ["token", "screen_token"] {
+        let claims = TokenVerifier::with_api_key("test_key", "test_secret")
+            .verify(ct[field].as_str().unwrap())
+            .unwrap();
+        assert_eq!(claims.video.room, ct["sala_id"]);
+    }
+    let child = ct["sala_id"].as_str().unwrap();
+    let rooms = || async {
+        let (_, rooms) = send(app, Method::GET, "/api/salas", session, Value::Null).await;
+        rooms
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["id"] == child)
+            .cloned()
+    };
+    assert!(rooms().await.is_none());
+    fixture.subrooms.lock().unwrap().insert(
+        child.into(),
+        vec![id(&player).into(), format!("{}:tela", id(&player))],
+    );
+    let room = rooms().await.unwrap();
+    assert_eq!(room["nome"], "CS · CT");
+    assert_eq!(room["pai_id"], "cs");
+    assert_eq!(room["time"], "ct");
+    assert_eq!(room["pessoas"], 1);
+    assert_eq!(room["no_ar"], true);
+    let (status, token) = send(
+        app,
+        Method::POST,
+        &format!("/api/salas/{child}/token"),
+        session,
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(token["sala_id"], child);
+    fixture
+        .subrooms
+        .lock()
+        .unwrap()
+        .get_mut(child)
+        .unwrap()
+        .clear();
+    assert!(rooms().await.is_none());
+    fixture
+        .config
+        .db
+        .lock()
+        .unwrap()
+        .execute("DELETE FROM salas WHERE id = 'cs'", [])
+        .unwrap();
+    assert_eq!(enter("cs", "ct").await.0, StatusCode::NOT_FOUND);
+    assert_eq!(
+        send(
+            app,
+            Method::POST,
+            &format!("/api/salas/{child}/token"),
+            session,
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
 }
 
 #[tokio::test]

@@ -3,6 +3,9 @@
 # https://docs.livekit.io/transport/self-hosting/ports-firewall/
 port: 7880
 bind_addresses: ["0.0.0.0"]
+room:
+  auto_create: true
+  departure_timeout: 20
 rtc:
   tcp_port: 7881
   udp_port: 7882

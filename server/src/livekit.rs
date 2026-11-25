@@ -22,6 +22,7 @@ pub struct LiveKit {
 
 #[derive(Serialize)]
 pub struct Tokens {
+    sala_id: String,
     url: String,
     token: String,
     screen_token: String,
@@ -113,7 +114,7 @@ impl LiveKit {
     pub fn tokens(&self, user_id: &str, name: &str, room: String) -> Result<Tokens, StatusCode> {
         let grants = VideoGrants {
             room_join: true,
-            room,
+            room: room.clone(),
             ..Default::default()
         };
         let token = AccessToken::with_api_key(&self.key, &self.secret)
@@ -140,6 +141,7 @@ impl LiveKit {
             .to_jwt()
             .map_err(crate::db::internal)?;
         Ok(Tokens {
+            sala_id: room,
             url: self.public_url.clone(),
             token,
             screen_token,

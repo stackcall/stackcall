@@ -78,9 +78,9 @@ async fn create(
         tx.execute("DELETE FROM chamados WHERE criado_em + 120 <= unixepoch('subsec')", []).map_err(db::internal)?;
         let call_id = auth::id();
         let created = tx.execute(
-            "INSERT INTO chamados SELECT ?1, ?2, ?3, ?3, ?4, unixepoch('subsec')
+            "INSERT INTO chamados SELECT ?1, ?2, ?3, ?4, ?5, unixepoch('subsec')
              WHERE NOT EXISTS (SELECT 1 FROM chamados WHERE autor_id = ?2 AND criado_em + 60 > unixepoch('subsec'))",
-            params![call_id, user.id, input.sala_id, message],
+            params![call_id, user.id, input.sala_id, rooms::parent_id(&input.sala_id), message],
         ).map_err(db::internal)?;
         if created == 0 {
             return Err(StatusCode::TOO_MANY_REQUESTS);

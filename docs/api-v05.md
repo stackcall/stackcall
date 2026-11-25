@@ -34,3 +34,12 @@ Recebem o chamado os amigos que o remetente adicionou e que estavam em alguma sa
 - `400` indica nome ou emoji inválido, `409` indica que as 24 vagas estão ocupadas, `413` indica mais de 300.000 bytes, `415` indica áudio incompatível ou inválido e `422` indica áudio acima de 5 s.
 
 O app toca localmente e publica um pacote de dados confiável do LiveKit no tópico `stackcall.soundboard.v1`, com JSON UTF-8 `{"som_id":"<id do item>"}`. O receptor usa a identidade de quem enviou o pacote, reconhece apenas IDs da lista do grupo e aplica o limite de toques por remetente no cliente. Use os bytes já em cache ou faça o download autenticado. O pacote é enviado somente à sala de voz atual.
+
+## Sub-salas do CS2
+
+1. O app lê o time no GSI local. Para `CT`, envie `POST /api/salas/{pai_id}/cs2/token` com `{"time":"ct"}`. Para `T`, envie `{"time":"tr"}`. O porteiro devolve `{sala_id,url,token,screen_token}`. Time desconhecido recebe `422`, pai inexistente recebe `404`.
+2. Pare a transmissão se houver, desconecte da sala atual e conecte com o token recebido. O LiveKit abre a sub-sala na primeira conexão. Quem tem o mesmo pai e time recebe a mesma `sala_id`.
+3. `GET /api/salas` lista as sub-salas ocupadas abaixo da sala pai, com `pai_id` e `time` (`ct` ou `tr`). Nas salas fixas, ambos são `null`. Para entrar por seleção manual ou chamado, use `POST /api/salas/{sala_id}/token`, que também devolve a sala efetiva.
+4. Ao sair do time ou da partida, volte à sala pai pelo fluxo normal. A sub-sala some da lista quando fica vazia e o LiveKit a fecha após o prazo de saída (20 s, verificado periodicamente pelo SFU). A sala pai e os dados do grupo continuam disponíveis.
+
+O time informado escolhe o destino. A detecção do GSI é feita pelo app e não serve como autorização para entrar na sub-sala.
