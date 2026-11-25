@@ -216,8 +216,11 @@ pub async fn run(args: Publish) -> Result<()> {
         .as_deref()
         .map(|path| {
             crate::probe::nvenc_recommendation(path, args.codec, args.res, args.fps, args.cbr)
+                .unwrap_or_else(|error| {
+                    eprintln!("Aviso: não foi possível ler o relatório do probe: {error:#}");
+                    Default::default()
+                })
         })
-        .transpose()?
         .unwrap_or_default();
     let tuning = encoder::Tuning {
         cbr: args.cbr,
