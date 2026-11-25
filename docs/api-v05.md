@@ -16,6 +16,12 @@ Somente dono e admin. Membro recebe `403`. Todas as rotas usam `POST /api/salas/
 
 O porteiro chama `MoveParticipant` primeiro. A edição aberta do LiveKit 1.13.11 expõe o RPC, mas [o gerenciador responde “not implemented”](https://github.com/livekit/livekit/blob/v1.13.11/pkg/service/roommanager.go). Nesse caso, o porteiro desconecta voz e tela da origem e o perfil da própria pessoa em `GET /api/pessoas` recebe `mudanca_sala: {"id":17,"origem_id":"…","destino_id":"…","expira_em":…}` por até 60 s. Mantenha a consulta de presença após `PARTICIPANT_REMOVED` e lembre a sala da desconexão. Deduplique por `id` e reconecte com o fluxo normal de token se a origem bater com a sala da qual a pessoa foi desconectada e ela ainda estiver fora da voz. Após um movimento nativo, o app deve parar a transmissão vinculada à sala anterior.
 
+## Cargos do grupo
+
+`PUT /api/pessoas/{id}/cargo` recebe `{"cargo":"admin"}` ou `{"cargo":"membro"}`. Só o dono pode alterar o cargo de outra pessoa ativa. A rota devolve `204`, inclusive quando a pessoa já tem o cargo pedido. `403` indica falta de permissão ou tentativa de alterar o cargo do dono. `404` indica que a pessoa está ausente do grupo. Valores fora de `admin` e `membro` recebem `422`.
+
+O cargo atualizado aparece em `papel` no `GET /api/pessoas`. A alteração e o registro de autor e alvo no log de moderação são gravados na mesma transação. O log usa as ações `promover_admin` e `rebaixar_membro` e deixa a sala vazia por se tratar do grupo inteiro.
+
 ## Jogo na presença
 
 `PUT /api/eu/jogo` recebe `{"jogo":"Counter-Strike 2"}` e retorna `204`. O nome tem até 60 caracteres após retirar espaços nas pontas e deve ser livre de caracteres de controle. Envie `{"jogo":""}` para limpar. O app deve renovar enquanto o jogo continuar aberto, por exemplo a cada 60 s. Cada perfil da lista de `GET /api/pessoas` recebe `jogo`, com o nome ou `null` após 120 s sem renovação. A presença de jogo pode aparecer mesmo quando a pessoa está fora da voz.
@@ -40,6 +46,8 @@ O limite é de uma cutucada a cada 30 s para o mesmo destinatário e dez por min
 O time informado escolhe o destino. A detecção do GSI é feita pelo app e não serve como autorização para entrar na sub-sala.
 
 ## LiveKit em suspensão
+
+O `GET /api/servidor` público inclui `dorme`. Com a suspensão desligada, o valor é `{"ligado":false,"minutos":null,"dormindo":false}`. Quando ligada, `minutos` informa o tempo de inatividade configurado. `dormindo` fica verdadeiro após o controlador confirmar a parada por inatividade e volta a falso quando o despertar começa. Consultar esse estado não acorda o LiveKit.
 
 Ao pedir um token de sala ou de sub-sala com o recurso habilitado, o app pode receber `503` com `{"erro":"livekit_acordando"}` e `Retry-After: 1`. Mostre “Acordando o servidor de voz…” e repita o mesmo POST a cada 1 s, com prazo total de 20 s e cancelamento se a pessoa desistir. Com `200`, prossiga com a conexão. Se o prazo vencer, mostre a falha e permita nova tentativa. Presença, lista de salas e saúde seguem disponíveis enquanto a voz dorme.
 

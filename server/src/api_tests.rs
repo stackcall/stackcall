@@ -259,6 +259,173 @@ async fn member(app: &Router, owner: &str) -> Value {
 }
 
 #[tokio::test]
+async fn only_the_owner_can_change_roles_and_changes_are_audited() {
+    let fixture = fixture(false).await;
+    let app = &fixture.app;
+    let owner = join(app, &fixture.owner_code, "Dono").await;
+    let target = member(app, session(&owner)).await;
+    let other = member(app, session(&owner)).await;
+    let change = |actor: Option<&str>, target: &str, cargo: &str| {
+        let actor = actor.map(str::to_owned);
+        let uri = format!("/api/pessoas/{target}/cargo");
+        let body = json!({"cargo": cargo});
+        async move { send(app, Method::PUT, &uri, actor.as_deref(), body).await.0 }
+    };
+    let owner_session = Some(session(&owner));
+    let target_session = Some(session(&target));
+    let profile = || async {
+        let (status, people) = send(
+            app,
+            Method::GET,
+            "/api/pessoas",
+            target_session,
+            Value::Null,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        people
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|person| person["id"] == id(&target))
+            .unwrap()
+            .clone()
+    };
+    fixture
+        .config
+        .db
+        .lock()
+        .unwrap()
+        .execute(
+            "INSERT INTO moderacao_log (autor_id, acao, sala_id, usuario_id, destino_id, resultado)
+         VALUES (?1, 'mover', 'origem', ?2, 'destino', 'reconectar')",
+            [id(&owner), id(&target)],
+        )
+        .unwrap();
+    assert_eq!(
+        change(None, id(&target), "admin").await,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        change(target_session, id(&other), "admin").await,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(profile().await["papel"], "membro");
+    assert_eq!(
+        change(owner_session, id(&owner), "membro").await,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        change(owner_session, id(&target), "dono").await,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    assert_eq!(
+        change(owner_session, &auth::id(), "admin").await,
+        StatusCode::NOT_FOUND
+    );
+
+    assert_eq!(
+        change(owner_session, id(&target), "admin").await,
+        StatusCode::NO_CONTENT
+    );
+    let promoted = profile().await;
+    assert_eq!(promoted["papel"], "admin");
+    assert_eq!(promoted["mudanca_sala"]["destino_id"], "destino");
+    assert_eq!(
+        change(target_session, id(&other), "admin").await,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        send(
+            app,
+            Method::POST,
+            "/api/salas",
+            target_session,
+            json!({"nome":"Voz"})
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    assert_eq!(
+        change(owner_session, id(&target), "admin").await,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        change(owner_session, id(&target), "membro").await,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(profile().await["papel"], "membro");
+    assert_eq!(
+        send(
+            app,
+            Method::POST,
+            "/api/salas",
+            target_session,
+            json!({"nome":"Voz"})
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+
+    let db = fixture.config.db.lock().unwrap();
+    let mut query = db.prepare(
+        "SELECT autor_id, usuario_id, acao, resultado FROM moderacao_log WHERE sala_id = '' ORDER BY id",
+    ).unwrap();
+    let events = query
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })
+        .unwrap()
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .unwrap();
+    assert_eq!(
+        events,
+        [
+            (
+                id(&owner).into(),
+                id(&target).into(),
+                "promover_admin".into(),
+                "ok".into()
+            ),
+            (
+                id(&owner).into(),
+                id(&target).into(),
+                "rebaixar_membro".into(),
+                "ok".into()
+            ),
+        ]
+    );
+}
+
+async fn server_sleep(app: &Router) -> Value {
+    let (status, response) = send(app, Method::GET, "/api/servidor", None, Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    response["dorme"].clone()
+}
+
+#[tokio::test]
+async fn server_info_reports_public_sleep_configuration() {
+    let disabled = fixture(false).await;
+    assert_eq!(
+        server_sleep(&disabled.app).await,
+        json!({"ligado": false, "minutos": null, "dormindo": false})
+    );
+    let enabled = fixture_with_sleep(false, Some(Duration::from_secs(600))).await;
+    assert_eq!(
+        server_sleep(&enabled.app).await,
+        json!({"ligado": true, "minutos": 10, "dormindo": false})
+    );
+    assert!(enabled.commands.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn livekit_sleeps_only_after_idle_and_starts_on_an_authenticated_token_request() {
     let fixture = fixture_with_sleep(false, Some(Duration::from_millis(20))).await;
     let app = &fixture.app;
@@ -286,6 +453,7 @@ async fn livekit_sleeps_only_after_idle_and_starts_on_an_authenticated_token_req
     tokio::time::sleep(Duration::from_millis(30)).await;
     sleep.check_idle(livekit).await;
     assert_eq!(*fixture.commands.lock().unwrap(), ["stop"]);
+    assert_eq!(server_sleep(app).await["dormindo"], true);
 
     let uri = "/api/salas/room-in-use/token";
     assert_eq!(
@@ -324,6 +492,7 @@ async fn livekit_sleeps_only_after_idle_and_starts_on_an_authenticated_token_req
     assert_eq!(response.0, StatusCode::OK);
     assert!(response.1["token"].is_string());
     assert_eq!(*fixture.commands.lock().unwrap(), ["stop", "start"]);
+    assert_eq!(server_sleep(app).await["dormindo"], false);
 }
 
 #[tokio::test]

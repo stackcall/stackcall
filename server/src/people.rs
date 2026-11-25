@@ -19,6 +19,7 @@ pub fn routes() -> Router<Arc<Config>> {
         .route("/api/eu/jogo", put(set_game))
         .route("/api/amigos/{id}", post(add_friend).delete(remove_friend))
         .route("/api/pessoas/{id}", delete(remove_person))
+        .route("/api/pessoas/{id}/cargo", put(change_role))
         .route("/api/pessoas/{id}/aparelhos", delete(remove_devices))
 }
 
@@ -163,6 +164,67 @@ async fn change_friend(
         };
         conn.execute(sql, params![user.id, id])
             .map_err(db::internal)?;
+        Ok(StatusCode::NO_CONTENT)
+    })
+    .await
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum AssignableRole {
+    Admin,
+    Membro,
+}
+
+#[derive(Deserialize)]
+struct RoleInput {
+    cargo: AssignableRole,
+}
+
+async fn change_role(
+    State(config): State<Arc<Config>>,
+    user: User,
+    Path(id): Path<String>,
+    Json(input): Json<RoleInput>,
+) -> Result<StatusCode, StatusCode> {
+    if user.role != "dono" {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    let (role, action) = match input.cargo {
+        AssignableRole::Admin => ("admin", "promover_admin"),
+        AssignableRole::Membro => ("membro", "rebaixar_membro"),
+    };
+    db::run(config, move |conn| {
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(db::internal)?;
+        user.ensure_active(&tx)?;
+        let current: String = tx
+            .query_row(
+                "SELECT papel FROM usuarios WHERE id = ?1 AND removido_em IS NULL",
+                [&id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(db::internal)?
+            .ok_or(StatusCode::NOT_FOUND)?;
+        if current == "dono" {
+            return Err(StatusCode::FORBIDDEN);
+        }
+        if current != role {
+            tx.execute(
+                "UPDATE usuarios SET papel = ?1 WHERE id = ?2",
+                params![role, id],
+            )
+            .map_err(db::internal)?;
+            tx.execute(
+                "INSERT INTO moderacao_log (autor_id, acao, sala_id, usuario_id, resultado)
+                 VALUES (?1, ?2, '', ?3, 'ok')",
+                params![user.id, action, id],
+            )
+            .map_err(db::internal)?;
+        }
+        tx.commit().map_err(db::internal)?;
         Ok(StatusCode::NO_CONTENT)
     })
     .await
