@@ -43,7 +43,9 @@ function Get-VerifiedFile($Uri, $Destination, $Hash) {
 New-Item -ItemType Directory -Force -Path $cache | Out-Null
 Get-VerifiedFile $url $archive $sha256
 if (!(Test-Path -LiteralPath (Join-Path $ffmpeg '.verified'))) {
-    Expand-Archive -LiteralPath $archive -DestinationPath $cache -Force
+    # Expand-Archive quebra no PowerShell 5.1 com PSModulePath vazio (beforeBuildCommand do Tauri); o tar do Windows não depende de módulo.
+    & "$env:SystemRoot\System32\tar.exe" -xf $archive -C $cache
+    if ($LASTEXITCODE -ne 0) { throw 'Falha ao extrair o FFmpeg.' }
     Set-Content -LiteralPath (Join-Path $ffmpeg '.verified') -Value $sha256
 }
 
