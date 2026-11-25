@@ -7,7 +7,10 @@ use std::{
 use crate::media::{Frame, Pixel};
 use anyhow::{Context, Result};
 use serde::Serialize;
-use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, DXGI_ERROR_NOT_FOUND, IDXGIFactory1};
+use windows::{
+    Win32::Graphics::Dxgi::{CreateDXGIFactory1, DXGI_ERROR_NOT_FOUND, IDXGIDevice, IDXGIFactory1},
+    core::Interface,
+};
 
 use crate::{
     cli::{Codec, Probe, Resolution},
@@ -24,6 +27,7 @@ pub struct Report {
 #[derive(Serialize)]
 struct Adapter {
     name: String,
+    driver_version: Option<String>,
     vendor_id: u32,
     vendor: &'static str,
     dedicated_bytes: usize,
@@ -62,18 +66,25 @@ enum Outcome {
 pub fn run(options: Probe) -> Result<Report> {
     crate::media::init()?;
     let factory: IDXGIFactory1 = unsafe { CreateDXGIFactory1()? };
-    let adapters = (0..)
-        .map_while(|index| match unsafe { factory.EnumAdapters1(index) } {
-            Ok(adapter) => Some(unsafe { adapter.GetDesc1() }.map_err(anyhow::Error::from)),
-            Err(error) if error.code() == DXGI_ERROR_NOT_FOUND => None,
-            Err(error) => Some(Err(error.into())),
-        })
-        .collect::<Result<Vec<_>>>()?
-        .into_iter()
-        .map(|desc| Adapter {
+    let mut adapters = Vec::new();
+    for index in 0.. {
+        let adapter = match unsafe { factory.EnumAdapters1(index) } {
+            Ok(adapter) => adapter,
+            Err(error) if error.code() == DXGI_ERROR_NOT_FOUND => break,
+            Err(error) => return Err(error.into()),
+        };
+        let desc = unsafe { adapter.GetDesc1()? };
+        let driver_version = unsafe { adapter.CheckInterfaceSupport(&IDXGIDevice::IID) }
+            .ok()
+            .map(|version| {
+                let [a, b, c, d] = [48, 32, 16, 0].map(|shift| (version >> shift) as u16);
+                format!("{a}.{b}.{c}.{d}")
+            });
+        adapters.push(Adapter {
             name: String::from_utf16_lossy(&desc.Description)
                 .trim_end_matches('\0')
                 .into(),
+            driver_version,
             vendor_id: desc.VendorId,
             vendor: match desc.VendorId {
                 0x10de => "NVIDIA",
@@ -83,8 +94,8 @@ pub fn run(options: Probe) -> Result<Report> {
             },
             dedicated_bytes: desc.DedicatedVideoMemory,
             shared_bytes: desc.SharedSystemMemory,
-        })
-        .collect();
+        });
+    }
 
     let presets = [
         (Resolution::P720, 30, 2000, 1400),
