@@ -22,4 +22,5 @@ Supressão forte de ruído (opcional, carregada só quando ligada):
 Stackcall distribui as fontes Anton, Hanken Grotesk e JetBrains Mono sob
 SIL Open Font License 1.1, e Permanent Marker sob Apache License 2.0.
 Os avisos de autoria e os textos dessas licenças estão na pasta licenses
-da instalação do Stackcall.
+da instalação do Stackcall. As mesmas fontes estão no protótipo de design
+(docs/design/v05/fontes/), com as mesmas licenças.
