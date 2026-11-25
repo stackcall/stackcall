@@ -4,11 +4,14 @@ use anyhow::Result;
 use base64::Engine;
 use serde::Serialize;
 use windows::Win32::{
-    Foundation::HWND,
-    Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute},
+    Foundation::{HWND, RECT},
+    Graphics::{
+        Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute},
+        Gdi::{MONITOR_DEFAULTTONEAREST, MonitorFromWindow},
+    },
     UI::WindowsAndMessaging::{
-        GW_OWNER, GWL_EXSTYLE, GetWindow, GetWindowLongW, IsIconic, IsWindowVisible,
-        WS_EX_TOOLWINDOW,
+        GW_OWNER, GWL_EXSTYLE, GWL_STYLE, GetWindow, GetWindowLongW, GetWindowPlacement, IsIconic,
+        IsWindowVisible, WINDOWPLACEMENT, WS_CAPTION, WS_EX_TOOLWINDOW, WS_POPUP, WS_THICKFRAME,
     },
 };
 use windows_capture::{
@@ -26,15 +29,16 @@ pub struct SourceInfo {
     title: String,
     process_name: Option<String>,
     pid: Option<u32>,
-    width: u32,
-    height: u32,
+    width: Option<u32>,
+    height: Option<u32>,
+    minimized: bool,
     thumbnail: Option<String>,
 }
 
 struct WindowMetadata<'a> {
     title: &'a str,
-    width: i32,
-    height: i32,
+    width: u32,
+    height: u32,
     visible: bool,
     minimized: bool,
     cloaked: bool,
@@ -45,14 +49,46 @@ struct WindowMetadata<'a> {
 impl WindowMetadata<'_> {
     fn is_shareable(&self) -> bool {
         self.visible
-            && !self.minimized
             && !self.cloaked
             && !self.tool_window
             && !self.owned
             && !self.title.trim().is_empty()
-            && self.width >= 320
-            && self.height >= 200
+            && (self.minimized || meets_minimum((self.width, self.height)))
     }
+}
+
+fn meets_minimum((width, height): (u32, u32)) -> bool {
+    width >= 320 && height >= 200
+}
+
+fn rect_size(rect: RECT) -> (u32, u32) {
+    (
+        (rect.right - rect.left).max(0) as u32,
+        (rect.bottom - rect.top).max(0) as u32,
+    )
+}
+
+fn minimized_window_size(
+    restored: Option<(u32, u32)>,
+    monitor: Option<(u32, u32)>,
+    fullscreen_hint: bool,
+) -> Option<(u32, u32)> {
+    let restored = restored.filter(|&size| meets_minimum(size));
+    if fullscreen_hint {
+        monitor.or(restored)
+    } else {
+        restored.or(monitor)
+    }
+}
+
+fn window_monitor_size(hwnd: HWND) -> Option<(u32, u32)> {
+    // Windows uses the window's pre-minimize rectangle to choose the monitor.
+    let handle = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
+    if handle.is_invalid() {
+        return None;
+    }
+    let monitor = Monitor::from_raw_hmonitor(handle.0);
+    Some((monitor.width().ok()?, monitor.height().ok()?))
 }
 
 pub fn list() -> Result<Vec<SourceInfo>> {
@@ -69,17 +105,17 @@ pub fn list() -> Result<Vec<SourceInfo>> {
             title: format!("Tela {}", index + 1),
             process_name: None,
             pid: None,
-            width,
-            height,
+            width: Some(width),
+            height: Some(height),
+            minimized: false,
             thumbnail: thumbnail(monitor),
         });
     }
     for window in Window::enumerate()? {
-        let (Ok(title), Ok(pid), Ok(rect)) = (window.title(), window.process_id(), window.rect())
-        else {
+        let (Ok(title), Ok(pid)) = (window.title(), window.process_id()) else {
             continue;
         };
-        let (width, height) = (rect.right - rect.left, rect.bottom - rect.top);
+        let (width, height) = window.rect().map(rect_size).unwrap_or_default();
         let hwnd = HWND(window.as_raw_hwnd());
         let mut cloaked = 0_u32;
         // The handle comes from Win32 enumeration and the DWM output buffer is a DWORD.
@@ -116,14 +152,33 @@ pub fn list() -> Result<Vec<SourceInfo>> {
         if Some(pid) == app_pid || pid == std::process::id() || own_process {
             continue;
         }
+        let minimized = metadata.minimized;
+        let size = if minimized {
+            let mut placement = WINDOWPLACEMENT {
+                length: size_of::<WINDOWPLACEMENT>() as u32,
+                ..Default::default()
+            };
+            let restored = unsafe { GetWindowPlacement(hwnd, &mut placement) }
+                .ok()
+                .map(|()| rect_size(placement.rcNormalPosition));
+            let style = unsafe { GetWindowLongW(hwnd, GWL_STYLE) } as u32;
+            // A minimized game can keep its fullscreen popup style after losing the display mode.
+            let fullscreen_hint =
+                style & WS_POPUP.0 != 0 && style & (WS_CAPTION.0 | WS_THICKFRAME.0) == 0;
+            minimized_window_size(restored, window_monitor_size(hwnd), fullscreen_hint)
+        } else {
+            Some((width, height))
+        };
+        let (width, height) = size.unzip();
         sources.push(SourceInfo {
             id: format!("hwnd:{}:{pid}", window.as_raw_hwnd() as usize),
             title,
             process_name,
             pid: Some(pid),
-            width: width as u32,
-            height: height as u32,
-            thumbnail: thumbnail(window),
+            width,
+            height,
+            minimized,
+            thumbnail: if minimized { None } else { thumbnail(window) },
         });
     }
     Ok(sources)
@@ -197,7 +252,7 @@ impl GraphicsCaptureApiHandler for Thumbnail {
 
 #[cfg(test)]
 mod tests {
-    use super::WindowMetadata;
+    use super::{WindowMetadata, minimized_window_size};
 
     #[test]
     fn filters_windows_before_capturing_thumbnails() {
@@ -244,10 +299,6 @@ mod tests {
                 ..normal
             },
             WindowMetadata {
-                minimized: true,
-                ..normal
-            },
-            WindowMetadata {
                 tool_window: true,
                 ..normal
             },
@@ -266,5 +317,33 @@ mod tests {
             }
             .is_shareable()
         );
+        assert!(
+            WindowMetadata {
+                minimized: true,
+                width: 160,
+                height: 28,
+                ..normal
+            }
+            .is_shareable()
+        );
+    }
+
+    #[test]
+    fn sizes_minimized_windows_by_restored_position_or_monitor() {
+        let monitor = Some((1920, 1080));
+        assert_eq!(
+            minimized_window_size(Some((160, 28)), monitor, false),
+            monitor
+        );
+        assert_eq!(
+            minimized_window_size(Some((800, 600)), monitor, false),
+            Some((800, 600))
+        );
+        assert_eq!(
+            minimized_window_size(Some((800, 600)), monitor, true),
+            monitor
+        );
+        assert_eq!(minimized_window_size(None, monitor, false), monitor);
+        assert_eq!(minimized_window_size(Some((160, 28)), None, false), None);
     }
 }

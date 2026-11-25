@@ -6,7 +6,7 @@
       {
         "name": "Correções",
         "items": [
-          { "message": "A lista de fontes mostrava janelas que não estavam abertas.", "breaking": false },
+          { "message": "A lista de fontes mostrava janelas que não estavam abertas e usava o tamanho errado para janelas minimizadas.", "breaking": false },
           { "message": "O preset 1080p60 ficava travado mesmo com upload suficiente.", "breaking": false }
         ]
       }
