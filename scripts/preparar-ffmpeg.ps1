@@ -57,7 +57,7 @@ if ($OnlyDownload) { return }
 
 $sidecar = Join-Path $repo 'app/src-tauri/sidecar'
 New-Item -ItemType Directory -Force -Path $sidecar | Out-Null
-$dlls = @('avcodec-63.dll', 'avutil-61.dll', 'swscale-10.dll', 'swresample-7.dll')
+$dlls = @('avcodec-63.dll', 'avformat-63.dll', 'avutil-61.dll', 'swscale-10.dll', 'swresample-7.dll')
 foreach ($dll in $dlls) {
     Copy-Item -LiteralPath (Join-Path "$ffmpeg/bin" $dll) -Destination $sidecar
 }

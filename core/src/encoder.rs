@@ -1,4 +1,4 @@
-use crate::cli::{Codec, Encoder, Resolution, bits_per_second};
+use crate::cli::{Codec, Encoder, bits_per_second};
 use crate::media::{self, Frame, Pixel, check};
 use anyhow::{Context, Result};
 use ffmpeg_sys_next::{
@@ -127,7 +127,7 @@ fn configure_bitrate(video: &mut AVCodecContext, kbps: u32, cbr: bool) {
 
 pub fn open(
     name: &str,
-    res: Resolution,
+    size: (u32, u32),
     fps: u32,
     kbps: u32,
     hardware: Option<&crate::gpu::Frames>,
@@ -138,34 +138,34 @@ pub fn open(
         tuning.nvenc_preset = NvencPreset::P1;
     }
     if tuning.nvenc_preset != NvencPreset::P1 {
-        if let Ok(session) = open_profile(name, res, fps, kbps, hardware, tuning) {
+        if let Ok(session) = open_profile(name, size, fps, kbps, hardware, tuning) {
             return Ok(session);
         }
         tuning.nvenc_preset = NvencPreset::P1;
     }
-    open_profile(name, res, fps, kbps, hardware, tuning)
+    open_profile(name, size, fps, kbps, hardware, tuning)
 }
 
 fn open_profile(
     name: &str,
-    res: Resolution,
+    size: (u32, u32),
     fps: u32,
     kbps: u32,
     hardware: Option<&crate::gpu::Frames>,
     mut tuning: Tuning,
 ) -> Result<Session> {
     if tuning.high_profile {
-        if let Ok(session) = open_exact(name, res, fps, kbps, hardware, tuning) {
+        if let Ok(session) = open_exact(name, size, fps, kbps, hardware, tuning) {
             return Ok(session);
         }
         tuning.high_profile = false;
     }
-    open_exact(name, res, fps, kbps, hardware, tuning)
+    open_exact(name, size, fps, kbps, hardware, tuning)
 }
 
 fn open_exact(
     name: &str,
-    res: Resolution,
+    size: (u32, u32),
     fps: u32,
     kbps: u32,
     hardware: Option<&crate::gpu::Frames>,
@@ -176,7 +176,7 @@ fn open_exact(
     anyhow::ensure!(!codec.is_null(), "FFmpeg encoder {name} is unavailable");
     let session = Session(unsafe { media::avcodec_alloc_context3(codec) }, tuning);
     let video = unsafe { session.0.as_mut() }.context("could not allocate FFmpeg encoder")?;
-    let (width, height) = res.dimensions();
+    let (width, height) = size;
     video.width = width as i32;
     video.height = height as i32;
     video.pix_fmt = hardware.map_or(Pixel::AV_PIX_FMT_NV12, |frames| frames.format());

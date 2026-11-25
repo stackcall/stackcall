@@ -25,9 +25,9 @@ pub struct Probe {
 
 #[derive(Args, Clone)]
 pub struct Publish {
-    #[arg(long)]
-    pub url: String,
-    #[arg(long, required_unless_present = "control_stdin")]
+    #[arg(long, required_unless_present = "local_replay")]
+    pub url: Option<String>,
+    #[arg(long, required_unless_present_any = ["control_stdin", "local_replay"])]
     pub token: Option<String>,
     #[arg(long)]
     pub control_stdin: bool,
@@ -64,6 +64,16 @@ pub struct Publish {
     pub encoder: Encoder,
     #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
     pub audio_pid: Option<u32>,
+    #[arg(long, requires = "audio_pid")]
+    pub audio_exclude: bool,
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
+    pub app_pid: Option<u32>,
+    #[arg(long, requires_all = ["control_stdin", "replay_seconds", "replay_dir"], conflicts_with = "url")]
+    pub local_replay: bool,
+    #[arg(long, requires = "replay_dir", value_parser = parse_replay_seconds)]
+    pub replay_seconds: Option<u32>,
+    #[arg(long)]
+    pub replay_dir: Option<std::path::PathBuf>,
     #[arg(long)]
     pub cpu_path: bool,
     #[arg(long, help = "Reuse BGRA-to-NV12 scaling state on the CPU path")]
@@ -72,7 +82,7 @@ pub struct Publish {
     pub duration: Option<u64>,
 }
 
-#[derive(Clone, Copy, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Codec {
     H264,
     Av1,
@@ -162,6 +172,13 @@ fn parse_fps(value: &str) -> Result<u32, &'static str> {
         "30" => Ok(30),
         "60" => Ok(60),
         _ => Err("fps must be 30 or 60"),
+    }
+}
+
+fn parse_replay_seconds(value: &str) -> Result<u32, &'static str> {
+    match value.parse() {
+        Ok(value @ (30 | 60 | 120)) => Ok(value),
+        _ => Err("replay duration must be 30, 60 or 120 seconds"),
     }
 }
 

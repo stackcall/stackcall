@@ -65,6 +65,10 @@ pub fn init() -> Result<()> {
     avutil::init()?;
     swscale::init()
 }
+
+pub fn init_muxer() -> Result<()> {
+    avformat::init()
+}
 dll!(avcodec, "avcodec-63.dll", {
     fn avcodec_find_encoder_by_name(name: *const c_char) -> *const AVCodec;
     fn avcodec_alloc_context3(codec: *const AVCodec) -> *mut AVCodecContext;
@@ -77,10 +81,19 @@ dll!(avcodec, "avcodec-63.dll", {
     fn avcodec_send_frame(ctx: *mut AVCodecContext, frame: *const AVFrame) -> c_int;
     fn avcodec_receive_packet(ctx: *mut AVCodecContext, packet: *mut AVPacket) -> c_int;
     fn av_packet_alloc() -> *mut AVPacket;
+    fn av_new_packet(packet: *mut AVPacket, size: c_int) -> c_int;
+    fn av_packet_unref(packet: *mut AVPacket);
+    fn avcodec_parameters_from_context(
+        params: *mut AVCodecParameters,
+        ctx: *const AVCodecContext,
+    ) -> c_int;
     fn av_packet_free(packet: *mut *mut AVPacket);
 });
 
 dll!(avutil, "avutil-61.dll", {
+    fn av_mallocz(size: usize) -> *mut std::ffi::c_void;
+    fn av_rescale_q(value: i64, input: AVRational, output: AVRational) -> i64;
+    fn av_channel_layout_default(layout: *mut AVChannelLayout, channels: c_int);
     fn av_buffer_ref(buffer: *const AVBufferRef) -> *mut AVBufferRef;
     fn av_buffer_unref(buffer: *mut *mut AVBufferRef);
     fn av_dict_set(
@@ -94,6 +107,7 @@ dll!(avutil, "avutil-61.dll", {
     fn av_frame_alloc() -> *mut AVFrame;
     fn av_frame_free(frame: *mut *mut AVFrame);
     fn av_frame_get_buffer(frame: *mut AVFrame, align: c_int) -> c_int;
+    fn av_frame_make_writable(frame: *mut AVFrame) -> c_int;
     fn av_hwdevice_ctx_alloc(kind: AVHWDeviceType) -> *mut AVBufferRef;
     fn av_hwdevice_ctx_init(device: *mut AVBufferRef) -> c_int;
     fn av_hwdevice_ctx_create_derived(
@@ -113,6 +127,22 @@ dll!(avutil, "avutil-61.dll", {
     ) -> c_int;
     fn av_hwframe_get_buffer(ctx: *mut AVBufferRef, frame: *mut AVFrame, flags: c_int) -> c_int;
     fn av_hwframe_map(dest: *mut AVFrame, source: *const AVFrame, flags: c_int) -> c_int;
+});
+
+dll!(avformat, "avformat-63.dll", {
+    fn avformat_alloc_output_context2(
+        ctx: *mut *mut AVFormatContext,
+        format: *const AVOutputFormat,
+        name: *const c_char,
+        path: *const c_char,
+    ) -> c_int;
+    fn avformat_new_stream(ctx: *mut AVFormatContext, codec: *const AVCodec) -> *mut AVStream;
+    fn avformat_write_header(ctx: *mut AVFormatContext, opts: *mut *mut AVDictionary) -> c_int;
+    fn av_interleaved_write_frame(ctx: *mut AVFormatContext, packet: *mut AVPacket) -> c_int;
+    fn av_write_trailer(ctx: *mut AVFormatContext) -> c_int;
+    fn avformat_free_context(ctx: *mut AVFormatContext);
+    fn avio_open(io: *mut *mut AVIOContext, path: *const c_char, flags: c_int) -> c_int;
+    fn avio_closep(io: *mut *mut AVIOContext) -> c_int;
 });
 
 dll!(swscale, "swscale-10.dll", {

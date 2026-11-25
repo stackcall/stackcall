@@ -1,6 +1,9 @@
 #[cfg(windows)]
 mod atalhos;
 mod conta;
+mod falantes;
+mod gsi;
+mod jogo;
 mod modo_jogo;
 mod sidecar;
 
@@ -87,6 +90,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(conta::Accounts::default())
         .manage(sidecar::Sidecar::default())
+        .manage(gsi::Gsi::default())
         .setup(|app| {
             conta::limpar_convite_antigo();
             // Installed builds get the scheme from the NSIS installer; dev runs register it here.
@@ -120,9 +124,13 @@ pub fn run() {
                 })
                 .build(app)?;
             modo_jogo::iniciar(app.handle().clone());
+            gsi::restore(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
             let Some(view) = window.app_handle().get_webview_window(window.label()) else {
                 return;
             };
@@ -150,12 +158,23 @@ pub fn run() {
             conta::api,
             conta::sessao_existe,
             modo_jogo::modo_jogo_atual,
+            falantes::falantes_abrir,
+            falantes::falantes_fechar,
+            falantes::falantes_posicionar,
+            gsi::gsi_cs2_localizar,
+            gsi::gsi_cs2_instalar,
+            jogo::presenca_jogo_atual,
             sidecar::listar_fontes,
             sidecar::testar_maquina,
             sidecar::iniciar_transmissao,
             sidecar::parar_transmissao,
             sidecar::mudar_bitrate,
-            sidecar::mudar_pausa_transmissao
+            sidecar::mudar_pausa_transmissao,
+            sidecar::mudar_faixa_leve,
+            sidecar::replay_definir,
+            sidecar::replay_atual,
+            sidecar::replay_microfone,
+            sidecar::replay_salvar
         ])
         .build(tauri::generate_context!())
         .expect("failed to build Stackcall")

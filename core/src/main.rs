@@ -10,9 +10,13 @@ mod gpu;
 #[cfg(windows)]
 mod media;
 #[cfg(windows)]
+mod mux;
+#[cfg(windows)]
 mod probe;
 #[cfg(windows)]
 mod publish;
+#[cfg(windows)]
+mod replay;
 #[cfg(windows)]
 mod sources;
 
