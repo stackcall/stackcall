@@ -6,7 +6,7 @@ import { servidorFalso } from '../lib/falso';
 import type { Pessoa } from '../lib/servidor';
 import { Perfil } from './Perfil';
 
-const rafa: Pessoa = { id: 'rafa', nome: 'Rafa', papel: 'membro', avatar: null, banner: null, bio: 'clutch ou nada', tema: 'noite', cor: null, online: true, amigo: false, sala: null };
+const rafa: Pessoa = { id: 'rafa', nome: 'Rafa', papel: 'membro', avatar: null, banner: null, bio: 'clutch ou nada', tema: 'noite', cor: null, online: true, amigo: false, sala: null, jogo: null };
 
 test('cartao shows name, bio, night theme and toggles friend', async () => {
   const onAmigo = vi.fn();

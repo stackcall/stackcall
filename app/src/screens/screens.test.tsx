@@ -253,13 +253,15 @@ test('settings: admin generates, copies and revokes an invite; creates a room', 
   render(<App />);
   await userEvent.click(await screen.findByRole('button', { name: 'Configurações' }));
   const dialog = screen.getByRole('dialog', { name: 'Configurações' });
-  await userEvent.click(within(dialog).getByRole('button', { name: 'Gerar convite' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Geral e convites' }));
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Gerar convite' }));
   expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/^https:\/\/galera\.exemplo\/c\//));
   const revogar = await within(dialog).findAllByRole('button', { name: 'Revogar' });
   expect(revogar).toHaveLength(2);
   await userEvent.click(revogar[0]);
   expect(within(dialog).getAllByRole('button', { name: 'Revogar' })).toHaveLength(1);
 
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Salas' }));
   await userEvent.type(within(dialog).getByLabelText('Nome da nova sala'), 'Filme');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Criar sala' }));
   expect(within(dialog).getByText('Filme')).toBeInTheDocument();
@@ -277,17 +279,18 @@ test('friends: add and remove from the side panel', async () => {
   expect(screen.getByRole('button', { name: 'Remover Léo dos amigos' })).toBeInTheDocument();
 });
 
-test('lobby, small group with nobody in voice: rooms, invite and people outside voice, no room columns', async () => {
+test('lobby, small group with nobody in voice: rooms, invite and the group list', async () => {
   history.replaceState(null, '', '/?demo=1&tela=saguao&grupo=pequeno');
   const writeText = vi.fn().mockResolvedValue(undefined);
   Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
   render(<App />);
   expect(await screen.findByRole('heading', { name: 'Escolha uma sala' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Entrar na sala Geral' })).toBeInTheDocument();
-  expect(screen.queryByRole('region', { name: /^Sala / })).not.toBeInTheDocument();
-  const fora = screen.getByRole('region', { name: 'Fora da voz' });
-  expect(within(fora).getByText('Caio')).toBeInTheDocument();
-  await userEvent.click(within(screen.getByRole('region', { name: 'Chame a galera' })).getByRole('button', { name: 'Convidar' }));
+  expect(screen.getByText('Ninguém em voz agora. Entre numa sala e chame a galera.')).toBeInTheDocument();
+  const galera = screen.getByRole('region', { name: 'Galera' });
+  expect(within(galera).getByText('Caio')).toBeInTheDocument();
+  expect(within(galera).getByText('offline')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Convidar' }));
   expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/\/c\//));
   expect(await screen.findByText('Link copiado.')).toBeInTheDocument();
 });
@@ -303,7 +306,7 @@ test('settings > atalhos: record, conflict warning, clear; a global shortcut act
   await userEvent.click(screen.getByRole('button', { name: 'Configurações' }));
   const dialog = screen.getByRole('dialog', { name: 'Configurações' });
   await userEvent.click(within(dialog).getByRole('button', { name: 'Atalhos' }));
-  expect(within(dialog).getAllByText(/Sem atalho/)).toHaveLength(8); // nothing on by default
+  expect(within(dialog).getAllByText(/Sem atalho/)).toHaveLength(9); // nothing on by default
 
   const gravar = async (acao: string, opts: KeyboardEventInit) => {
     await userEvent.click(within(dialog).getByRole('button', { name: `Gravar atalho para ${acao}` }));
@@ -319,4 +322,44 @@ test('settings > atalhos: record, conflict warning, clear; a global shortcut act
   await userEvent.click(within(dialog).getByRole('button', { name: 'Limpar atalho de Silenciar tudo' }));
   expect(within(dialog).queryByText(/Mesmo atalho/)).not.toBeInTheDocument();
   expect(JSON.parse(localStorage.getItem('stackcall.atalhos')!).teclas).toEqual({ mic: 'Ctrl+Shift+M' });
+});
+
+test('lobby: detected game per person and the poke strip with its way into the room', async () => {
+  history.replaceState(null, '', '/?demo=1&tela=saguao');
+  render(<App />);
+  const faixa = await screen.findByRole('alert', { name: 'Rafa te cutucou' });
+  expect(within(faixa).getByText(/a sala tá pronta/)).toBeInTheDocument();
+  const galera = screen.getByRole('region', { name: 'Galera' });
+  expect(within(galera).getAllByText(/jogando Counter-Strike 2/).length).toBeGreaterThan(0);
+  expect(within(galera).getByText(/jogando Forza Horizon 5/)).toBeInTheDocument();
+  await userEvent.click(within(faixa).getByRole('button', { name: 'Entrar na sala CS' }));
+  expect(await screen.findByRole('button', { name: 'Sair da sala' })).toBeInTheDocument();
+});
+
+test('settings: groups, search by nickname opens the page, quem fala preferences are saved', async () => {
+  history.replaceState(null, '', '/?demo=1&tela=config');
+  render(<App />);
+  const dialog = await screen.findByRole('dialog', { name: 'Configurações' });
+  expect(within(dialog).getByRole('group', { name: 'Você' })).toBeInTheDocument();
+  expect(await within(dialog).findByRole('group', { name: 'Servidor' })).toBeInTheDocument(); // the demo user is the owner
+  expect(within(dialog).getByRole('group', { name: 'App' })).toBeInTheDocument();
+
+  await userEvent.type(within(dialog).getByRole('searchbox', { name: 'Buscar ajuste' }), 'overlay');
+  const lista = within(dialog).getByRole('list', { name: 'Resultados da busca' });
+  await userEvent.click(within(lista).getByRole('button', { name: /Opacidade da janela/ }));
+  expect(within(dialog).getByRole('heading', { name: 'Janela quem fala' })).toBeInTheDocument();
+
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Só quem fala' }));
+  await userEvent.click(within(dialog).getByRole('radio', { name: 'Embaixo, à direita' }));
+  await userEvent.click(within(dialog).getByRole('switch', { name: 'Mostrar a janela quem fala' }));
+  expect(JSON.parse(localStorage.getItem('stackcall.preferencias')!)).toMatchObject({ quemFalaConteudo: 'falando', quemFalaPosicao: 'inf-dir', quemFalaMostrar: true });
+});
+
+test('settings > cutucadas: who may poke is saved on the server', async () => {
+  history.replaceState(null, '', '/?demo=1&tela=config');
+  render(<App />);
+  const dialog = await screen.findByRole('dialog', { name: 'Configurações' });
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Cutucadas' }));
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Só amigos' }));
+  expect(within(dialog).getByRole('button', { name: 'Só amigos' })).toHaveAttribute('aria-pressed', 'true');
 });
