@@ -8,7 +8,7 @@ import { Icone } from '../components/Icone';
 import { Faixa } from '../components/Faixa';
 import { Cabecalho } from '../components/Controles';
 import { testMachine } from '../lib/sidecar';
-import type { Convite, Pessoa, Sala, Servidor, Usuario } from '../lib/servidor';
+import type { Convite, Dorme, Pessoa, Sala, Servidor, Usuario } from '../lib/servidor';
 import { escolherServidor, lerServidores, servidorAtual } from '../lib/servidores';
 import { buscarAjustes, caminhoDe, GRUPOS, paginasVisiveis, type Ajuste, type PaginaId } from '../lib/buscaConfig';
 import { SecaoAparencia, SecaoPreferencias } from './Preferencias';
@@ -198,8 +198,27 @@ function PaginaGeral({ servidor, eu }: { servidor: Servidor; eu: Usuario }) {
       <Cabecalho rotulo={`Servidor · ${host}`} titulo="Geral e convites">
         Você entrou como <b className="text-texto">{eu.nome}</b> ({eu.papel}). Um servidor é um grupo: só entra quem recebe convite.
       </Cabecalho>
+      <Dormir servidor={servidor} />
       <div data-ajuste="servidor-nome convites"><Convites servidor={servidor} /></div>
     </>
+  );
+}
+
+const textoDorme = (d: Dorme) => (!d.ligado ? 'Desligado: o servidor de voz fica sempre acordado.'
+  : `Ligado: dorme depois de ${d.minutos ?? '?'} min sem ninguém na voz. ${d.dormindo ? 'Dormindo agora; acorda em alguns segundos quando alguém entra numa sala.' : 'Acordado agora.'}`);
+
+/** Servidor > Geral: voice server sleep, read only (it is set in the server .env). */
+function Dormir({ servidor }: { servidor: Servidor }) {
+  const [dorme, setDorme] = useState<Dorme | null | undefined>();
+  useEffect(() => void servidor.info().then((i) => setDorme(i.dorme), () => setDorme(null)), [servidor]);
+  return (
+    <section data-ajuste="servidor-dorme" aria-label="Servidor dorme" className="janela flex flex-col">
+      <div className="barra barra-lima">Servidor dorme<span className="ml-auto font-medium">{dorme === undefined ? '…' : !dorme ? 'sem dado' : !dorme.ligado ? 'desligado' : dorme.dormindo ? 'dormindo' : 'acordado'}</span></div>
+      <div className="flex flex-col gap-1 p-4 text-[14px]">
+        {dorme === undefined ? <div className="skeleton h-5 w-80" /> : <p className="m-0">{dorme ? textoDorme(dorme) : 'Este servidor ainda não informa se dorme. Atualize o servidor.'}</p>}
+        <p className="m-0 text-[13px] text-texto-fraco">Só leitura. Liga e muda no .env do servidor, em <code className="font-mono">LIVEKIT_IDLE_MINUTES</code> (0 desliga), e vale depois de reiniciar o porteiro.</p>
+      </div>
+    </section>
   );
 }
 
@@ -375,8 +394,14 @@ function Salas({ servidor, salas, onSalas }: { servidor: Servidor; salas: Sala[]
 }
 
 function Membros({ servidor, eu, pessoas, onPessoas }: { servidor: Servidor; eu: Usuario; pessoas: Pessoa[]; onPessoas(p: Pessoa[]): void }) {
-  const [confirmar, setConfirmar] = useState<string | null>(null);
+  const [confirmar, setConfirmar] = useState<{ id: string; acao: 'remover' | 'admin' | 'membro' } | null>(null);
   const [erro, setErro] = useState<string>();
+  const dono = eu.papel === 'dono';
+  async function trocarCargo(p: Pessoa, cargo: 'admin' | 'membro') {
+    setErro(undefined);
+    await servidor.cargo(p.id, cargo).then(() => onPessoas(pessoas.map((x) => (x.id === p.id ? { ...x, papel: cargo } : x))), (e: Error) => setErro(e.message));
+    setConfirmar(null);
+  }
   return (
     <section className="janela flex flex-col">
       <div className="barra">Pessoas<span className="ml-auto font-medium">{pessoas.length}</span></div>
@@ -387,24 +412,41 @@ function Membros({ servidor, eu, pessoas, onPessoas }: { servidor: Servidor; eu:
             <b>{p.nome}</b>
             <span className="rotulo">{p.papel}</span>
             {p.id !== eu.id && p.papel !== 'dono' && (
-              confirmar === p.id ? (
-                <span className="ml-auto flex gap-2">
-                  <button type="button" className="btn border-perigo text-perigo" onClick={async () => {
-                    setErro(undefined);
-                    await servidor.remover(p.id).then(() => onPessoas(pessoas.filter((x) => x.id !== p.id)), (e: Error) => setErro(e.message));
-                    setConfirmar(null);
-                  }}>Confirmar remoção</button>
+              confirmar?.id === p.id ? (
+                <span className="ml-auto flex items-center gap-2">
+                  {confirmar.acao === 'remover' ? (
+                    <button type="button" className="btn border-perigo text-perigo" onClick={async () => {
+                      setErro(undefined);
+                      await servidor.remover(p.id).then(() => onPessoas(pessoas.filter((x) => x.id !== p.id)), (e: Error) => setErro(e.message));
+                      setConfirmar(null);
+                    }}>Confirmar remoção</button>
+                  ) : (
+                    <>
+                      <span className="text-[13px] text-texto-fraco">{confirmar.acao === 'admin' ? `${p.nome} vai poder convidar, cuidar das salas e moderar.` : `${p.nome} deixa de ser admin.`}</span>
+                      <button type="button" className="btn btn-prim" onClick={() => void trocarCargo(p, confirmar.acao as 'admin' | 'membro')}>
+                        {confirmar.acao === 'admin' ? 'Confirmar admin' : 'Confirmar membro'}
+                      </button>
+                    </>
+                  )}
                   <button type="button" className="btn" onClick={() => setConfirmar(null)}>Cancelar</button>
                 </span>
               ) : (
-                <button type="button" className="btn ml-auto" onClick={() => setConfirmar(p.id)}>Remover</button>
+                <span className="ml-auto flex gap-2">
+                  {dono && (
+                    <button type="button" className="btn" aria-label={p.papel === 'admin' ? `Tornar ${p.nome} membro` : `Tornar ${p.nome} admin`}
+                      onClick={() => setConfirmar({ id: p.id, acao: p.papel === 'admin' ? 'membro' : 'admin' })}>
+                      {p.papel === 'admin' ? 'Tornar membro' : 'Tornar admin'}
+                    </button>
+                  )}
+                  <button type="button" className="btn" onClick={() => setConfirmar({ id: p.id, acao: 'remover' })}>Remover</button>
+                </span>
               )
             )}
           </li>
         ))}
       </ul>
       {erro && <div className="px-4 pb-4"><Erro texto={erro} /></div>}
-      <p className="m-0 border-t border-borda px-4 py-3 text-[13px] text-texto-fraco">Remover derruba a pessoa da sala e encerra as sessões dela em todos os aparelhos.</p>
+      <p className="m-0 border-t border-borda px-4 py-3 text-[13px] text-texto-fraco">Remover derruba a pessoa da sala e encerra as sessões dela em todos os aparelhos.{dono ? ' Só você, o dono, troca admin e membro.' : ' Só o dono troca admin e membro.'}</p>
     </section>
   );
 }

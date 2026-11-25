@@ -92,3 +92,11 @@ test('teste de rede: mediana do ping e perda em %', () => {
   expect(resumoRede([100, 140])?.ping).toBe(120);
   expect(resumoRede([null, null])).toBeNull();
 });
+
+test('servidor dorme: lê o objeto do GET /api/servidor; servidor antigo dá null', async () => {
+  const { lerDorme } = await import('./servidor');
+  expect(lerDorme({ ligado: true, minutos: 30, dormindo: true })).toEqual({ ligado: true, minutos: 30, dormindo: true });
+  expect(lerDorme({ ligado: false, minutos: null, dormindo: false })).toEqual({ ligado: false, minutos: null, dormindo: false });
+  expect(lerDorme(undefined)).toBeNull();
+  expect(lerDorme({ minutos: 5 })).toBeNull();
+});
