@@ -127,8 +127,10 @@ async fn remove_person(
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
     revoke(config.clone(), user, id.clone(), true).await?;
-    config.livekit.kick(&id).await?;
-    Ok(StatusCode::NO_CONTENT)
+    if let Err(status) = config.livekit.kick(&id).await {
+        eprintln!("Aviso: não foi possível desconectar a pessoa removida do LiveKit ({status})");
+    }
+    Ok(StatusCode::OK)
 }
 
 async fn remove_devices(

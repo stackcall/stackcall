@@ -494,7 +494,7 @@ async fn removal_revokes_every_device_and_disconnects_both_livekit_identities() 
         )
         .await
         .0,
-        StatusCode::NO_CONTENT
+        StatusCode::OK
     );
     for session in [token, session(&second)] {
         assert_eq!(
@@ -522,6 +522,34 @@ async fn removal_revokes_every_device_and_disconnects_both_livekit_identities() 
         kicked,
         [id(&member).to_owned(), format!("{}:tela", id(&member))]
     );
+}
+
+#[tokio::test]
+async fn removal_succeeds_and_revokes_the_session_during_livekit_outage() {
+    let fixture = fixture(false).await;
+    let app = &fixture.app;
+    let owner = join(app, &fixture.owner_code, "Dono").await;
+    let member = member(app, session(&owner)).await;
+    fixture.livekit.abort();
+
+    let (status, _) = send(
+        app,
+        Method::DELETE,
+        &format!("/api/pessoas/{}", id(&member)),
+        Some(session(&owner)),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = send(
+        app,
+        Method::GET,
+        "/api/eu",
+        Some(session(&member)),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
