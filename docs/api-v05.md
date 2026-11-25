@@ -20,17 +20,21 @@ O porteiro chama `MoveParticipant` primeiro. A edição aberta do LiveKit 1.13.1
 
 `PUT /api/eu/jogo` recebe `{"jogo":"Counter-Strike 2"}` e retorna `204`. O nome tem até 60 caracteres após retirar espaços nas pontas e deve ser livre de caracteres de controle. Envie `{"jogo":""}` para limpar. O app deve renovar enquanto o jogo continuar aberto, por exemplo a cada 60 s. Cada perfil da lista de `GET /api/pessoas` recebe `jogo`, com o nome ou `null` após 120 s sem renovação. A presença de jogo pode aparecer mesmo quando a pessoa está fora da voz.
 
-## Chamar para jogar
+## Cutucar
 
-`POST /api/chamar` recebe `{"sala_id":"…","mensagem":"Bora?"}` e retorna `201` com `{id,sala_id,mensagem,expira_em}`. A mensagem é opcional, tem até 120 caracteres após retirar espaços nas pontas e deve ser livre de caracteres de controle. O limite por pessoa é uma chamada a cada 60 s, somando todos os aparelhos. O excesso recebe `429`.
+`POST /api/cutucar` recebe `{"para":"<id da pessoa>","recado":"Oi!"}` e retorna `204` quando aceita. O recado pode ser omitido ou vazio. Ele tem até 80 caracteres, sem caracteres de controle, e deve aparecer como texto simples. Só é possível cutucar outra pessoa ativa do mesmo grupo, mesmo fora da voz.
 
-Recebem o chamado os amigos que o remetente adicionou e que estavam em alguma sala de voz quando o convite foi emitido. No `GET /api/pessoas` de cada destinatário, o perfil do remetente traz `chamados`, uma lista desses objetos de resposta. A lista fica vazia quando não há convites para a sessão solicitante. Os chamados reaparecem durante 120 s para tolerar falhas de rede. Deduplique notificações por `id` e use `sala_id` no fluxo de entrada ao aceitar.
+`GET /api/eu/cutucadas` retorna `{"receber":"amigos"}` por padrão. `PUT /api/eu/cutucadas` recebe o mesmo objeto e retorna `204`. Os valores válidos são `todos`, `amigos` e `ninguem`. O modo `amigos` usa a lista do destinatário. A preferência e a amizade são verificadas no envio e na consulta de entrega.
+
+O perfil da própria sessão em `GET /api/pessoas` traz `cutucadas`. Cada item tem `{id,de,recado,criado_em}`, com `de` igual ao ID do remetente e `criado_em` em segundos Unix. Os outros perfis omitem o campo. As cutucadas expiram em 120 s e são consumidas pela primeira consulta do destinatário, inclusive entre aparelhos. Uma resposta perdida após o consumo não é reentregue.
+
+O limite é de uma cutucada a cada 30 s para o mesmo destinatário e dez por minuto por remetente, somando todos os aparelhos. `429` indica excesso. `400` indica ID ou recado inválido, ou envio para si mesmo. `403` indica que a preferência bloqueou o envio e `404` indica destinatário ausente do grupo. Uma preferência inválida recebe `422`.
 
 ## Sub-salas do CS2
 
 1. O app lê o time no GSI local. Para `CT`, envie `POST /api/salas/{pai_id}/cs2/token` com `{"time":"ct"}`. Para `T`, envie `{"time":"tr"}`. O porteiro devolve `{sala_id,url,token,screen_token}`. Time desconhecido recebe `422`, pai inexistente recebe `404`.
 2. Pare a transmissão se houver, desconecte da sala atual e conecte com o token recebido. O LiveKit abre a sub-sala na primeira conexão. Quem tem o mesmo pai e time recebe a mesma `sala_id`.
-3. `GET /api/salas` lista as sub-salas ocupadas abaixo da sala pai, com `pai_id` e `time` (`ct` ou `tr`). Nas salas fixas, ambos são `null`. Para entrar por seleção manual ou chamado, use `POST /api/salas/{sala_id}/token`, que também devolve a sala efetiva.
+3. `GET /api/salas` lista as sub-salas ocupadas abaixo da sala pai, com `pai_id` e `time` (`ct` ou `tr`). Nas salas fixas, ambos são `null`. Para entrar por seleção manual, use `POST /api/salas/{sala_id}/token`, que também devolve a sala efetiva.
 4. Ao sair do time ou da partida, volte à sala pai pelo fluxo normal. A sub-sala some da lista quando fica vazia e o LiveKit a fecha após o prazo de saída (20 s, verificado periodicamente pelo SFU). A sala pai e os dados do grupo continuam disponíveis.
 
 O time informado escolhe o destino. A detecção do GSI é feita pelo app e não serve como autorização para entrar na sub-sala.

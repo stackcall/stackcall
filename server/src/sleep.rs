@@ -166,20 +166,18 @@ pub async fn token_ready(config: &Arc<Config>) -> bool {
     false
 }
 
-pub async fn try_presence(config: &Config) -> Result<Presence, StatusCode> {
+pub async fn presence(config: &Config) -> Presence {
     if let Some(sleep) = &config.sleep
         && matches!(
             sleep.activity.lock().await.power,
             Power::Stopped | Power::Waking
         )
     {
-        return Ok(Presence::default());
+        return Presence::default();
     }
-    config.livekit.try_online().await
-}
-
-pub async fn presence(config: &Config) -> Presence {
-    try_presence(config)
+    config
+        .livekit
+        .try_online()
         .await
         .inspect_err(|status| {
             eprintln!("Aviso: presença do LiveKit indisponível ({status})");
