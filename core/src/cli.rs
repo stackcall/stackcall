@@ -41,6 +41,11 @@ pub struct Publish {
     pub fps: u32,
     #[arg(long, help = "Limit WGC capture updates to the target frame rate")]
     pub limit_capture_fps: bool,
+    #[arg(
+        long,
+        help = "Experimentally pause screen video when alone in the room"
+    )]
+    pub pause_when_alone: bool,
     #[arg(long, value_parser = clap::value_parser!(u32).range(1..=100_000))]
     pub bitrate: u32,
     #[arg(long, help = "Use low-latency CBR with a short video buffer")]
@@ -203,6 +208,7 @@ mod tests {
         assert_eq!(options.source, Source::Window("Game: menu".into()));
         assert_eq!(options.fps, 60);
         assert_eq!(options.bitrate, 18_000);
+        assert!(!options.pause_when_alone);
         args[13] = "90";
         assert!(Cli::try_parse_from(args).is_err());
         assert!("pid:0".parse::<Source>().is_err());
