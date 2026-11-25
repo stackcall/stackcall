@@ -15,6 +15,12 @@ const CAMINHOS = {
   mais: 'M12 5v14M5 12h14',
   fechar: 'M6 6l12 12M18 6L6 18',
   copiar: 'M8 8h12v12H8zM16 8V4H4v12h4',
+  busca: 'M10 4a6 6 0 1 0 0 12 6 6 0 1 0 0-12zM15 15l5 5',
+  voz: 'M4 9h4l5-4v14l-5-4H4zM16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11',
+  play: 'M7 4l13 8-13 8z',
+  pasta: 'M3 6h7l2 2h9v11H3z',
+  filme: 'M3 5h18v14H3zM7 5v14M17 5v14M3 9.5h4M3 14.5h4M17 9.5h4M17 14.5h4',
+  rede: 'M5 19v-3M10 19v-7M15 19v-11M20 19V5',
 } as const;
 
 export function Icone({ nome, tamanho = 18 }: { nome: keyof typeof CAMINHOS; tamanho?: number }) {

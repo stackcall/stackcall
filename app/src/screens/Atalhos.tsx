@@ -36,7 +36,8 @@ export function SecaoAtalhos() {
   return (
     <>
       <header className="flex flex-col gap-1.5">
-        <h1 className="text-[56px]">Atalhos</h1>
+        <span className="rotulo">/ Você · nenhum vem pronto</span>
+        <h1 className="text-[52px]">Atalhos</h1>
         <p className="m-0 max-w-[72ch] text-texto-fraco">
           Funcionam com o jogo na frente, sem Alt+Tab. Nenhum vem ligado: escolha teclas que o seu jogo não usa.
           Com o app em foco, M, S e T continuam valendo.
@@ -45,7 +46,7 @@ export function SecaoAtalhos() {
 
       {erro && <Faixa onFechar={() => setErro(undefined)}>{erro}</Faixa>}
 
-      <section className="janela flex flex-col" aria-label="Atalhos globais">
+      <section data-ajuste="atalhos-lista" className="janela flex flex-col" aria-label="Atalhos globais">
         <div className="barra">Ações<span className="ml-auto font-medium">{Object.keys(cfg.teclas).length} de {ACOES.length} com atalho</span></div>
         <ul className="m-0 list-none p-0">
           {ACOES.map((a) => {
@@ -67,7 +68,7 @@ export function SecaoAtalhos() {
                   ) : teclas ? (
                     <kbd className={`inline-flex h-9 max-w-full items-center truncate border px-2 font-mono text-[13px] font-bold ${choque ? 'border-perigo text-perigo' : 'border-texto bg-superficie-alta'}`}>{teclas}</kbd>
                   ) : (
-                    <span className="text-[13px] text-texto-fraco">Sem atalho · sugestão <span className="font-mono">{a.sugestao}</span></span>
+                    <span className="text-[13px] text-texto-fraco">Sem atalho{a.sugestao && <> · sugestão <span className="font-mono">{a.sugestao}</span></>}</span>
                   )}
                 </span>
                 <span className="flex gap-2">
@@ -92,7 +93,7 @@ export function SecaoAtalhos() {
         </ul>
       </section>
 
-      <section className="janela flex items-center gap-4 px-4 py-3" aria-label="Som de confirmação">
+      <section data-ajuste="atalhos-som" className="janela flex items-center gap-4 px-4 py-3" aria-label="Som de confirmação">
         <span className="flex flex-1 flex-col gap-0.5">
           <b>Som de confirmação</b>
           <span className="text-[13px] text-texto-fraco">Um bipe curto quando um atalho liga, desliga ou silencia: no jogo você não vê o app.</span>

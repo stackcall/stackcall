@@ -19,7 +19,10 @@ export type Usuario = {
   tema: TemaPerfil;
   cor: string | null;
 };
-export type Pessoa = Usuario & { online: boolean; amigo: boolean; sala: string | null };
+/** `jogo`: game in the presence (docs/api-v05.md), null when none or older servers. */
+export type Pessoa = Usuario & { online: boolean; amigo: boolean; sala: string | null; jogo: string | null };
+/** Who may poke this person. Proposed route GET/PUT /api/eu/cutucadas (docs/design/v05-interface.md). */
+export type ReceberCutucadas = 'todos' | 'amigos' | 'ninguem';
 export type Sala = { id: string; nome: string; ordem: number; pessoas: number; noAr: boolean };
 export type Convite = { id: string; link: string | null; expiraEm: string; usos: number; usosMax: number };
 export type InfoServidor = { nome: string; versao: string };
@@ -89,6 +92,10 @@ export interface Servidor {
   convites(): Promise<Convite[]>;
   criarConvite(): Promise<Convite>;
   revogarConvite(id: string): Promise<void>;
+  /** PUT /api/eu/jogo; "" clears. */
+  jogo(nome: string): Promise<void>;
+  cutucadas(): Promise<ReceberCutucadas>;
+  salvarCutucadas(receber: ReceberCutucadas): Promise<void>;
 }
 
 const nomeAparelho = () => (navigator.userAgent.includes('Windows') ? 'PC com Windows' : 'Computador');
@@ -127,7 +134,9 @@ const lerPessoa = (o: Record<string, unknown>, base?: string): Pessoa => ({
   online: !!o.online,
   amigo: !!o.amigo,
   sala: opt(o.sala ?? o.sala_id),
+  jogo: opt(o.jogo),
 });
+const receberDe = (v: unknown): ReceberCutucadas => (v === 'amigos' || v === 'ninguem' ? v : 'todos');
 const lerSala = (o: Record<string, unknown>): Sala => ({
   id: str(o.id),
   nome: str(o.nome),
@@ -214,6 +223,9 @@ export function servidorReal(url: string): Servidor {
     // The porteiro reads a JSON body here (axum answers 415 without one), so send an empty object.
     criarConvite: async () => lerConvite(await chamar('POST', '/api/convites', {})),
     revogarConvite: async (id) => void (await chamar('DELETE', `/api/convites/${c(id)}`)),
+    jogo: async (nome) => void (await chamar('PUT', '/api/eu/jogo', { jogo: nome })),
+    cutucadas: async () => receberDe((await chamar('GET', '/api/eu/cutucadas')).receber),
+    salvarCutucadas: async (receber) => void (await chamar('PUT', '/api/eu/cutucadas', { receber })),
   };
 }
 

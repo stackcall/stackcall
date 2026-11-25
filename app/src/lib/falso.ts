@@ -1,4 +1,4 @@
-import { ApiError, type Convite, type Pessoa, type Sala, type Servidor, type Usuario } from './servidor';
+import { ApiError, type Convite, type Pessoa, type ReceberCutucadas, type Sala, type Servidor, type Usuario } from './servidor';
 
 /**
  * Fake server for development and tests (`?demo=1` or VITE_SERVIDOR_FALSO=1 in dev).
@@ -11,7 +11,7 @@ const espera = (ms = 250) => (import.meta.env.MODE === 'test' ? Promise.resolve(
 
 const pessoa = (id: string, nome: string, p: Partial<Pessoa> = {}): Pessoa => ({
   id, nome, papel: 'membro', avatar: null, banner: null, bio: '', tema: 'papel', cor: null,
-  online: true, amigo: false, sala: 'cs', ...p,
+  online: true, amigo: false, sala: 'cs', jogo: null, ...p,
 });
 
 export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
@@ -20,12 +20,12 @@ export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
   // ?grupo=pequeno: the real common case (one room, nobody in voice, one friend offline).
   const pequeno = new URLSearchParams(location.search).get('grupo') === 'pequeno';
   const pessoas: Pessoa[] = pequeno ? [pessoa('caio', 'Caio', { online: false, sala: null, amigo: true })] : [
-    pessoa('rafa', 'Rafa', { amigo: true, bio: 'clutch ou nada', tema: 'noite', cor: '#ff5a5f' }),
-    pessoa('duda', 'Duda', { amigo: true, tema: 'lima', bio: 'mira de rifle, coração de pistol' }),
-    pessoa('leo', 'Léo', { sala: 'cs' }),
-    pessoa('nanda', 'Nanda', { papel: 'admin' }),
+    pessoa('rafa', 'Rafa', { amigo: true, bio: 'clutch ou nada', tema: 'noite', cor: '#ff5a5f', jogo: 'Counter-Strike 2' }),
+    pessoa('duda', 'Duda', { amigo: true, tema: 'lima', bio: 'mira de rifle, coração de pistol', jogo: 'Counter-Strike 2' }),
+    pessoa('leo', 'Léo', { sala: 'cs', jogo: 'Counter-Strike 2' }),
+    pessoa('nanda', 'Nanda', { papel: 'admin', jogo: 'Counter-Strike 2' }),
     pessoa('bia', 'Bia', { sala: 'lobby', amigo: true }),
-    pessoa('gus', 'Gus', { sala: 'lobby' }),
+    pessoa('gus', 'Gus', { sala: 'lobby', jogo: 'Forza Horizon 5' }),
     pessoa('tati', 'Tati', { sala: null }),
     pessoa('caio', 'Caio', { online: false, sala: null }),
   ];
@@ -35,6 +35,7 @@ export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
     { id: 'cinema', nome: 'Cinema', ordem: 3, pessoas: 0, noAr: false },
     { id: 'ranked', nome: 'Ranked', ordem: 4, pessoas: 0, noAr: false },
   ];
+  let receber: ReceberCutucadas = 'todos';
   let convites: Convite[] = [{ id: 'c1', link: null, expiraEm: '2026-12-01T21:00:00Z', usos: 0, usosMax: 1 }];
   const exigeSessao = () => {
     if (!sessao) throw new ApiError(401, 'Sua sessão neste aparelho acabou. Peça um convite novo.');
@@ -97,5 +98,8 @@ export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
       return c;
     },
     revogarConvite: async (id) => void (convites = convites.filter((c) => c.id !== id)),
+    jogo: async () => undefined,
+    cutucadas: async () => (await espera(), receber),
+    salvarCutucadas: async (r) => void (receber = r),
   };
 }
