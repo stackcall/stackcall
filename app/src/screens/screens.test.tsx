@@ -363,3 +363,19 @@ test('settings > cutucadas: who may poke is saved on the server', async () => {
   await userEvent.click(await within(dialog).findByRole('button', { name: 'Só amigos' }));
   expect(within(dialog).getByRole('button', { name: 'Só amigos' })).toHaveAttribute('aria-pressed', 'true');
 });
+
+test('settings: the owner changes a role after confirming; Geral shows the sleep state, read only', async () => {
+  history.replaceState(null, '', '/?demo=1&tela=config&pagina=membros');
+  render(<App />);
+  const dialog = await screen.findByRole('dialog', { name: 'Configurações' });
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Tornar Nanda membro' }));
+  expect(within(dialog).getByText('Nanda deixa de ser admin.')).toBeInTheDocument();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmar membro' }));
+  expect(await within(dialog).findByRole('button', { name: 'Tornar Nanda admin' })).toBeInTheDocument();
+
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Geral e convites' }));
+  const dorme = within(dialog).getByRole('region', { name: 'Servidor dorme' });
+  expect(await within(dorme).findByText(/dorme depois de 30 min sem ninguém na voz/)).toBeInTheDocument();
+  expect(within(dorme).getByText('LIVEKIT_IDLE_MINUTES')).toBeInTheDocument();
+  expect(within(dorme).queryByRole('button')).not.toBeInTheDocument();
+});

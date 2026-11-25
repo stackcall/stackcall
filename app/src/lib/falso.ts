@@ -49,7 +49,7 @@ export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
   return {
     url,
     temSessao: async () => sessao,
-    info: async () => (await espera(), { nome: 'Galera', versao: '0.3.0' }),
+    info: async () => (await espera(), { nome: 'Galera', versao: '0.3.0', dorme: { ligado: true, minutos: 30, dormindo: false } }),
     previa: async (codigo) => {
       await espera();
       if (codigo === 'expirado') throw new ApiError(410, 'Este link já foi usado ou expirou. Peça outro.');
@@ -71,6 +71,11 @@ export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
     amigo: async (id, sim) => {
       const p = pessoas.find((x) => x.id === id);
       if (p) p.amigo = sim;
+    },
+    cargo: async (id, cargo) => {
+      const p = pessoas.find((x) => x.id === id);
+      if (!p || p.papel === 'dono') throw new ApiError(403, 'Só o dono pode fazer isso.');
+      p.papel = cargo;
     },
     remover: async (id) => {
       const i = pessoas.findIndex((x) => x.id === id);

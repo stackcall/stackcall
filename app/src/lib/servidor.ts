@@ -25,7 +25,9 @@ export type Pessoa = Usuario & { online: boolean; amigo: boolean; sala: string |
 export type ReceberCutucadas = 'todos' | 'amigos' | 'ninguem';
 export type Sala = { id: string; nome: string; ordem: number; pessoas: number; noAr: boolean };
 export type Convite = { id: string; link: string | null; expiraEm: string; usos: number; usosMax: number };
-export type InfoServidor = { nome: string; versao: string };
+/** Voice server sleep (docs/api-v05.md): configured in the server .env, read only here. */
+export type Dorme = { ligado: boolean; minutos: number | null; dormindo: boolean };
+export type InfoServidor = { nome: string; versao: string; dorme: Dorme | null };
 export type Previa = { servidor: string; convidadoPor: string };
 export type TokenSala = { url: string; token: string; screen_token: string };
 export type Perfil = Partial<Pick<Usuario, 'nome' | 'bio' | 'tema' | 'cor'>>;
@@ -84,6 +86,8 @@ export interface Servidor {
   pessoas(): Promise<Pessoa[]>;
   amigo(id: string, sim: boolean): Promise<void>;
   remover(id: string): Promise<void>;
+  /** Owner only: PUT /api/pessoas/{id}/cargo. */
+  cargo(id: string, cargo: 'admin' | 'membro'): Promise<void>;
   salas(): Promise<Sala[]>;
   criarSala(nome: string): Promise<Sala>;
   renomearSala(id: string, nome: string): Promise<Sala>;
@@ -137,6 +141,12 @@ const lerPessoa = (o: Record<string, unknown>, base?: string): Pessoa => ({
   jogo: opt(o.jogo),
 });
 const receberDe = (v: unknown): ReceberCutucadas => (v === 'amigos' || v === 'ninguem' ? v : 'todos');
+/** Older servers have no `dorme`: null, and the page says the server does not report it. */
+export const lerDorme = (v: unknown): Dorme | null => {
+  const o = v as Record<string, unknown> | null;
+  if (!o || typeof o !== 'object' || typeof o.ligado !== 'boolean') return null;
+  return { ligado: o.ligado, minutos: typeof o.minutos === 'number' ? o.minutos : null, dormindo: o.dormindo === true };
+};
 const lerSala = (o: Record<string, unknown>): Sala => ({
   id: str(o.id),
   nome: str(o.nome),
@@ -187,7 +197,7 @@ export function servidorReal(url: string): Servidor {
     temSessao: async () => (isTauri() ? invoke<boolean>('sessao_existe', { servidor: url }).catch(() => false) : false),
     info: async () => {
       const o = await chamar('GET', '/api/servidor');
-      return { nome: str(o.nome) || new URL(url).hostname, versao: str(o.versao) };
+      return { nome: str(o.nome) || new URL(url).hostname, versao: str(o.versao), dorme: lerDorme(o.dorme) };
     },
     previa: async (codigo) => {
       const o = await chamar('GET', `/api/convites/${c(codigo)}`);
@@ -206,6 +216,7 @@ export function servidorReal(url: string): Servidor {
     pessoas: async () => lista(await chamar('GET', '/api/pessoas'), 'pessoas').map((o) => lerPessoa(o, base)),
     amigo: async (id, sim) => void (await chamar(sim ? 'POST' : 'DELETE', `/api/amigos/${c(id)}`)),
     remover: async (id) => void (await chamar('DELETE', `/api/pessoas/${c(id)}`)),
+    cargo: async (id, cargo) => void (await chamar('PUT', `/api/pessoas/${c(id)}/cargo`, { cargo })),
     salas: async () => lista(await chamar('GET', '/api/salas'), 'salas').map(lerSala).sort((a, b) => a.ordem - b.ordem),
     criarSala: async (nome) => lerSala(await chamar('POST', '/api/salas', { nome })),
     renomearSala: async (id, nome) => lerSala(await chamar('PATCH', `/api/salas/${c(id)}`, { nome })),
