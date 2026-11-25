@@ -20,9 +20,7 @@ Na página da última versão, abra a seção **Assets** e baixe o arquivo que t
 1. Abra o arquivo `-setup.exe` que você baixou.
 2. Siga os passos do instalador e abra o Stackcall.
 
-Enquanto a assinatura estiver pendente, o Windows pode mostrar **O Windows protegeu o computador**. Para instalar uma versão ainda sem assinatura que você baixou da página oficial, use **Mais informações** e **Executar assim mesmo**, se essas opções estiverem disponíveis. O **Controle Inteligente de Aplicativos (Smart App Control)** pode bloquear versões sem assinatura.
-
-As versões assinadas têm **SignPath Foundation** como editor. Para conferir a assinatura, abra **Propriedades > Assinaturas Digitais** no arquivo baixado. O SmartScreen também considera a reputação do arquivo e ainda pode exibir um aviso.
+O instalador ainda não tem assinatura de código, então o navegador pode avisar que o arquivo "não é baixado com frequência" e o Windows pode mostrar **O Windows protegeu o computador**. Se você baixou daqui, da página oficial, escolha **Manter** no navegador e, no Windows, **Mais informações** e **Executar assim mesmo**. O **Controle Inteligente de Aplicativos (Smart App Control)** pode bloquear versões sem assinatura.
 
 Para desinstalar, abra **Configurações > Aplicativos**, procure **Stackcall** e escolha **Desinstalar**.
 
@@ -32,8 +30,6 @@ O próprio Stackcall avisa quando houver uma atualização. Você pode atualizar
 
 As notas de cada versão ficam no [histórico de versões](https://github.com/stackcall/releases/releases).
 
-## Code signing policy
+## Assinatura de código
 
-Free code signing provided by SignPath.io, certificate by SignPath Foundation
-
-[Code signing policy](https://github.com/stackcall/stackcall/blob/main/CODE_SIGNING_POLICY.md)
+Ainda sem certificado. O código é aberto e cada instalador é gerado pelo GitHub Actions a partir do [repositório público](https://github.com/stackcall/stackcall). [Política de assinatura](https://github.com/stackcall/stackcall/blob/main/CODE_SIGNING_POLICY.md).

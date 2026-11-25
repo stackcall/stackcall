@@ -90,11 +90,11 @@ O Actions confere as versões, gera as notas e o histórico e monta o instalador
 
 Os instaladores e o histórico público ficam em [Stackcall Releases](https://github.com/stackcall/releases/releases). O updater consulta [o manifesto da versão estável](https://github.com/stackcall/releases/releases/latest/download/latest.json).
 
-## Code signing policy
+## Assinatura de código
 
-Free code signing provided by SignPath.io, certificate by SignPath Foundation
+Os instaladores ainda não têm assinatura Authenticode. O pedido à SignPath Foundation foi recusado em 25/11/2026 por pouca visibilidade pública do projeto; o workflow já está pronto para ligar a assinatura se ela for aprovada depois. Enquanto isso, cada versão é enviada à Microsoft para revisão do SmartScreen.
 
-[Code signing policy](CODE_SIGNING_POLICY.md) · [Configuração e teste da assinatura](docs/assinatura.md)
+[Política de assinatura](CODE_SIGNING_POLICY.md) · [Configuração e teste da assinatura](docs/assinatura.md)
 
 ## Licença
 
