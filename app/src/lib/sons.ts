@@ -2,7 +2,7 @@
  * Short confirmation sounds for global shortcuts, synthesized with Web Audio: no audio file
  * to ship, nothing to download. Quiet on purpose (it plays over the game).
  */
-export type Som = 'liga' | 'desliga' | 'silenciou' | 'entrou' | 'saiu';
+export type Som = 'liga' | 'desliga' | 'silenciou' | 'entrou' | 'saiu' | 'cutucada';
 
 /** Tones in Hz, played one after the other (90 ms each). */
 export const TONS: Record<Som, number[]> = {
@@ -12,6 +12,8 @@ export const TONS: Record<Som, number[]> = {
   // Someone entered or left the room (Settings > Sons e avisos).
   entrou: [523, 784],
   saiu: [784, 523],
+  // Poke received on a PC with no Portuguese voice.
+  cutucada: [880, 660, 880],
 };
 
 let ctx: AudioContext | null = null;

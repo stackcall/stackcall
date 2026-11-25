@@ -11,7 +11,8 @@ import { lerPreferencias, salvarPreferencias } from './preferencias';
  * `atalhos_gravar` returns the next combination (null on Esc). Nothing comes on by default,
  * so a game key is never taken without the person choosing it.
  */
-export type AcaoId = 'mic' | 'silenciar' | 'falar' | 'arEntrar' | 'arSair' | 'assistir' | 'pararAssistir' | 'mostrar' | 'quemFala';
+export type AcaoId = 'mic' | 'silenciar' | 'falar' | 'arEntrar' | 'arSair' | 'assistir' | 'pararAssistir' | 'mostrar' | 'quemFala'
+  | 'clipe' | 'redeRuim' | 'cutucarUltimo';
 export type Estado = 'pressionado' | 'solto';
 /** `sugestao` is only text on the page (empty = none); nothing is recorded by default. */
 export type Acao = { id: AcaoId; rotulo: string; ajuda: string; sugestao: string; segurar?: boolean };
@@ -27,6 +28,9 @@ export const ACOES: Acao[] = [
   { id: 'mostrar', rotulo: 'Abrir o Stackcall', ajuda: 'Traz a janela para a frente.', sugestao: 'Ctrl+Shift+S' },
   // No suggestion: every short combination was taken by something on some PC (Ctrl+Shift+O included).
   { id: 'quemFala', rotulo: 'Mostrar ou esconder a janela quem fala', ajuda: 'Liga e desliga a janela por cima do jogo.', sugestao: '' },
+  { id: 'clipe', rotulo: 'Salvar clipe', ajuda: 'Guarda os últimos segundos do replay. O app da NVIDIA também usa Alt+F10.', sugestao: 'Alt+F10' },
+  { id: 'redeRuim', rotulo: 'Modo internet ruim', ajuda: 'Para de receber vídeo e dá prioridade à voz. Outro toque volta.', sugestao: 'Ctrl+Shift+B' },
+  { id: 'cutucarUltimo', rotulo: 'Cutucar o último de novo', ajuda: 'Cutuca a última pessoa que você cutucou, sem recado.', sugestao: 'Ctrl+Shift+P' },
 ];
 
 export type ConfigAtalhos = { teclas: Partial<Record<AcaoId, string>>; som: boolean };

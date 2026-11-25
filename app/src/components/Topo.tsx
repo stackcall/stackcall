@@ -48,8 +48,9 @@ export function Topo({ nomeServidor, salas, sala, pessoas, eu, onSala, onConfig,
       </nav>
 
       {onBusca ? (
-        <button type="button" onClick={onBusca} className="janela flex h-[52px] min-w-0 flex-1 items-center gap-2.5 px-3 text-left text-texto-fraco hover:border-destaque">
+        <button type="button" onClick={onBusca} aria-keyshortcuts="Control+K" className="janela flex h-[52px] min-w-0 flex-1 items-center gap-2.5 px-3 text-left text-texto-fraco hover:border-destaque">
           <Icone nome="busca" /><span className="truncate">Buscar sala, pessoa, ação ou ajuste</span>
+          <kbd className="ml-auto hidden border border-borda px-1.5 font-mono text-[11px] min-[1280px]:inline">Ctrl+K</kbd>
         </button>
       ) : <span className="flex-1" />}
 

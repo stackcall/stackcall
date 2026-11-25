@@ -36,6 +36,8 @@ export type Preferencias = {
   quemFalaPosicao: PosicaoQuemFala;
   /** Moves to the CT/TR sub-room when the CS2 GSI reports a match. */
   cs2SalaMapa: boolean;
+  /** Bad internet mode: stop receiving video, voice first (room, palette, shortcut). */
+  redeRuim: boolean;
 };
 
 export const PREFERENCIAS_PADRAO: Preferencias = {
@@ -56,6 +58,7 @@ export const PREFERENCIAS_PADRAO: Preferencias = {
   quemFalaTamanho: 'm',
   quemFalaPosicao: 'meio-esq',
   cs2SalaMapa: false,
+  redeRuim: false,
 };
 
 export const CHAVE_PREFERENCIAS = 'stackcall.preferencias';
@@ -85,6 +88,7 @@ const REGRAS: { [K in keyof Preferencias]: Validar<Preferencias[K]> } = {
   quemFalaTamanho: um('p', 'm', 'g'),
   quemFalaPosicao: um('sup-esq', 'sup-dir', 'meio-esq', 'meio-dir', 'inf-esq', 'inf-dir', 'livre'),
   cs2SalaMapa: bool,
+  redeRuim: bool,
 };
 
 /** Any stored value, cleaned key by key: an invalid field falls back to its default, not the whole object. */

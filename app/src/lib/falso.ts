@@ -29,6 +29,15 @@ export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
     pessoa('tati', 'Tati', { sala: null }),
     pessoa('caio', 'Caio', { online: false, sala: null }),
   ];
+  const cutucou = new Map<string, number>();
+  // ?cutucada=1: Bia (in the Lobby) poked me. Like the porteiro, my own profile carries it once.
+  let pendentes = new URLSearchParams(location.search).has('cutucada') ? [{ id: 'k-demo', de: 'bia', recado: 'a sala tá pronta', criadoEm: 0 }] : [];
+  const comPendentes = (lista: Pessoa[]) => {
+    if (!pendentes.length) return lista;
+    const minhas = pendentes;
+    pendentes = [];
+    return [...lista, { ...eu, online: true, amigo: false, sala: null, jogo: null, cutucadas: minhas }];
+  };
   let salas: Sala[] = pequeno ? [{ id: 'geral', nome: 'Geral', ordem: 1, pessoas: 0, noAr: false }] : [
     { id: 'cs', nome: 'CS', ordem: 1, pessoas: 5, noAr: true },
     { id: 'lobby', nome: 'Lobby', ordem: 2, pessoas: 2, noAr: false },
@@ -67,7 +76,7 @@ export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
       eu = tipo === 'avatar' ? { ...eu, avatar: link } : { ...eu, banner: link };
       return eu;
     },
-    pessoas: async () => (await espera(), exigeSessao(), pessoas.map((p) => ({ ...p }))),
+    pessoas: async () => (await espera(), exigeSessao(), comPendentes(pessoas.map((p) => ({ ...p })))),
     amigo: async (id, sim) => {
       const p = pessoas.find((x) => x.id === id);
       if (p) p.amigo = sim;
@@ -106,5 +115,17 @@ export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
     jogo: async () => undefined,
     cutucadas: async () => (await espera(), receber),
     salvarCutucadas: async (r) => void (receber = r),
+    cutucar: async (para) => {
+      await espera();
+      if (Date.now() - (cutucou.get(para) ?? 0) < 30_000) throw new ApiError(429, 'Espere 30 s para cutucar essa pessoa de novo.');
+      cutucou.set(para, Date.now());
+    },
+    moderar: async (_salaId, a) => {
+      await espera();
+      if (a.acao === 'silenciar') return;
+      const p = pessoas.find((x) => x.id === a.usuarioId);
+      if (!p) throw new ApiError(404, 'Não encontrado.');
+      p.sala = a.acao === 'mover' ? a.destinoId : null;
+    },
   };
 }

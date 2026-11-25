@@ -17,6 +17,7 @@ import { Perfil } from './screens/Perfil';
 import { CartaoPerfil } from './components/CartaoPerfil';
 import { UpdateBanner } from './components/UpdateBanner';
 import { Faixa, type Acao } from './components/Faixa';
+import { Camada05 } from './components/Camada05';
 import { Saguao } from './screens/Saguao';
 import { aoReceberCutucada, type Cutucada } from './lib/cutucar';
 import { iniciarDeteccaoJogo } from './lib/jogo';
@@ -61,6 +62,7 @@ export function App() {
     tela === 'config' ? 'settings' : tela === 'novidades' ? { novidades: null } : tela === 'perfil' ? 'perfil' : null,
   );
   const updater = useUpdater(!!sala, falso);
+  const [paginaConfig, setPaginaConfig] = useState<PaginaId>();
   // Demo lobby shows a poke received, as in the prototype; real ones come from aoReceberCutucada.
   const [cutucada, setCutucada] = useState<Cutucada | null>(() => (falso && tela === 'saguao' && new URLSearchParams(location.search).get('grupo') !== 'pequeno'
     ? { id: 'demo', de: 'Rafa', recado: 'a sala tá pronta', salaId: 'cs', salaNome: 'CS' } : null));
@@ -326,15 +328,19 @@ export function App() {
               onCartao={(id) => setOverlay({ cartao: id })}
               onConvidar={convidar}
               onAmigo={(id, sim) => void amigo(id, sim)}
+              cutucada={cutucada} onFecharCutucada={() => setCutucada(null)}
             />
           </div>
         )}
         {corpo}
+        <Camada05 servidor={estado.fase === 'pronto' ? srv : null} eu={eu} pessoas={pessoas} salas={salas} sala={sala}
+          onSala={escolherSala} onCartao={(id) => setOverlay({ cartao: id })}
+          onConfig={(pagina) => { setPaginaConfig(pagina); setOverlay('settings'); }} />
         {overlay === 'settings' && (
           <Settings
             updater={updater} inCall={!!sala} servidor={estado.fase === 'pronto' ? srv : null} eu={eu} salas={salas} pessoas={pessoas}
-            onClose={() => setOverlay(null)} onNotes={() => setOverlay({ novidades: null })} onPerfil={() => setOverlay('perfil')}
-            pagina={falso ? (new URLSearchParams(location.search).get('pagina') as PaginaId | null) ?? undefined : undefined}
+            onClose={() => { setOverlay(null); setPaginaConfig(undefined); }} onNotes={() => setOverlay({ novidades: null })} onPerfil={() => setOverlay('perfil')}
+            pagina={paginaConfig ?? (falso ? (new URLSearchParams(location.search).get('pagina') as PaginaId | null) ?? undefined : undefined)}
             onSalas={setSalas} onPessoas={setPessoas} onSair={() => void sairDoAparelho()} onTrocar={trocarServidor}
             onColarConvite={() => { setOverlay(null); setLink(null); setEstado({ fase: 'entrada', voltar: !!srv }); }}
           />

@@ -5,7 +5,8 @@ import { lerPreferencias } from './preferencias';
  * (the room thread) calls `receberCutucada`; the app shows the strip and this module reads the
  * message aloud with the Windows voice and raises the Windows notice, by the preferences.
  */
-export type Cutucada = { id: string; de: string; recado: string; salaId: string | null; salaNome: string | null };
+/** `de` is the sender's name; `deId` (when known) lets the strip poke back. */
+export type Cutucada = { id: string; de: string; deId?: string; recado: string; salaId: string | null; salaNome: string | null };
 
 export const fraseCutucada = (c: Pick<Cutucada, 'de' | 'recado'>) => (c.recado.trim() ? `${c.de} te cutucou: ${c.recado.trim()}` : `${c.de} te cutucou`);
 

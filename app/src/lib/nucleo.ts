@@ -46,6 +46,64 @@ export const nucleo = {
   temJanelaQuemFala: () => (demo() ? Promise.resolve(true) : chamar<boolean>('quem_fala_disponivel', {}, false)),
 };
 
+/**
+ * Replay buffer and clips (room and clips gallery). Assumed names, same shortcut as above:
+ *   replay_estado -> { ligado, segundos }      replay_alternar -> { ligado, segundos }
+ *   clipe_salvar -> Clipe                      clipes_listar -> { clipes, usados_bytes, limite_bytes }
+ *   clipe_apagar { id }                        clipes_abrir_pasta { id? }
+ * Outside the app (browser, demo, tests) a fake answers with sample data.
+ */
+export type Clipe = {
+  id: string;
+  titulo: string;
+  autor: string;
+  jogo: string | null;
+  /** Unix seconds. */
+  criado_em: number;
+  duracao_s: number;
+  bytes: number;
+  /** Local file URL for <video>, when the app can serve it. */
+  url: string | null;
+};
+export type ListaClipes = { clipes: Clipe[]; usados_bytes: number; limite_bytes: number };
+export type EstadoReplay = { ligado: boolean; segundos: number };
+
+const agora = () => Math.floor(Date.now() / 1000);
+let falsoReplay: EstadoReplay = { ligado: true, segundos: 60 };
+let falsoClipes: Clipe[] = [
+  { id: 'c1', titulo: 'Clutch 1v3 no B', autor: 'Rafa', jogo: 'CS2', criado_em: agora() - 1800, duracao_s: 45, bytes: 38e6, url: null },
+  { id: 'c2', titulo: 'Sem título', autor: 'você', jogo: 'CS2', criado_em: agora() - 4200, duracao_s: 60, bytes: 52e6, url: null },
+  { id: 'c3', titulo: 'A cara do Léo', autor: 'você', jogo: 'Cinema', criado_em: agora() - 90000, duracao_s: 30, bytes: 21e6, url: null },
+  { id: 'c4', titulo: 'Ace de deagle', autor: 'você', jogo: 'CS2', criado_em: agora() - 260000, duracao_s: 45, bytes: 35e6, url: null },
+];
+
+export const replay = {
+  estado: (): Promise<EstadoReplay> => (isTauri() ? invoke('replay_estado') : Promise.resolve({ ...falsoReplay })),
+  alternar: (): Promise<EstadoReplay> => {
+    if (isTauri()) return invoke('replay_alternar');
+    falsoReplay = { ...falsoReplay, ligado: !falsoReplay.ligado };
+    return Promise.resolve({ ...falsoReplay });
+  },
+  salvarClipe: (): Promise<Clipe> => {
+    if (isTauri()) return invoke('clipe_salvar');
+    const c: Clipe = { id: `c${Date.now()}`, titulo: 'Sem título', autor: 'você', jogo: 'CS2', criado_em: agora(), duracao_s: falsoReplay.segundos, bytes: 40e6, url: null };
+    falsoClipes = [c, ...falsoClipes];
+    return Promise.resolve(c);
+  },
+  listarClipes: (): Promise<ListaClipes> => (isTauri() ? invoke('clipes_listar') : Promise.resolve({
+    clipes: [...falsoClipes], usados_bytes: falsoClipes.reduce((n, c) => n + c.bytes, 0), limite_bytes: 20e9,
+  })),
+  apagarClipe: (id: string): Promise<void> => {
+    if (isTauri()) return invoke('clipe_apagar', { id });
+    falsoClipes = falsoClipes.filter((c) => c.id !== id);
+    return Promise.resolve();
+  },
+  abrirPastaClipes: (id?: string): Promise<void> => (isTauri() ? invoke('clipes_abrir_pasta', { id: id ?? null }) : Promise.resolve()),
+};
+
+/** LiveKit participant attribute the core sets while the replay buffer records the room. */
+export const ATRIBUTO_REPLAY = 'stackcall.replay';
+
 /** Main window: keeps the "quem fala" window in step with the preferences (show, corner, size). */
 export function sincronizarJanelaQuemFala(ler: () => Preferencias, ouvir: (f: (p: Preferencias) => void) => () => void) {
   let ultimo = '';

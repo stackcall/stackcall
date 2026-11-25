@@ -219,6 +219,7 @@ Tudo que vale para este PC e não tinha chave antes fica num JSON só, `stackcal
 | `quemFalaTamanho` | `p`, `m`, `g` | `m` | janela quem fala e núcleo |
 | `quemFalaPosicao` | `sup-esq`, `sup-dir`, `meio-esq`, `meio-dir`, `inf-esq`, `inf-dir`, `livre` | `meio-esq` | núcleo |
 | `cs2SalaMapa` | booleano | `false` | sala (troca para a sub-sala do time) |
+| `redeRuim` | booleano | `false` | sala, paleta e atalho (modo internet ruim: para de receber vídeo, voz primeiro) |
 
 "Receber cutucadas de" não é chave local: vale para todos os aparelhos e fica no servidor.
 
@@ -255,6 +256,8 @@ A janela quem fala abre `index.html?janela=quemfala`: sem borda, fundo transpare
 2. "Servidor dorme" não tem tela: o contrato só expõe o efeito (`503 livekit_acordando`), não o estado nem a configuração.
 3. Membros e cargos mostra o cargo, mas não troca: não há rota para mudar cargo.
 4. O saguão diz "jogando CS2 · 40 min" contando desde quando este PC viu o jogo pela primeira vez; a API só manda o nome.
+5. "Silenciar na sala" saiu do menu da pessoa. A rota `POST /api/salas/{sala}/moderacao/silenciar` desliga o microfone de todos e não recebe pessoa; ficou como "Silenciar todos" no menu da sala (⋯), para dono e admin.
+6. `stackcall.ouve.v1`: `docs/api-v05.md` pede só quem tem "volume acima de zero", mas a decisão 2 diz que o "silenciar para mim" não aparece para quem foi silenciado. O app segue a decisão 2 e publica quem está assinado, com qualquer volume. Falta alinhar o texto da API.
 
 ## 8. Decisões registradas
 

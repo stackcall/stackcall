@@ -20,9 +20,20 @@ export type Usuario = {
   cor: string | null;
 };
 /** `jogo`: game in the presence (docs/api-v05.md), null when none or older servers. */
-export type Pessoa = Usuario & { online: boolean; amigo: boolean; sala: string | null; jogo: string | null };
+export type Pessoa = Usuario & {
+  online: boolean;
+  amigo: boolean;
+  sala: string | null;
+  jogo: string | null;
+  /** Only on my own profile: pokes waiting for me, consumed by this read (docs/api-v05.md, Cutucar). */
+  cutucadas?: CutucadaPendente[];
+};
 /** Who may poke this person. Proposed route GET/PUT /api/eu/cutucadas (docs/design/v05-interface.md). */
 export type ReceberCutucadas = 'todos' | 'amigos' | 'ninguem';
+/** Item of `cutucadas` in my own profile: `de` is the sender's id, `criadoEm` Unix seconds. */
+export type CutucadaPendente = { id: string; de: string; recado: string; criadoEm: number };
+/** Room moderation (docs/api-v05.md): owner and admins only. `silenciar` acts on the whole room. */
+export type AcaoModeracao = { acao: 'mover'; usuarioId: string; destinoId: string } | { acao: 'silenciar' } | { acao: 'retirar'; usuarioId: string };
 export type Sala = { id: string; nome: string; ordem: number; pessoas: number; noAr: boolean };
 export type Convite = { id: string; link: string | null; expiraEm: string; usos: number; usosMax: number };
 /** Voice server sleep (docs/api-v05.md): configured in the server .env, read only here. */
@@ -100,6 +111,9 @@ export interface Servidor {
   jogo(nome: string): Promise<void>;
   cutucadas(): Promise<ReceberCutucadas>;
   salvarCutucadas(receber: ReceberCutucadas): Promise<void>;
+  /** POST /api/cutucar. 429 = the 30 s limit for that person, 403 = their preference refused. */
+  cutucar(para: string, recado: string): Promise<void>;
+  moderar(salaId: string, acao: AcaoModeracao): Promise<void>;
 }
 
 const nomeAparelho = () => (navigator.userAgent.includes('Windows') ? 'PC com Windows' : 'Computador');
@@ -133,12 +147,19 @@ export function lerUsuario(o: Record<string, unknown>, base?: string): Usuario {
     cor: opt(o.cor),
   };
 }
+const lerCutucada = (o: Record<string, unknown>): CutucadaPendente => ({
+  id: str(o.id),
+  de: str(o.de),
+  recado: str(o.recado).slice(0, 80),
+  criadoEm: Number(o.criado_em) || 0,
+});
 const lerPessoa = (o: Record<string, unknown>, base?: string): Pessoa => ({
   ...lerUsuario(o, base),
   online: !!o.online,
   amigo: !!o.amigo,
   sala: opt(o.sala ?? o.sala_id),
   jogo: opt(o.jogo),
+  cutucadas: Array.isArray(o.cutucadas) ? (o.cutucadas as Record<string, unknown>[]).map(lerCutucada).filter((c) => c.id && c.de) : undefined,
 });
 const receberDe = (v: unknown): ReceberCutucadas => (v === 'amigos' || v === 'ninguem' ? v : 'todos');
 /** Older servers have no `dorme`: null, and the page says the server does not report it. */
@@ -237,6 +258,9 @@ export function servidorReal(url: string): Servidor {
     jogo: async (nome) => void (await chamar('PUT', '/api/eu/jogo', { jogo: nome })),
     cutucadas: async () => receberDe((await chamar('GET', '/api/eu/cutucadas')).receber),
     salvarCutucadas: async (receber) => void (await chamar('PUT', '/api/eu/cutucadas', { receber })),
+    cutucar: async (para, recado) => void (await chamar('POST', '/api/cutucar', { para, recado })),
+    moderar: async (salaId, a) => void (await chamar('POST', `/api/salas/${c(salaId)}/moderacao/${a.acao}`,
+      a.acao === 'mover' ? { usuario_id: a.usuarioId, destino_id: a.destinoId } : a.acao === 'retirar' ? { usuario_id: a.usuarioId } : {})),
   };
 }
 
