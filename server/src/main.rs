@@ -1,17 +1,15 @@
 #[cfg(test)]
 mod api_tests;
-mod audio;
 mod auth;
-mod calls;
 mod db;
 mod invites;
 mod livekit;
 mod moderation;
 mod people;
+mod pokes;
 mod profile;
 mod rooms;
 mod sleep;
-mod soundboard;
 
 use axum::{
     Json, Router,
@@ -64,7 +62,6 @@ struct Config {
     api_attempts: Mutex<Attempts>,
     uploads: Mutex<Attempts>,
     image_jobs: Arc<tokio::sync::Semaphore>,
-    sound_jobs: Arc<tokio::sync::Semaphore>,
 }
 
 fn valid_name(value: &str) -> bool {
@@ -192,7 +189,7 @@ async fn api_policy(
     }
     let no_cache = path.starts_with("/api/") || path.starts_with("/c/");
     let mut response = next.run(request).await;
-    if no_cache && !response.headers().contains_key(header::CACHE_CONTROL) {
+    if no_cache {
         response
             .headers_mut()
             .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
@@ -216,9 +213,8 @@ fn app(config: Arc<Config>) -> Router {
         .merge(rooms::routes())
         .merge(moderation::routes())
         .merge(people::routes())
-        .merge(calls::routes())
+        .merge(pokes::routes())
         .merge(profile::routes())
-        .merge(soundboard::routes())
         .route(
             "/api/upload-test",
             post(upload_test)
@@ -336,7 +332,6 @@ async fn main() -> std::io::Result<()> {
         api_attempts: Mutex::default(),
         uploads: Mutex::default(),
         image_jobs: Arc::new(tokio::sync::Semaphore::new(1)),
-        sound_jobs: Arc::new(tokio::sync::Semaphore::new(1)),
     });
     sleep::monitor(config.clone());
     eprintln!("Porteiro ouvindo em {}", listener.local_addr()?);
