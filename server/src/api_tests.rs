@@ -493,9 +493,10 @@ async fn poke_preferences_follow_the_recipients_friend_list_and_apply_at_deliver
             Value::Null
         )
         .await,
-        (StatusCode::OK, json!({"receber":"amigos"}))
+        (StatusCode::OK, json!({"receber":"todos"}))
     );
     assert_eq!(set("invalid").await.0, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(set("amigos").await.0, StatusCode::NO_CONTENT);
     assert_eq!(
         poke(app, &owner, id(&recipient), "").await,
         StatusCode::FORBIDDEN
@@ -600,8 +601,8 @@ async fn pokes_enforce_pair_and_sender_limits_across_concurrent_requests() {
         let db = fixture.config.db.lock().unwrap();
         for recipient in &recipients {
             db.execute(
-                "INSERT INTO usuarios (id, nome, papel, criado_em, receber_cutucadas)
-                 VALUES (?1, 'Destinatário', 'membro', 0, 'todos')",
+                "INSERT INTO usuarios (id, nome, papel, criado_em)
+                 VALUES (?1, 'Destinatário', 'membro', 0)",
                 [recipient],
             )
             .unwrap();
@@ -663,18 +664,6 @@ async fn presence_delivers_a_poke_once_and_ignores_expired_pokes() {
     let app = &fixture.app;
     let owner = join(app, &fixture.owner_code, "Dono").await;
     let recipient = member(app, session(&owner)).await;
-    assert_eq!(
-        send(
-            app,
-            Method::PUT,
-            "/api/eu/cutucadas",
-            Some(session(&recipient)),
-            json!({"receber":"todos"})
-        )
-        .await
-        .0,
-        StatusCode::NO_CONTENT
-    );
     let note = "🖐".repeat(80);
     assert_eq!(
         poke(app, &owner, id(&recipient), &note).await,

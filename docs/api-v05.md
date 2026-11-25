@@ -24,7 +24,7 @@ O porteiro chama `MoveParticipant` primeiro. A edição aberta do LiveKit 1.13.1
 
 `POST /api/cutucar` recebe `{"para":"<id da pessoa>","recado":"Oi!"}` e retorna `204` quando aceita. O recado pode ser omitido ou vazio. Ele tem até 80 caracteres, sem caracteres de controle, e deve aparecer como texto simples. Só é possível cutucar outra pessoa ativa do mesmo grupo, mesmo fora da voz.
 
-`GET /api/eu/cutucadas` retorna `{"receber":"amigos"}` por padrão. `PUT /api/eu/cutucadas` recebe o mesmo objeto e retorna `204`. Os valores válidos são `todos`, `amigos` e `ninguem`. O modo `amigos` usa a lista do destinatário. A preferência e a amizade são verificadas no envio e na consulta de entrega.
+`GET /api/eu/cutucadas` retorna `{"receber":"todos"}` por padrão, permitindo cutucadas de qualquer outra pessoa do grupo. `PUT /api/eu/cutucadas` recebe o mesmo objeto e retorna `204`. Os valores válidos são `todos`, `amigos` e `ninguem`. O modo `amigos` usa a lista do destinatário. A preferência e a amizade são verificadas no envio e na consulta de entrega.
 
 O perfil da própria sessão em `GET /api/pessoas` traz `cutucadas`. Cada item tem `{id,de,recado,criado_em}`, com `de` igual ao ID do remetente e `criado_em` em segundos Unix. Os outros perfis omitem o campo. As cutucadas expiram em 120 s e são consumidas pela primeira consulta do destinatário, inclusive entre aparelhos. Uma resposta perdida após o consumo não é reentregue.
 

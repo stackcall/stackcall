@@ -1,7 +1,7 @@
 DROP TABLE chamados_destinos;
 DROP TABLE chamados;
 
-ALTER TABLE usuarios ADD COLUMN receber_cutucadas TEXT NOT NULL DEFAULT 'amigos'
+ALTER TABLE usuarios ADD COLUMN receber_cutucadas TEXT NOT NULL DEFAULT 'todos'
     CHECK (receber_cutucadas IN ('todos', 'amigos', 'ninguem'));
 
 CREATE TABLE cutucadas (
