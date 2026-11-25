@@ -30,6 +30,8 @@
   --color-vitoria: #1a7f37;
   --color-aviso: #9a6a00;
   --color-palco: #101012;
+  /* Texto sobre o palco (sempre escuro, nos dois temas). */
+  --color-sobre-palco: #b3b3ab;
 
   --radius-pequeno: 2px;
 }
@@ -109,8 +111,13 @@ h2,
   font-synthesis: none;
   text-transform: uppercase;
   letter-spacing: 0.005em;
-  line-height: 0.95;
+  /* 1.05 + respiro em cima: til e acento agudo das maiúsculas (Õ, É) não cortam. */
+  line-height: 1.05;
   margin: 0;
+}
+h1,
+h2 {
+  padding-top: 0.08em;
 }
 .font-pincel {
   font-family: var(--font-pincel);
@@ -119,6 +126,11 @@ h2,
 .tabular-nums {
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
+}
+
+::placeholder {
+  color: var(--color-texto-fraco);
+  opacity: 0.85;
 }
 
 ::selection {
@@ -213,8 +225,11 @@ button:disabled {
   &:active:not(:disabled) {
     transform: translateY(1px);
   }
+  /* Desabilitado: cinza chapado, nunca vermelho lavado (o rosa lia como erro). */
   &:disabled {
-    opacity: 0.45;
+    background: var(--color-superficie-alta);
+    color: var(--color-texto-fraco);
+    border-color: var(--color-borda);
   }
 }
 @utility btn-prim {
@@ -223,6 +238,11 @@ button:disabled {
   &:hover:not(:disabled) {
     background: var(--color-destaque-forte);
     color: var(--color-sobre-destaque);
+  }
+  &:disabled {
+    background: var(--color-superficie-alta);
+    color: var(--color-texto-fraco);
+    border-color: var(--color-borda);
   }
 }
 @utility btn-fant {
@@ -237,11 +257,25 @@ button:disabled {
 @utility btn-icone {
   width: 44px;
   padding: 0;
+  &.btn-sm {
+    width: 36px;
+  }
 }
 @utility btn-lg {
   min-height: 48px;
   padding: 0 20px;
   font-size: 15px;
+}
+@utility btn-sm {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+/* Faixa de erro: texto diz o problema; a cor só reforça. */
+@utility faixa-erro {
+  border-color: var(--color-perigo);
+  background: var(--color-destaque-fraco);
+  color: var(--color-perigo);
 }
 /* Estado desligado (mic mudo, fone desligado): texto diz o estado, a cor só reforça. */
 @utility btn-off {
@@ -267,6 +301,10 @@ button:disabled {
   }
   & > button + button {
     border-left: 1px solid var(--color-texto);
+  }
+  & > button:disabled {
+    color: var(--color-texto-fraco);
+    background: var(--color-superficie-alta);
   }
   & > button[aria-selected='true'],
   & > button[aria-pressed='true'] {
@@ -299,6 +337,21 @@ button:disabled {
   &[aria-invalid='true'] {
     border-color: var(--color-perigo);
   }
+}
+
+/* Medidor de voz: células acesas pelo DOM (Room.tsx, Medidor), sem estado React. */
+.medidor > i {
+  flex: 1;
+  background: var(--color-superficie-topo);
+}
+.medidor > i[data-aceso] {
+  background: var(--color-lima);
+  outline: 1px solid var(--color-texto);
+  outline-offset: -1px;
+}
+.medidor > i[data-aceso]:last-child {
+  background: var(--color-destaque);
+  outline: none;
 }
 
 /* Skeleton: a única exceção de gradiente, junto com a grade do papel. */

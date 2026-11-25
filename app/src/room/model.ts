@@ -14,8 +14,10 @@ export type Person = {
   isLocal: boolean;
   speaking: boolean;
   muted: boolean;
-  /** 0..1 */
+  /** 0..1, at the last render. */
   level: number;
+  /** 0..1, read live by the meter (requestAnimationFrame), outside React state. */
+  nivel?: () => number;
   /** 0..2 */
   volume: number;
   camera?: Attachable;
@@ -42,6 +44,8 @@ export type RoomModel = {
   room: string;
   state: 'connecting' | 'connected' | 'reconnecting' | 'error';
   error?: string;
+  /** false when retrying would only repeat the disconnect (removed, duplicate login, room deleted). */
+  autoRetry?: boolean;
   people: Person[];
   streams: Stream[];
   chat: ChatMessage[];

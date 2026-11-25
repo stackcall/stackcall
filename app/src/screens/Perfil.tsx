@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { CartaoPerfil } from '../components/CartaoPerfil';
+import { Faixa } from '../components/Faixa';
 import { AVATAR, BANNER, carregarImagem, posicao, recortar, type Corte } from '../lib/imagem';
 import type { Servidor, TemaPerfil, Usuario } from '../lib/servidor';
 
@@ -139,8 +140,7 @@ export function Perfil({ servidor, eu, onSalvo, onFechar }: { servidor: Servidor
     <div role="dialog" aria-modal="true" aria-label="Perfil" className="absolute inset-0 z-30 overflow-y-auto bg-fundo">
       <div className="mx-auto grid max-w-4xl gap-8 p-6 md:grid-cols-[1fr_340px]">
         <form className="min-w-0" onSubmit={(e) => { e.preventDefault(); void salvar(); }}>
-          <p className="rotulo">/ Seu perfil</p>
-          <h1 className="text-5xl">Perfil</h1>
+          <h1 className="text-[56px]">Seu perfil</h1>
 
           <input ref={arquivoRef} type="file" accept="image/png,image/jpeg,image/webp" hidden aria-label="Arquivo de imagem" onChange={aoEscolher} />
           <div className="mt-6 flex flex-wrap gap-2">
@@ -168,8 +168,8 @@ export function Perfil({ servidor, eu, onSalvo, onFechar }: { servidor: Servidor
             ))}
           </div>
 
-          {erro && <p role="alert" className="mt-4 border border-perigo p-3 text-sm text-perigo">{erro}</p>}
-          <div className="mt-6 flex gap-2">
+          {erro && <Faixa className="mt-4" acoes={[{ rotulo: 'Tentar de novo', onClick: () => void salvar() }]}>{erro}</Faixa>}
+          <div className="sticky bottom-0 mt-6 flex gap-2 border-t border-texto bg-fundo py-3">
             <button type="button" className="btn" onClick={onFechar}>Cancelar</button>
             <button type="submit" className="btn btn-prim" disabled={salvando}>{salvando ? 'Salvando…' : 'Salvar'}</button>
           </div>

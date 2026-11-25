@@ -21,7 +21,7 @@ export function Entrada({ link, servidorDe, onLink, onEntrou, onConfig, onVoltar
     <div className="grid h-full grid-cols-[minmax(0,1.1fr)_minmax(380px,0.9fr)] items-center gap-10 overflow-y-auto px-14 py-10">
       <div className="flex flex-col gap-5">
         <span className="font-display text-[34px] leading-none">stack<span className="text-destaque">call</span></span>
-        <h1 className="text-[104px]">Bora pra <span className="font-pincel inline-block -rotate-3 text-[0.8em] text-destaque normal-case">call</span></h1>
+        <h1 className="text-[96px]">Bora pra <span className="font-pincel inline-block -rotate-3 text-[0.8em] text-destaque normal-case">call</span></h1>
         <p className="m-0 max-w-[46ch] text-[17px] text-texto-fraco">
           Voz, tela e conversa com a sua turma. Não tem senha nem cadastro: quem já está no grupo manda um link de convite.
         </p>
@@ -138,7 +138,7 @@ function ComLink({ link, servidor, onTrocar, onEntrou }: {
             <label htmlFor="nome" className="font-bold">Seu nome</label>
             <input id="nome" className="campo" value={nome} onChange={(e) => setNome(e.target.value)} autoComplete="nickname" maxLength={32}
               aria-invalid={!!erro} aria-describedby="nome-ajuda" autoFocus />
-            <span id="nome-ajuda" className="text-[13px] text-texto-fraco">É como a galera vê você. Dá para trocar depois no perfil.</span>
+            <span id="nome-ajuda" className="text-[13px] text-texto-fraco">É como a galera vê você.</span>
           </div>
         )}
         {erro && <p role="alert" className="m-0 text-perigo">{erro}</p>}
