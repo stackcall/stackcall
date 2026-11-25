@@ -303,7 +303,7 @@ test('settings > atalhos: record, conflict warning, clear; a global shortcut act
   await userEvent.click(screen.getByRole('button', { name: 'Configurações' }));
   const dialog = screen.getByRole('dialog', { name: 'Configurações' });
   await userEvent.click(within(dialog).getByRole('button', { name: 'Atalhos' }));
-  expect(within(dialog).getAllByText(/Sem atalho/)).toHaveLength(8); // nothing on by default
+  expect(within(dialog).getAllByText(/Sem atalho/)).toHaveLength(12); // nothing on by default
 
   const gravar = async (acao: string, opts: KeyboardEventInit) => {
     await userEvent.click(within(dialog).getByRole('button', { name: `Gravar atalho para ${acao}` }));

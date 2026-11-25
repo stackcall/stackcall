@@ -7,6 +7,7 @@ import { useDemoRoom } from '../room/demo';
 import { useLiveRoom } from '../room/useLiveRoom';
 import { useReconexao } from '../room/reconexao';
 import { Atalhos, RoomView, Vazio } from './sala/Sala';
+import { abrir } from '../lib/paleta';
 
 export type RoomProps = {
   servidor: Servidor;
@@ -93,7 +94,13 @@ function Topo({ nomeServidor, salas, sala, pessoas, onSala, onConfig, onPerfil, 
         })}
       </nav>
 
-      <div className="ml-auto flex shrink-0 items-center gap-2.5">
+      <button type="button" onClick={() => abrir('paleta')} aria-keyshortcuts="Control+K"
+        className="janela flex h-[52px] min-w-[180px] flex-1 items-center gap-2.5 px-3 text-left text-texto-fraco hover:border-destaque">
+        <Icone nome="busca" /><span className="truncate">Buscar sala, pessoa, ação ou ajuste</span>
+        <kbd className="ml-auto hidden border border-borda px-1.5 font-mono text-[11px] min-[1280px]:inline">Ctrl+K</kbd>
+      </button>
+      <div className="flex shrink-0 items-center gap-2.5">
+        <button type="button" className="btn btn-icone" aria-label="Clipes" title="Clipes" onClick={() => abrir('clipes')}><Icone nome="filme" /></button>
         <button type="button" className="btn btn-icone" aria-label="Configurações" title="Configurações" onClick={onConfig}><Icone nome="ajustes" /></button>
         <button type="button" className="border-0 bg-transparent p-0" aria-label="Seu perfil" title="Seu perfil" onClick={onPerfil}>
           <Avatar pessoa={eu} tamanho={44} />

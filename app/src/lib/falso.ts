@@ -33,7 +33,7 @@ export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
   // ?cutucada=1: Rafa poked me (to review the incoming strip and the voice).
   if (new URLSearchParams(location.search).has('cutucada')) {
     const rafa = pessoas.find((p) => p.id === 'rafa');
-    if (rafa) rafa.cutucadas = [{ id: 'k-demo', recado: 'a sala tá pronta', salaId: 'cs', expiraEm: 4_000_000_000 }];
+    if (rafa) rafa.cutucadas = [{ id: 'k-demo', recado: 'a sala tá pronta', salaId: 'lobby', expiraEm: 4_000_000_000 }];
   }
   let salas: Sala[] = pequeno ? [{ id: 'geral', nome: 'Geral', ordem: 1, pessoas: 0, noAr: false }] : [
     { id: 'cs', nome: 'CS', ordem: 1, pessoas: 5, noAr: true },

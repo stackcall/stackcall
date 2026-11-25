@@ -17,6 +17,7 @@ import { Perfil } from './screens/Perfil';
 import { CartaoPerfil } from './components/CartaoPerfil';
 import { UpdateBanner } from './components/UpdateBanner';
 import { Faixa, type Acao } from './components/Faixa';
+import { Camada05, type SecaoConfig } from './components/Camada05';
 
 export type Overlay = null | 'settings' | 'perfil' | { novidades: string | null } | { cartao: string };
 
@@ -57,6 +58,7 @@ export function App() {
     tela === 'config' ? 'settings' : tela === 'novidades' ? { novidades: null } : tela === 'perfil' ? 'perfil' : null,
   );
   const updater = useUpdater(!!sala, falso);
+  const [secaoConfig, setSecaoConfig] = useState<SecaoConfig>();
 
   const carregar = useCallback(async (s: Servidor) => {
     try {
@@ -300,10 +302,14 @@ export function App() {
           </div>
         )}
         {corpo}
+        <Camada05 servidor={estado.fase === 'pronto' ? srv : null} eu={eu} pessoas={pessoas} salas={salas} sala={sala}
+          onSala={escolherSala} onCartao={(id) => setOverlay({ cartao: id })}
+          onConfig={(secao) => { setSecaoConfig(secao); setOverlay('settings'); }} />
         {overlay === 'settings' && (
           <Settings
+            secaoInicial={secaoConfig}
             updater={updater} inCall={!!sala} servidor={estado.fase === 'pronto' ? srv : null} eu={eu} salas={salas} pessoas={pessoas}
-            onClose={() => setOverlay(null)} onNotes={() => setOverlay({ novidades: null })}
+            onClose={() => { setOverlay(null); setSecaoConfig(undefined); }} onNotes={() => setOverlay({ novidades: null })}
             onSalas={setSalas} onPessoas={setPessoas} onSair={() => void sairDoAparelho()} onTrocar={trocarServidor}
             onColarConvite={() => { setOverlay(null); setLink(null); setEstado({ fase: 'entrada', voltar: !!srv }); }}
           />

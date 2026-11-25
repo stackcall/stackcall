@@ -33,6 +33,8 @@ const hhmm = (d: Date) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minut
 const data = (iso: string) => (iso ? new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) : '—');
 
 type Props = {
+  /** Page to open (the command palette sends the person straight to the right setting). */
+  secaoInicial?: Secao;
   updater: Updater;
   inCall: boolean;
   servidor: Servidor | null;
@@ -49,7 +51,8 @@ type Props = {
 };
 
 export function Settings(props: Props) {
-  const [secao, setSecao] = useState<Secao>(props.servidor ? 'servidor' : 'sobre');
+  const [secao, setSecao] = useState<Secao>(props.secaoInicial && (props.servidor || !['servidor', 'servidores'].includes(props.secaoInicial))
+    ? props.secaoInicial : props.servidor ? 'servidor' : 'sobre');
   useEffect(() => {
     // Esc while a shortcut is being recorded cancels the recording, not the whole screen.
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && !document.querySelector('[data-gravando]') && props.onClose();

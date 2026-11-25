@@ -215,3 +215,15 @@ A sugestão é só texto: o app não grava a tecla sozinho. Ao definir, o app te
 - HTML e CSS puros. As telas trocam por `:target`. O único script lê o tema e o modo captura.
 - Fontes locais em `v05/fontes/` (as mesmas do app, licença OFL, via @fontsource).
 - As cenas de jogo são formas chapadas em CSS, só para dar escala. Nomes e números são fictícios.
+
+## 10. Preferências da sala (chaves no app)
+
+Ficam no `localStorage` de cada PC, lidas por `app/src/lib/preferencias.ts`. A sala usa; as páginas de Configurações (outra thread) editam as mesmas chaves. Entre parênteses, o valor de fábrica.
+
+| Chave | Campos | Para quê |
+|---|---|---|
+| `stackcall.sons` | `entrada` (true), `volume` 0 a 1 (0,5) | Som curto quando alguém entra ou sai da sala |
+| `stackcall.cutucadas` | `receberDe`: `todos`, `amigos` ou `ninguem` (`todos`); `voz` (true); `volume` 0 a 1 (0,8); `mesmoSilenciado` (true); `avisoWindows` (true) | Como a cutucada chega: voz pt-BR ou som curto, mesmo com o som do Stackcall silenciado, e aviso do Windows |
+| `stackcall.rede` | `ruim` (false) | Modo internet ruim: para de receber vídeo e prioriza a voz |
+
+Quem muda uma chave usa `salvarPreferencia`; quem lê e precisa reagir usa `aoMudarPreferencia`.

@@ -10,7 +10,8 @@ import { lerVoz } from './voz';
  * `atalhos_gravar` returns the next combination (null on Esc). Nothing comes on by default,
  * so a game key is never taken without the person choosing it.
  */
-export type AcaoId = 'mic' | 'silenciar' | 'falar' | 'arEntrar' | 'arSair' | 'assistir' | 'pararAssistir' | 'mostrar';
+export type AcaoId = 'mic' | 'silenciar' | 'falar' | 'arEntrar' | 'arSair' | 'assistir' | 'pararAssistir' | 'mostrar'
+  | 'clipe' | 'redeRuim' | 'quemFala' | 'cutucarUltimo';
 export type Estado = 'pressionado' | 'solto';
 export type Acao = { id: AcaoId; rotulo: string; ajuda: string; sugestao: string; segurar?: boolean };
 
@@ -23,6 +24,10 @@ export const ACOES: Acao[] = [
   { id: 'assistir', rotulo: 'Assistir a tela no ar', ajuda: 'Começa a receber a tela que está no palco.', sugestao: 'Ctrl+Shift+W' },
   { id: 'pararAssistir', rotulo: 'Parar de assistir', ajuda: 'Para de receber a tela (economiza internet no jogo).', sugestao: 'Ctrl+Shift+E' },
   { id: 'mostrar', rotulo: 'Abrir o Stackcall', ajuda: 'Traz a janela para a frente.', sugestao: 'Ctrl+Shift+S' },
+  { id: 'clipe', rotulo: 'Salvar clipe', ajuda: 'Guarda os últimos segundos do replay. O app da NVIDIA também usa Alt+F10.', sugestao: 'Alt+F10' },
+  { id: 'redeRuim', rotulo: 'Modo internet ruim', ajuda: 'Para de receber vídeo e dá prioridade à voz. Outro toque volta.', sugestao: 'Ctrl+Shift+B' },
+  { id: 'quemFala', rotulo: 'Mostrar ou esconder a janela quem fala', ajuda: 'Sem sugestão boa que não colida com jogo.', sugestao: '—' },
+  { id: 'cutucarUltimo', rotulo: 'Cutucar o último de novo', ajuda: 'Cutuca a última pessoa que você cutucou, sem recado.', sugestao: 'Ctrl+Shift+P' },
 ];
 
 export type ConfigAtalhos = { teclas: Partial<Record<AcaoId, string>>; som: boolean };
