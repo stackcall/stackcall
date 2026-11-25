@@ -3,7 +3,7 @@ import * as Slider from '@radix-ui/react-slider';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Avatar } from '../components/Avatar';
+import { Avatar, corDe, inicial } from '../components/Avatar';
 import { Faixa } from '../components/Faixa';
 import { Icone } from '../components/Icone';
 import { useInterfaceAtiva } from '../lib/leveza';
@@ -112,90 +112,128 @@ function Topo({ nomeServidor, salas, sala, pessoas, onSala, onConfig, onPerfil, 
   );
 }
 
-/** One red button only: the room with the most people (or the first one) is the suggested way in. */
-function salaSugerida(salas: Sala[]) {
-  return salas.reduce<Sala | undefined>((m, s) => (!m || s.pessoas > m.pessoas ? s : m), undefined)?.id;
-}
-
-function Saguao({ salas, onSala, pessoas, eu, onCartao }: RoomProps) {
-  const sugerida = salaSugerida(salas);
-  const emVoz = pessoas.filter((p) => p.online && p.sala).length;
-  return (
-    <main className="grid min-h-0 grid-cols-[minmax(0,1fr)_320px] gap-4">
-      <section className="flex min-h-0 flex-col gap-4 overflow-y-auto">
-        <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-1">
-          <h1 className="text-[56px]">Escolha uma sala</h1>
-          <p className="m-0 pb-2 text-texto-fraco">
-            {emVoz ? `${plural(emVoz, 'pessoa', 'pessoas')} em voz agora.` : 'Ninguém em voz agora. Entre e chame a galera.'}
-          </p>
-        </header>
-        {salas.length === 0 ? (
-          <div className="janela flex flex-1"><Vazio titulo="Nenhuma sala ainda" texto="O dono ou um admin cria as salas em Configurações > Servidor." /></div>
-        ) : (
-          <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(230px,1fr))] content-start gap-3 p-0">
-            {salas.map((s) => {
-              const nela = pessoas.filter((p) => p.sala === s.id);
-              const total = Math.max(s.pessoas, nela.length);
-              return (
-                <li key={s.id} className="janela flex flex-col">
-                  <div className={`barra ${s.noAr ? 'barra-ar' : ''}`}>
-                    <span className="truncate">{s.nome}</span>
-                    <span className="ml-auto font-medium">{s.noAr ? 'no ar' : total ? `${total} na sala` : 'vazia'}</span>
-                  </div>
-                  <div className="flex flex-1 flex-col gap-3 p-3">
-                    {nela.length === 0 ? (
-                      <span className="flex min-h-9 items-center text-[14px] text-texto-fraco">{total ? plural(total, 'pessoa', 'pessoas') : 'Ninguém agora'}</span>
-                    ) : (
-                      <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
-                        {nela.slice(0, 4).map((p) => (
-                          <li key={p.id} className="flex min-w-0 items-center gap-2 text-[14px]">
-                            <Avatar pessoa={p} tamanho={24} /><span className="truncate">{p.nome}</span>
-                          </li>
-                        ))}
-                        {nela.length > 4 && <li className="text-[13px] text-texto-fraco">e mais {nela.length - 4}</li>}
-                      </ul>
-                    )}
-                    <button type="button" className={`btn mt-auto w-full ${s.id === sugerida ? 'btn-prim' : ''}`} aria-label={`Entrar na sala ${s.nome}`} onClick={() => onSala(s.id)}>
-                      Entrar
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-      <Presenca pessoas={pessoas} salas={salas} eu={eu} onCartao={onCartao} />
-    </main>
+/** Square portrait that grows with its column: the photo, or the initial in Anton on the name's color. */
+function Retrato({ pessoa }: { pessoa: Pick<Usuario, 'nome' | 'avatar'> }) {
+  return pessoa.avatar ? (
+    <img src={pessoa.avatar} alt="" decoding="async" className="aspect-[16/10] w-full object-cover" />
+  ) : (
+    <span aria-hidden="true" className="font-display flex aspect-[16/10] w-full items-center justify-center text-[clamp(32px,4vw,64px)] text-[#111]"
+      style={{ background: corDe(pessoa.nome) }}>{inicial(pessoa.nome)}</span>
   );
 }
 
-/** Who is online and in which room: the lobby's side panel. */
-function Presenca({ pessoas, salas, eu, onCartao }: { pessoas: Pessoa[]; salas: Sala[]; eu: Usuario; onCartao(id: string): void }) {
-  const nomeSala = new Map(salas.map((s) => [s.id, s.nome] as const));
-  const online = pessoas.filter((p) => p.online && p.id !== eu.id).sort((a, b) => Number(!!b.sala) - Number(!!a.sala));
+/** One red button only: the room with the most people (or the first one) is the suggested way in. */
+function salaSugerida(salas: Sala[], nela: (id: string) => number) {
+  return salas.reduce<Sala | undefined>((m, s) => (!m || nela(s.id) > nela(m.id) ? s : m), undefined)?.id;
+}
+
+/**
+ * Lobby as a board: every room with people is a full-height column listing who is there, so
+ * the screen height is used by names, not by empty boxes. Empty rooms and the people outside
+ * voice stack in one narrow column at the end.
+ */
+function Saguao({ salas, onSala, pessoas, eu, onCartao }: RoomProps) {
+  const porSala = new Map<string, Pessoa[]>();
+  for (const p of pessoas) if (p.online && p.sala && p.id !== eu.id) porSala.set(p.sala, [...(porSala.get(p.sala) ?? []), p]);
+  const contagem = (s: Sala) => Math.max(s.pessoas, porSala.get(s.id)?.length ?? 0);
+  const sugerida = salaSugerida(salas, (id) => contagem(salas.find((s) => s.id === id)!));
+  const ocupadas = salas.filter((s) => contagem(s) > 0 || s.noAr);
+  const vazias = salas.filter((s) => !ocupadas.includes(s));
+  const fora = pessoas.filter((p) => p.id !== eu.id && !(p.online && p.sala));
+  const emVoz = ocupadas.reduce((n, s) => n + contagem(s), 0);
+  const entrar = (s: Sala) => (
+    <button type="button" className={`btn w-full ${s.id === sugerida ? 'btn-prim' : ''}`} aria-label={`Entrar na sala ${s.nome}`} onClick={() => onSala(s.id)}>
+      Entrar
+    </button>
+  );
+
   return (
-    <aside className="janela flex min-h-0 flex-col" aria-label="Quem está online">
-      <div className="barra">Online agora<span className="ml-auto font-medium">{online.length}</span></div>
-      {online.length === 0 ? (
-        <Vazio titulo="Ninguém online" texto="Quando alguém abrir o app, aparece aqui com a sala em que está." />
+    <main className="flex min-h-0 flex-col gap-4">
+      <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-1">
+        <h1 className="text-[56px]">Escolha uma sala</h1>
+        <p className="m-0 pb-2 text-texto-fraco">
+          {emVoz ? `${plural(emVoz, 'pessoa', 'pessoas')} em voz agora.` : 'Ninguém em voz agora. Entre e chame a galera.'}
+        </p>
+      </header>
+      {salas.length === 0 ? (
+        <div className="janela flex flex-1"><Vazio titulo="Nenhuma sala ainda" texto="O dono ou um admin cria as salas em Configurações > Servidor." /></div>
       ) : (
-        <ul className="m-0 min-h-0 flex-1 list-none overflow-y-auto p-0">
-          {online.map((p) => (
-            <li key={p.id}>
-              <button type="button" className="flex min-h-12 w-full items-center gap-2.5 border-0 bg-transparent px-3.5 py-1.5 text-left hover:bg-superficie-alta"
-                onClick={() => onCartao(p.id)} aria-label={`Ver perfil de ${p.nome}`}>
-                <Avatar pessoa={p} tamanho={32} />
-                <span className="flex min-w-0 flex-col leading-tight">
-                  <b className="truncate text-[14px]">{p.nome}</b>
-                  <span className="text-[12px] text-texto-fraco">{p.sala ? `em ${nomeSala.get(p.sala) ?? 'outra sala'}` : 'fora da voz'}</span>
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <div className="grid min-h-0 flex-1 gap-3 overflow-x-auto pb-1"
+          style={{ gridTemplateColumns: ocupadas.length ? `repeat(${ocupadas.length}, minmax(240px, 1fr)) 300px` : 'minmax(0, 1fr)' }}>
+          {ocupadas.map((s) => {
+            const nela = porSala.get(s.id) ?? [];
+            return (
+              <section key={s.id} className="janela flex min-h-0 flex-col" aria-label={`Sala ${s.nome}`}>
+                <div className={`barra ${s.noAr ? 'barra-ar' : ''}`}>
+                  <span className="truncate">{s.nome}</span>
+                  <span className="ml-auto font-medium">{plural(contagem(s), 'pessoa', 'pessoas')}</span>
+                </div>
+                {s.noAr && (
+                  <p className="m-0 flex items-center gap-2 border-b border-texto bg-destaque-fraco px-3 py-2 text-[14px] font-bold text-perigo">
+                    <span aria-hidden="true" className="size-2 bg-destaque" />Tem tela no ar. Entre para assistir.
+                  </p>
+                )}
+                <ul className="m-0 grid min-h-0 flex-1 list-none grid-cols-[repeat(auto-fill,minmax(max(110px,30%),1fr))] content-start gap-2 overflow-y-auto p-3">
+                  {nela.map((p) => (
+                    <li key={p.id} className={p.tema === 'noite' ? 'tema-noite' : p.tema === 'lima' ? 'tema-lima' : ''}>
+                      <button type="button" className="flex w-full flex-col border border-texto bg-superficie text-left text-texto hover:bg-superficie-alta"
+                        onClick={() => onCartao(p.id)} aria-label={`Ver perfil de ${p.nome}`}>
+                        <Retrato pessoa={p} />
+                        <span className="flex w-full min-w-0 flex-col border-t border-texto px-2.5 py-1.5 leading-tight">
+                          <b className="truncate text-[15px]">{p.nome}</b>
+                          <span className="truncate text-[12px] text-texto-fraco">{p.amigo ? 'amigo' : p.bio || 'na sala'}</span>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                  {nela.length < contagem(s) && (
+                    <li className="flex items-center px-1 text-[13px] text-texto-fraco">
+                      {nela.length ? `e mais ${contagem(s) - nela.length}` : plural(contagem(s), 'pessoa', 'pessoas')}
+                    </li>
+                  )}
+                </ul>
+                <div className="border-t border-borda p-3">{entrar(s)}</div>
+              </section>
+            );
+          })}
+
+          <div className="flex min-h-0 flex-col gap-3 overflow-y-auto">
+            {vazias.length > 0 && (
+              <section className="janela flex flex-col" aria-label="Salas vazias">
+                <div className="barra">Salas vazias<span className="ml-auto font-medium">{vazias.length}</span></div>
+                <ul className="m-0 list-none p-0">
+                  {vazias.map((s) => (
+                    <li key={s.id} className="flex items-center gap-3 border-t border-borda px-3 py-2 first:border-t-0">
+                      <b className="min-w-0 flex-1 truncate">{s.nome}</b>
+                      <button type="button" className={`btn btn-sm ${s.id === sugerida ? 'btn-prim' : ''}`} aria-label={`Entrar na sala ${s.nome}`} onClick={() => onSala(s.id)}>Entrar</button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+            <section className="janela flex min-h-0 flex-1 flex-col" aria-label="Fora da voz">
+              <div className="barra">Fora da voz<span className="ml-auto font-medium">{fora.filter((p) => p.online).length} online</span></div>
+              {fora.length === 0 ? (
+                <p className="m-0 p-3 text-[14px] text-texto-fraco">Todo mundo do servidor está numa sala.</p>
+              ) : (
+                <ul className="m-0 min-h-0 flex-1 list-none overflow-y-auto p-0">
+                  {[...fora].sort((a, b) => Number(b.online) - Number(a.online)).map((p) => (
+                    <li key={p.id}>
+                      <button type="button" className="flex min-h-11 w-full items-center gap-2.5 border-0 bg-transparent px-3 py-1 text-left hover:bg-superficie-alta"
+                        onClick={() => onCartao(p.id)} aria-label={`Ver perfil de ${p.nome}`}>
+                        <Avatar pessoa={p} tamanho={28} />
+                        <span className={`min-w-0 flex-1 truncate text-[14px] ${p.online ? '' : 'text-texto-fraco'}`}>{p.nome}</span>
+                        <span className="text-[12px] text-texto-fraco">{p.online ? 'online' : 'offline'}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
+        </div>
       )}
-    </aside>
+    </main>
   );
 }
 

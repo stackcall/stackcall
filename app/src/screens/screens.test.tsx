@@ -84,7 +84,7 @@ test('real server: every call goes through the Rust proxy, never fetch', async (
 test('room: tabs with live dot, stage numbers, watch, chat, mic and volume', async () => {
   history.replaceState(null, '', '/?demo=1');
   render(<App />);
-  const cs = await screen.findByRole('button', { name: /Sala CS, 5 pessoas, alguém no ar, você está aqui/ });
+  const cs = await screen.findByRole('button', { name: /Sala CS, 4 pessoas, alguém no ar, você está aqui/ });
   expect(cs).toHaveAttribute('aria-current', 'true');
   expect(screen.getByRole('status', { name: /Ping 142 milissegundos, bom/ })).toBeInTheDocument();
   expect(screen.getByText(/1080p60 · AV1 · 4,2 Mb\/s · 3 assistindo/)).toBeInTheDocument();

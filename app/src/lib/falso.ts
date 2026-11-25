@@ -22,6 +22,9 @@ export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
     pessoa('duda', 'Duda', { amigo: true, tema: 'lima', bio: 'mira de rifle, coração de pistol' }),
     pessoa('leo', 'Léo', { sala: 'cs' }),
     pessoa('nanda', 'Nanda', { papel: 'admin' }),
+    pessoa('bia', 'Bia', { sala: 'lobby', amigo: true }),
+    pessoa('gus', 'Gus', { sala: 'lobby' }),
+    pessoa('tati', 'Tati', { sala: null }),
     pessoa('caio', 'Caio', { online: false, sala: null }),
   ];
   let salas: Sala[] = [
@@ -70,7 +73,8 @@ export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
       const i = pessoas.findIndex((x) => x.id === id);
       if (i >= 0) pessoas.splice(i, 1);
     },
-    salas: async () => (await espera(), exigeSessao(), salas.map((s) => ({ ...s }))),
+    // Counts come from the people list, so a card never says "2 pessoas" without their names.
+    salas: async () => (await espera(), exigeSessao(), salas.map((s) => ({ ...s, pessoas: pessoas.filter((p) => p.online && p.sala === s.id).length }))),
     criarSala: async (nome) => {
       const s = { id: `sala-${salas.length + 1}`, nome, ordem: salas.length + 1, pessoas: 0, noAr: false };
       salas = [...salas, s];
