@@ -1,4 +1,4 @@
-use std::{sync::mpsc, time::Duration};
+use std::{sync::mpsc, thread, time::Duration};
 
 use anyhow::Result;
 use base64::Engine;
@@ -33,6 +33,12 @@ pub struct SourceInfo {
     height: Option<u32>,
     minimized: bool,
     thumbnail: Option<String>,
+}
+
+#[derive(Clone, Copy)]
+enum ThumbnailTarget {
+    Monitor(Monitor),
+    Window(Window),
 }
 
 struct WindowMetadata<'a> {
@@ -96,10 +102,12 @@ pub fn list() -> Result<Vec<SourceInfo>> {
         .ok()
         .and_then(|pid| pid.parse::<u32>().ok());
     let mut sources = Vec::new();
+    let mut thumbnails = Vec::new();
     for (index, monitor) in Monitor::enumerate()?.into_iter().enumerate() {
         let (Ok(width), Ok(height)) = (monitor.width(), monitor.height()) else {
             continue;
         };
+        thumbnails.push((sources.len(), ThumbnailTarget::Monitor(monitor)));
         sources.push(SourceInfo {
             id: format!("hmonitor:{}", monitor.as_raw_hmonitor() as usize),
             title: format!("Tela {}", index + 1),
@@ -108,7 +116,7 @@ pub fn list() -> Result<Vec<SourceInfo>> {
             width: Some(width),
             height: Some(height),
             minimized: false,
-            thumbnail: thumbnail(monitor),
+            thumbnail: None,
         });
     }
     for window in Window::enumerate()? {
@@ -170,6 +178,9 @@ pub fn list() -> Result<Vec<SourceInfo>> {
             Some((width, height))
         };
         let (width, height) = size.unzip();
+        if !minimized {
+            thumbnails.push((sources.len(), ThumbnailTarget::Window(window)));
+        }
         sources.push(SourceInfo {
             id: format!("hwnd:{}:{pid}", window.as_raw_hwnd() as usize),
             title,
@@ -178,7 +189,24 @@ pub fn list() -> Result<Vec<SourceInfo>> {
             width,
             height,
             minimized,
-            thumbnail: if minimized { None } else { thumbnail(window) },
+            thumbnail: None,
+        });
+    }
+    for batch in thumbnails.chunks(8) {
+        thread::scope(|scope| {
+            let workers: Vec<_> = batch
+                .iter()
+                .map(|&(index, target)| {
+                    let handle = scope.spawn(move || match target {
+                        ThumbnailTarget::Monitor(monitor) => thumbnail(monitor),
+                        ThumbnailTarget::Window(window) => thumbnail(window),
+                    });
+                    (index, handle)
+                })
+                .collect();
+            for (index, handle) in workers {
+                sources[index].thumbnail = handle.join().ok().flatten();
+            }
         });
     }
     Ok(sources)

@@ -5,7 +5,7 @@ mod sidecar;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, Manager, WindowEvent,
+    AppHandle, Emitter, Manager, WebviewWindow, WindowEvent,
 };
 
 const CHANGELOG_URL: &str =
@@ -32,8 +32,38 @@ fn mostrar(app: &AppHandle) {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
-        let _ = app.emit(EVENTO_VISIVEL, true);
+        update_visibility(&window, true);
     }
+}
+
+fn update_visibility(window: &WebviewWindow, visible: bool) {
+    #[cfg(windows)]
+    {
+        use webview2_com::Microsoft::Web::WebView2::Win32::{
+            ICoreWebView2_19, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
+            COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
+        };
+        use windows_core::Interface;
+
+        let _ = window.with_webview(move |webview| {
+            // Tauri runs this closure on the UI thread that owns the controller.
+            unsafe {
+                if let Ok(webview) = webview
+                    .controller()
+                    .CoreWebView2()
+                    .and_then(|core| core.cast::<ICoreWebView2_19>())
+                {
+                    let level = if visible {
+                        COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL
+                    } else {
+                        COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW
+                    };
+                    let _ = webview.SetMemoryUsageTargetLevel(level);
+                }
+            }
+        });
+    }
+    let _ = window.emit(EVENTO_VISIVEL, visible);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -84,18 +114,24 @@ pub fn run() {
             modo_jogo::iniciar(app.handle().clone());
             Ok(())
         })
-        .on_window_event(|window, event| match event {
-            // Closing keeps voice running in the tray, like the other voice apps; "Sair" in the tray quits.
-            WindowEvent::CloseRequested { api, .. } => {
-                api.prevent_close();
-                let _ = window.hide();
-                let _ = window.emit(EVENTO_VISIVEL, false);
+        .on_window_event(|window, event| {
+            let Some(view) = window.app_handle().get_webview_window(window.label()) else {
+                return;
+            };
+            match event {
+                // Closing keeps voice running in the tray, like the other voice apps; "Sair" in the tray quits.
+                WindowEvent::CloseRequested { api, .. } => {
+                    api.prevent_close();
+                    let _ = window.hide();
+                    update_visibility(&view, false);
+                }
+                WindowEvent::Resized(_) => {
+                    let visible = window.is_visible().unwrap_or(true)
+                        && !window.is_minimized().unwrap_or(false);
+                    update_visibility(&view, visible);
+                }
+                _ => {}
             }
-            WindowEvent::Resized(_) => {
-                let minimizado = window.is_minimized().unwrap_or(false);
-                let _ = window.emit(EVENTO_VISIVEL, !minimizado);
-            }
-            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             remote_changelog,
