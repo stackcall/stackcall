@@ -1,4 +1,5 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
+import { store } from './config';
 
 /**
  * Porteiro API (docs/PLANO-ABERTO.md). One server = one group of friends.
@@ -188,6 +189,33 @@ export function servidorReal(url: string): Servidor {
 }
 
 const MB = 1024 * 1024;
+const UPLOAD_VALE_MS = 24 * 60 * 60 * 1000;
+let medindo: { servidor: string; promessa: Promise<number | null> } | null = null;
+
+/** Upload measured for this server in the last 24 h, or null. */
+export function uploadGuardado(servidor: string): number | null {
+  try {
+    const o = JSON.parse(store.get('upload') ?? 'null') as { mbps: number; at: number; servidor: string } | null;
+    return o && o.servidor === servidor && Date.now() - o.at < UPLOAD_VALE_MS && o.mbps > 0 ? o.mbps : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Saved upload when fresh; otherwise one test at a time per server, saved for 24 h. */
+export function uploadMedido(servidor: string, refazer = false): Promise<number | null> {
+  const guardado = refazer ? null : uploadGuardado(servidor);
+  if (guardado !== null) return Promise.resolve(guardado);
+  if (medindo?.servidor === servidor) return medindo.promessa;
+  const promessa = medirUpload(servidor).then((mbps) => {
+    if (mbps !== null) store.set('upload', JSON.stringify({ mbps, at: Date.now(), servidor }));
+    return mbps;
+  }).finally(() => {
+    if (medindo?.promessa === promessa) medindo = null;
+  });
+  medindo = { servidor, promessa };
+  return promessa;
+}
 
 /** Mbit/s of one connection, counting only requests of 1 MB or more (the slow TCP start is left out). */
 export function taxaUpload(amostras: { bytes: number; ms: number }[]) {

@@ -18,13 +18,13 @@ test('upload test keeps two requests in flight', async () => {
     open--;
     return new Response(null, { status: 204 });
   });
-  onTestFinished(() => vi.unstubAllGlobals());
+  onTestFinished(() => { vi.unstubAllGlobals(); });
   expect(await medirUpload('https://srv.test/', 0.1)).toBeGreaterThan(0);
   expect(most).toBe(2);
 });
 
 test('upload test returns null when the server refuses', async () => {
   vi.stubGlobal('fetch', async () => new Response(null, { status: 500 }));
-  onTestFinished(() => vi.unstubAllGlobals());
+  onTestFinished(() => { vi.unstubAllGlobals(); });
   expect(await medirUpload('https://srv.test', 0.1)).toBeNull();
 });

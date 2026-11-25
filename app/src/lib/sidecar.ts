@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { store } from './config';
 
 export type CaptureSource = {
   id: string;
@@ -9,6 +10,8 @@ export type CaptureSource = {
   height: number | null;
   minimized: boolean;
   thumbnail: string | null;
+  /** Set by cores that know the main monitor. */
+  primary?: boolean;
 };
 
 export type Trial = {
@@ -20,6 +23,10 @@ export type Trial = {
   encoder_load_percent?: number;
 };
 
+/** `driver_version` comes with the v0.4 core; older cores send only the name. */
+export type Adapter = { name: string; dedicated_bytes?: number; driver_version?: string; driver?: string };
+export type MachineReport = { trials: Trial[]; adapters?: Adapter[] };
+
 export type StreamEvent = {
   id: string;
   event: 'started' | 'stats' | 'stopped' | 'error';
@@ -27,5 +34,42 @@ export type StreamEvent = {
 };
 
 export const listSources = () => invoke<CaptureSource[]>('listar_fontes');
-export const testMachine = (force = false) => invoke<{ trials: Trial[] }>('testar_maquina', { force });
+export const testMachine = (force = false) => invoke<MachineReport>('testar_maquina', { force });
 export const stopTransmission = (id: string) => invoke('parar_transmissao', { id });
+
+export type Gpu = { name: string; driver: string | null };
+export type SavedProbe = { gpu: Gpu | null; trials: Trial[]; at: number };
+
+/** The adapter that encodes: the real one with the most dedicated memory. */
+export function gpuOf(report: MachineReport): Gpu | null {
+  const main = (report.adapters ?? [])
+    .filter((a) => !/basic render/i.test(a.name))
+    .sort((a, b) => (b.dedicated_bytes ?? 0) - (a.dedicated_bytes ?? 0))[0];
+  return main ? { name: main.name, driver: main.driver_version ?? main.driver ?? null } : null;
+}
+
+const sameGpu = (a: Gpu | null, b: Gpu | null) => a?.name === b?.name && a?.driver === b?.driver;
+
+export function savedProbe(): SavedProbe | null {
+  try {
+    const saved = JSON.parse(store.get('placa') ?? 'null') as SavedProbe | null;
+    return saved && Array.isArray(saved.trials) ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * GPU test with memory. Without `force` the core answers from its own cache, which only
+ * probes again when the driver changes; same GPU and driver keep the saved result, so the
+ * presets do not change between openings of the screen.
+ */
+export async function probeMachine(force = false): Promise<SavedProbe> {
+  const saved = force ? null : savedProbe();
+  const report = await testMachine(force);
+  const gpu = gpuOf(report);
+  if (saved && sameGpu(saved.gpu, gpu)) return saved;
+  const next = { gpu, trials: report.trials, at: Date.now() };
+  store.set('placa', JSON.stringify(next));
+  return next;
+}
