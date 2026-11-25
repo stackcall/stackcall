@@ -11,7 +11,8 @@ let janelaVisivel = true;
 let jogo = false;
 const ouvintes = new Set<() => void>();
 
-export const interfaceAtiva = () => janelaVisivel && !jogo && !document.hidden;
+const janelaAberta = () => janelaVisivel && !document.hidden;
+export const interfaceAtiva = () => janelaAberta() && !jogo;
 export const emModoJogo = () => jogo;
 
 function atualizar() {
@@ -46,4 +47,5 @@ const assinar = (f: () => void) => {
 
 /** `false` while nobody can see the interface: skip meters, stats and video. */
 export const useInterfaceAtiva = () => useSyncExternalStore(assinar, interfaceAtiva);
+export const useJanelaVisivel = () => useSyncExternalStore(assinar, janelaAberta);
 export const useModoJogo = () => useSyncExternalStore(assinar, emModoJogo);

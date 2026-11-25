@@ -37,7 +37,7 @@ const FIM: Partial<Record<number, string>> = {
   5: 'A sala foi apagada.',
 };
 
-export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomActions {
+export function useLiveRoom(session: Session, roomId: string, onPresenceChange?: () => void): RoomModel & RoomActions {
   const roomRef = useRef<Room | null>(null);
   const [, setTick] = useState(0);
   const rerender = useCallback(() => setTick((t) => t + 1), []);
@@ -99,6 +99,7 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       if (current?.id !== payload.id) return;
       if (payload.event === 'error' || payload.event === 'stopped') {
         native.current = null;
+        onPresenceChange?.();
         if (payload.event === 'error') setStreamError(payload.reason ?? 'O núcleo de transmissão foi encerrado.');
         rerender();
       } else if (payload.event === 'pause_changed' && typeof payload.paused === 'boolean') {
@@ -107,7 +108,7 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       }
     });
     return () => { void unsubscribe.then((unlisten) => unlisten()); };
-  }, [rerender]);
+  }, [rerender, onPresenceChange]);
 
   useEffect(() => {
     const room = new Room({
@@ -203,11 +204,17 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
     room
       .on(RoomEvent.TrackPublished, (pub, p) => {
         subscribeDefault(pub, p);
-        if (pub.source === Track.Source.ScreenShare) announceWatch(room);
+        if (pub.source === Track.Source.ScreenShare) {
+          announceWatch(room);
+          if (!closed) onPresenceChange?.();
+        }
         rerender();
       })
       .on(RoomEvent.TrackUnpublished, (pub, p) => {
-        if (pub.source === Track.Source.ScreenShare) clearWatch(screenOwner(p.identity));
+        if (pub.source === Track.Source.ScreenShare) {
+          clearWatch(screenOwner(p.identity));
+          if (!closed) onPresenceChange?.();
+        }
         rerender();
       })
       .on(RoomEvent.TrackSubscribed, (track) => {
@@ -227,6 +234,7 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       })
       .on(RoomEvent.ParticipantConnected, (p) => {
         if (closed) return;
+        onPresenceChange?.();
         applyVolume(p);
         const mine = watchingRef.current;
         if (mine && !screenParticipant(p.identity)) void sendWatch(room, mine, [p.identity]);
@@ -243,6 +251,7 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       })
       .on(RoomEvent.ParticipantDisconnected, (p) => {
         if (closed) return;
+        onPresenceChange?.();
         legacyWatchers.current.delete(p.identity);
         viewers.leave(p.identity);
         if (screenParticipant(p.identity) || !room.remoteParticipants.has(p.identity + SCREEN_SUFFIX)) {
@@ -284,18 +293,26 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       })
       .on(RoomEvent.TrackMuted, rerender)
       .on(RoomEvent.TrackUnmuted, rerender)
-      .on(RoomEvent.LocalTrackPublished, rerender)
-      .on(RoomEvent.LocalTrackUnpublished, rerender)
+      .on(RoomEvent.LocalTrackPublished, (pub) => {
+        if (!closed && pub.source === Track.Source.ScreenShare) onPresenceChange?.();
+        rerender();
+      })
+      .on(RoomEvent.LocalTrackUnpublished, (pub) => {
+        if (!closed && pub.source === Track.Source.ScreenShare) onPresenceChange?.();
+        rerender();
+      })
       .on(RoomEvent.ConnectionStateChanged, checkPause)
       .on(RoomEvent.Reconnecting, () => setState('reconnecting'))
       .on(RoomEvent.Reconnected, () => {
         if (closed) return;
+        onPresenceChange?.();
         advertise();
         announceWatch(room, true);
         setState('connected');
       })
       .on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {
         if (closed) return;
+        onPresenceChange?.();
         if (native.current) void stopTransmission(native.current.id).catch(() => undefined);
         const fim = reason !== undefined ? FIM[reason] : undefined;
         setAutoRetry(!fim);
@@ -309,6 +326,7 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
         if (closed) return;
         await room.connect(url, token, { autoSubscribe: false });
         if (closed) return void room.disconnect();
+        onPresenceChange?.();
         advertise();
         room.remoteParticipants.forEach((p) => {
           applyVolume(p);
@@ -390,12 +408,12 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       live.current = null;
       const publishing = native.current;
       native.current = null;
-      if (publishing) void stopTransmission(publishing.id).catch(() => undefined);
-      void room.disconnect();
+      if (publishing) void stopTransmission(publishing.id).then(onPresenceChange, () => undefined);
+      void room.disconnect().then(onPresenceChange, () => onPresenceChange?.());
       audioElements.forEach((el) => el.remove());
       roomRef.current = null;
     };
-  }, [session, roomId, rerender]);
+  }, [session, roomId, rerender, onPresenceChange]);
 
   // Nobody sees the screen for VIDEO_OCULTO_MS: pause the watched video (no download, no decode).
   useEffect(() => {
@@ -572,6 +590,7 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
           throw new Error('A sala mudou. Escolha a fonte novamente.');
         }
         stream.ready = true;
+        onPresenceChange?.();
         checkPauseRef.current?.();
         rerender();
       } catch (error) {

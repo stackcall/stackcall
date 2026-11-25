@@ -24,6 +24,7 @@ export type RoomProps = {
   sala: string | null;
   demo: boolean;
   onSala(id: string | null): void;
+  onPresenceChange?(): void;
   onConfig(): void;
   onPerfil(): void;
   onCartao(id: string): void;
@@ -51,7 +52,7 @@ export function RoomScreen(props: RoomProps) {
 function LiveRoom(props: ComSala) {
   const [tentativa, setTentativa] = useState(0);
   const session = useMemo(() => ({ servidor: props.servidor }), [props.servidor, tentativa]);
-  const model = useLiveRoom(session, props.sala.id);
+  const model = useLiveRoom(session, props.sala.id, props.onPresenceChange);
   const rec = useReconexao(model.state, model.autoRetry !== false, () => setTentativa((n) => n + 1));
   return <RoomView {...props} model={model} reconexao={rec} onRetry={rec.reconectar} />;
 }

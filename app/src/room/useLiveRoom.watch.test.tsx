@@ -73,6 +73,28 @@ describe('LiveKit screen watching in the room', () => {
   });
   afterEach(() => vi.useRealTimers());
 
+  it('signals presence changes after voice and screen events', async () => {
+    const changed = vi.fn();
+    const { unmount } = renderHook(() => useLiveRoom(session, 'room', changed));
+    await tick(0);
+    expect(changed).toHaveBeenCalledTimes(1);
+    const room = mock.room!;
+    const remote = participant('remote', true);
+    const screen = { source: Track.Source.ScreenShare };
+    act(() => {
+      room.remoteParticipants.set(remote.identity, remote);
+      room.emit(RoomEvent.ParticipantConnected, remote);
+      room.emit(RoomEvent.TrackPublished, screen, remote);
+      room.emit(RoomEvent.TrackUnpublished, screen, remote);
+      room.remoteParticipants.delete(remote.identity);
+      room.emit(RoomEvent.ParticipantDisconnected, remote);
+    });
+    expect(changed).toHaveBeenCalledTimes(5);
+    unmount();
+    await tick(0);
+    expect(changed).toHaveBeenCalledTimes(6);
+  });
+
   it('pauses with an idle capable participant, resumes on watch and protects an old app', async () => {
     const { result, unmount } = renderHook(() => useLiveRoom(session, 'room'));
     await tick(0);
