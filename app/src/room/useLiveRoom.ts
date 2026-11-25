@@ -9,6 +9,7 @@ import { interfaceAtiva, useInterfaceAtiva } from '../lib/leveza';
 import type { Servidor } from '../lib/servidor';
 import { resolutionOf, type Codec, type Preset } from '../lib/presets';
 import { stopTransmission, type StreamEvent } from '../lib/sidecar';
+import { aoMudarVoz, capturaDe, lerVoz } from '../lib/voz';
 import { horaDe, type ChatMessage, type Person, type RoomActions, type RoomModel, type Stream, type StreamStats } from './model';
 
 export type Session = { servidor: Servidor };
@@ -85,7 +86,8 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       webAudioMix: true, // lets per-person gain go above 100%
       adaptiveStream: true,
       dynacast: true,
-      audioCaptureDefaults: { channelCount: 1, sampleRate: 48000, noiseSuppression: true, echoCancellation: true, autoGainControl: true },
+      audioCaptureDefaults: capturaDe(lerVoz()),
+      audioOutput: lerVoz().saida ? { deviceId: lerVoz().saida } : undefined,
       // Opus 48 kbps with DTX (silence costs nothing) and RED (redundancy against packet loss).
       publishDefaults: { audioPreset: AudioPresets.music, dtx: true, red: true },
     });
@@ -226,6 +228,17 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       }
     })();
 
+    // Settings > Voz: devices and processing change without leaving the room.
+    const pararVoz = aoMudarVoz((v, antes) => {
+      room.options.audioCaptureDefaults = capturaDe(v);
+      if (v.saida !== antes.saida) void room.switchActiveDevice('audiooutput', v.saida || 'default').catch(() => undefined);
+      const mic = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.audioTrack;
+      if (!mic) return;
+      if (v.entrada !== antes.entrada || v.eco !== antes.eco || v.ganho !== antes.ganho || v.ruido !== antes.ruido) {
+        void mic.restartTrack(capturaDe(v)).then(() => setMicError(undefined), () => setMicError(MIC_ERROR));
+      }
+    });
+
     // Real ping and stage numbers from WebRTC stats every 2 s, only while someone can see them.
     let lastVideo: { bytes: number; at: number } | null = null;
     const stats = setInterval(async () => {
@@ -249,6 +262,7 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
     }, 2000);
     return () => {
       closed = true;
+      pararVoz();
       screenAccess.current = null;
       clearInterval(stats);
       live.current?.track.stop();

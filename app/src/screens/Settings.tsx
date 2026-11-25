@@ -8,9 +8,10 @@ import { Icone } from '../components/Icone';
 import { testMachine } from '../lib/sidecar';
 import type { Convite, Pessoa, Sala, Servidor, Usuario } from '../lib/servidor';
 import { escolherServidor, lerServidores, servidorAtual } from '../lib/servidores';
+import { SecaoPreferencias } from './Preferencias';
 
 type Updater = ReturnType<typeof useUpdater>;
-type Secao = 'servidor' | 'servidores' | 'sobre';
+type Secao = 'servidor' | 'servidores' | 'voz' | 'sobre';
 
 const CATEGORY_LABEL: Record<(typeof CATEGORIES)[number], [string, string]> = {
   Novidades: ['novidade', 'novidades'],
@@ -54,6 +55,7 @@ export function Settings(props: Props) {
   }, [props.onClose]);
   const itens: [Secao, string][] = [
     ...(props.servidor ? ([['servidor', 'Servidor'], ['servidores', 'Servidores']] as [Secao, string][]) : []),
+    ['voz', 'Voz e tema'],
     ['sobre', 'Sobre e atualizações'],
   ];
   return (
@@ -69,6 +71,7 @@ export function Settings(props: Props) {
       <main className="flex min-w-0 flex-col gap-5 overflow-y-auto px-10 py-7">
         {secao === 'servidor' && props.servidor && props.eu && <SecaoServidor {...props} servidor={props.servidor} eu={props.eu} />}
         {secao === 'servidores' && <SecaoServidores atual={props.servidor?.url ?? null} onTrocar={props.onTrocar} onColarConvite={props.onColarConvite} />}
+        {secao === 'voz' && <SecaoPreferencias />}
         {secao === 'sobre' && <SecaoSobre updater={props.updater} inCall={props.inCall} onNotes={props.onNotes} />}
       </main>
     </div>
