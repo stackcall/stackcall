@@ -37,11 +37,11 @@ test('generates the current 0.4.0 entry without git-cliff when the history is co
 test('allows git-cliff to describe a new release before its manual notes exist', (t) => {
   const release = fixture(t);
   const change = { message: 'Corrige a presença', breaking: false };
-  release.writeContext([{ version: 'v0.4.1', timestamp: 1720000000, commits: [{ group: 'Correções', ...change }] }]);
-  assert.equal(release.run('--needs-cliff', 'v0.4.1'), 'true');
-  release.run('cliff-context.json', 'v0.4.1');
+  release.writeContext([{ version: 'v0.4.99', timestamp: 1720000000, commits: [{ group: 'Correções', ...change }] }]);
+  assert.equal(release.run('--needs-cliff', 'v0.4.99'), 'true');
+  release.run('cliff-context.json', 'v0.4.99');
   assert.deepEqual(release.output(), [
-    { version: '0.4.1', date: '2024-07-03', categories: [{ name: 'Correções', items: [change] }] }, release040,
+    { version: '0.4.99', date: '2024-07-03', categories: [{ name: 'Correções', items: [change] }] }, release040,
   ]);
 });
 

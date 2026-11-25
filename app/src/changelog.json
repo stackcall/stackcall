@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.4.1",
+    "date": "2026-11-25",
+    "categories": [
+      {
+        "name": "Correções",
+        "items": [
+          { "message": "As melhorias da transmissão agora ficam ligadas: captura no fps escolhido, CBR de baixa latência, H.264 High e preset NVENC melhor nas placas NVIDIA (na 0.4.0 elas não eram ativadas)", "breaking": false },
+          { "message": "Salas e pessoas online atualizam sozinhas, sem precisar trocar de janela", "breaking": false },
+          { "message": "As novidades do app mostram o texto escrito para você, e não o texto técnico", "breaking": false },
+          { "message": "Saguão com grupo pequeno sem área vazia", "breaking": false }
+        ]
+      },
+      {
+        "name": "Ajustes",
+        "items": [
+          { "message": "O teste da placa roda de novo uma vez, para medir com as melhorias ligadas", "breaking": false }
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.4.0",
     "date": "2026-11-25",
     "categories": [

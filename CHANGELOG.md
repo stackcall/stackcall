@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.4.1
+
+### Correções
+
+- As melhorias da transmissão agora ficam ligadas: captura no fps escolhido, CBR de baixa latência, H.264 High e preset NVENC melhor nas placas NVIDIA (na 0.4.0 elas não eram ativadas)
+- Salas e pessoas online atualizam sozinhas, sem precisar trocar de janela
+- As novidades do app mostram o texto escrito para você, e não o texto técnico
+- Saguão com grupo pequeno sem área vazia
+
+### Ajustes
+
+- O teste da placa roda de novo uma vez, para medir com as melhorias ligadas
+
 ## v0.4.0
 
 ### Novidades
