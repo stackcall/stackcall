@@ -47,3 +47,9 @@ O time informado escolhe o destino. A detecção do GSI é feita pelo app e não
 ## LiveKit em suspensão
 
 Ao pedir um token de sala ou de sub-sala com o recurso habilitado, o app pode receber `503` com `{"erro":"livekit_acordando"}` e `Retry-After: 1`. Mostre “Acordando o servidor de voz…” e repita o mesmo POST a cada 1 s, com prazo total de 20 s e cancelamento se a pessoa desistir. Com `200`, prossiga com a conexão. Se o prazo vencer, mostre a falha e permita nova tentativa. Presença, lista de salas e saúde seguem disponíveis enquanto a voz dorme.
+
+## Quem me ouve
+
+O app publica no participante de voz o atributo LiveKit `stackcall.ouve.v1`, cujo valor é uma string JSON, por exemplo `["<id-da-pessoa-a>","<id-da-pessoa-b>"]`. Liste as identidades dos participantes de voz cujas faixas de microfone estão assinadas e com reprodução local habilitada e volume acima de zero. Publique `[]` ao ensurdecer ou quando não ouvir ninguém.
+
+Para montar a lista “Quem me ouve”, procure nos participantes remotos do canal os atributos que contêm a identidade de voz local. Ignore identidades de tela (sufixo `:tela`) e atributos ausentes ou inválidos. Recalcule ao mudar assinatura, saída de som, ensurdecimento ou volume, agrupando mudanças próximas antes de publicar. O valor é declarado por cada cliente e serve à interface. O token de voz já autoriza a pessoa a atualizar os próprios atributos.
