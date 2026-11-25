@@ -49,7 +49,7 @@ export function PaginaClipes({ destaque }: Pagina) {
         <Chave rotulo="Replay sempre ligado" ligado={p.replayLigado} onMudar={(replayLigado) => mudar({ replayLigado })} />
       </Linha>
       <Linha ajuste="replay-tempo" titulo="Quanto tempo guardar" destaque={destaque === 'replay-tempo'}
-        descricao={`Mais tempo usa mais memória: ${p.replaySegundos} s em 1080p60 ocupam cerca de ${Math.round(p.replaySegundos * 7.5)} MB.`}>
+        descricao={`Mais tempo usa mais memória: ${p.replaySegundos} s em 1080p60 ocupam cerca de ${Math.round(p.replaySegundos * 1.5)} MB (12 Mb/s).`}>
         <Segmento rotulo="Quanto tempo guardar" valor={p.replaySegundos} opcoes={[[30, '30 s'], [60, '60 s'], [120, '120 s']]} onMudar={(replaySegundos) => mudar({ replaySegundos })} />
       </Linha>
       <Linha ajuste="replay-qualidade" titulo="Qualidade do clipe" destaque={destaque === 'replay-qualidade'}

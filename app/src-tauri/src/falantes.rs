@@ -87,20 +87,32 @@ pub async fn falantes_abrir(app: AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(LABEL) {
         return window.show().map_err(|error| error.to_string());
     }
-    let window =
-        WebviewWindowBuilder::new(&app, LABEL, WebviewUrl::App("index.html?falantes=1".into()))
-            .title("Stackcall · Falantes")
-            .inner_size(320.0, 96.0)
-            .decorations(false)
-            .resizable(false)
-            .transparent(true)
-            .always_on_top(true)
-            .skip_taskbar(true)
-            .focused(false)
-            .focusable(false)
-            .visible(false)
-            .build()
-            .map_err(|error| error.to_string())?;
+    // O WebView2 recusa (0x8007139F) uma segunda janela com argumentos de navegador diferentes
+    // dos da principal; por isso repete os do tauri.conf.json.
+    let browser_args = app
+        .config()
+        .app
+        .windows
+        .first()
+        .and_then(|main| main.additional_browser_args.clone());
+    let mut builder =
+        WebviewWindowBuilder::new(&app, LABEL, WebviewUrl::App("index.html?falantes=1".into()));
+    if let Some(args) = browser_args.as_deref() {
+        builder = builder.additional_browser_args(args);
+    }
+    let window = builder
+        .title("Stackcall · Falantes")
+        .inner_size(320.0, 96.0)
+        .decorations(false)
+        .resizable(false)
+        .transparent(true)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .focused(false)
+        .focusable(false)
+        .visible(false)
+        .build()
+        .map_err(|error| error.to_string())?;
     if let Ok(path) = position_path(&app) {
         if let Some(position) = std::fs::read(path)
             .ok()

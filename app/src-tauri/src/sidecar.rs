@@ -597,6 +597,7 @@ fn local_command(app: &AppHandle, config: &ReplayConfig) -> Result<Command, Stri
             "--control-stdin",
             "--limit-capture-fps",
             "--cbr",
+            "--hardware-quality",
             "--cache-cpu-scaler",
             "--codec",
             "h264",
