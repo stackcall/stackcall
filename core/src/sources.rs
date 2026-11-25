@@ -3,6 +3,14 @@ use std::{sync::mpsc, time::Duration};
 use anyhow::Result;
 use base64::Engine;
 use serde::Serialize;
+use windows::Win32::{
+    Foundation::HWND,
+    Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute},
+    UI::WindowsAndMessaging::{
+        GW_OWNER, GWL_EXSTYLE, GetWindow, GetWindowLongW, IsIconic, IsWindowVisible,
+        WS_EX_TOOLWINDOW,
+    },
+};
 use windows_capture::{
     capture::{Context, GraphicsCaptureApiHandler},
     frame::Frame,
@@ -21,6 +29,30 @@ pub struct SourceInfo {
     width: u32,
     height: u32,
     thumbnail: Option<String>,
+}
+
+struct WindowMetadata<'a> {
+    title: &'a str,
+    width: i32,
+    height: i32,
+    visible: bool,
+    minimized: bool,
+    cloaked: bool,
+    tool_window: bool,
+    owned: bool,
+}
+
+impl WindowMetadata<'_> {
+    fn is_shareable(&self) -> bool {
+        self.visible
+            && !self.minimized
+            && !self.cloaked
+            && !self.tool_window
+            && !self.owned
+            && !self.title.trim().is_empty()
+            && self.width >= 320
+            && self.height >= 200
+    }
 }
 
 pub fn list() -> Result<Vec<SourceInfo>> {
@@ -43,14 +75,36 @@ pub fn list() -> Result<Vec<SourceInfo>> {
         });
     }
     for window in Window::enumerate()? {
-        let (Ok(title), Ok(pid), Ok(width), Ok(height)) = (
-            window.title(),
-            window.process_id(),
-            window.width(),
-            window.height(),
-        ) else {
+        let (Ok(title), Ok(pid), Ok(rect)) = (window.title(), window.process_id(), window.rect())
+        else {
             continue;
         };
+        let (width, height) = (rect.right - rect.left, rect.bottom - rect.top);
+        let hwnd = HWND(window.as_raw_hwnd());
+        let mut cloaked = 0_u32;
+        // The handle comes from Win32 enumeration and the DWM output buffer is a DWORD.
+        let metadata = unsafe {
+            let cloak_known = DwmGetWindowAttribute(
+                hwnd,
+                DWMWA_CLOAKED,
+                std::ptr::from_mut(&mut cloaked).cast(),
+                size_of::<u32>() as u32,
+            )
+            .is_ok();
+            WindowMetadata {
+                title: &title,
+                width,
+                height,
+                visible: IsWindowVisible(hwnd).as_bool(),
+                minimized: IsIconic(hwnd).as_bool(),
+                cloaked: cloak_known && cloaked != 0,
+                tool_window: GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_TOOLWINDOW.0 != 0,
+                owned: GetWindow(hwnd, GW_OWNER).is_ok(),
+            }
+        };
+        if !metadata.is_shareable() {
+            continue;
+        }
         let process_name = window.process_name().ok();
         let own_process = process_name.as_deref().is_some_and(|name| {
             let name = name.to_ascii_lowercase();
@@ -59,12 +113,7 @@ pub fn list() -> Result<Vec<SourceInfo>> {
                 "stackcall" | "stackcall-core"
             )
         });
-        if Some(pid) == app_pid
-            || pid == std::process::id()
-            || own_process
-            || width <= 0
-            || height <= 0
-        {
+        if Some(pid) == app_pid || pid == std::process::id() || own_process {
             continue;
         }
         sources.push(SourceInfo {
@@ -143,5 +192,79 @@ impl GraphicsCaptureApiHandler for Thumbnail {
             .try_send(base64::engine::general_purpose::STANDARD.encode(png));
         control.stop();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WindowMetadata;
+
+    #[test]
+    fn filters_windows_before_capturing_thumbnails() {
+        let normal = WindowMetadata {
+            title: "Counter-Strike 2",
+            width: 1920,
+            height: 1080,
+            visible: true,
+            minimized: false,
+            cloaked: false,
+            tool_window: false,
+            owned: false,
+        };
+
+        assert!(normal.is_shareable());
+        for excluded in [
+            WindowMetadata {
+                cloaked: true,
+                ..normal
+            },
+            WindowMetadata {
+                width: 160,
+                height: 28,
+                ..normal
+            },
+            WindowMetadata {
+                width: 319,
+                ..normal
+            },
+            WindowMetadata {
+                height: 199,
+                ..normal
+            },
+            WindowMetadata {
+                title: "",
+                ..normal
+            },
+            WindowMetadata {
+                title: " \t ",
+                ..normal
+            },
+            WindowMetadata {
+                visible: false,
+                ..normal
+            },
+            WindowMetadata {
+                minimized: true,
+                ..normal
+            },
+            WindowMetadata {
+                tool_window: true,
+                ..normal
+            },
+            WindowMetadata {
+                owned: true,
+                ..normal
+            },
+        ] {
+            assert!(!excluded.is_shareable());
+        }
+        assert!(
+            WindowMetadata {
+                width: 320,
+                height: 200,
+                ..normal
+            }
+            .is_shareable()
+        );
     }
 }
