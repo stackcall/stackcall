@@ -14,15 +14,21 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::{runtime::Handle, task::JoinHandle};
-use wasapi::{AudioClient, Direction, SampleType, StreamMode, WaveFormat};
+use wasapi::{AudioClient, DeviceEnumerator, Direction, Role, SampleType, StreamMode, WaveFormat};
 
-const RATE: u32 = 48_000;
-const CHANNELS: u32 = 2;
+pub const RATE: u32 = 48_000;
+pub const CHANNELS: u32 = 2;
 const FRAMES: u32 = RATE / 100;
 const CHUNK_BYTES: usize = (FRAMES * CHANNELS * 2) as usize;
+
+#[derive(Clone)]
+pub enum Target {
+    Process { pid: u32, include: bool },
+    Microphone(Option<String>),
+}
 
 #[derive(Default)]
 pub struct Worker {
@@ -31,7 +37,12 @@ pub struct Worker {
 }
 
 impl Worker {
-    pub async fn start(&mut self, room: &Room, pid: u32) -> Result<()> {
+    pub async fn start(
+        &mut self,
+        room: &Room,
+        target: Target,
+        recorder: crate::replay::Recorder,
+    ) -> Result<()> {
         let source = NativeAudioSource::new(AudioSourceOptions::default(), RATE, CHANNELS, 40);
         let track = LocalAudioTrack::create_audio_track(
             "game audio",
@@ -54,7 +65,29 @@ impl Worker {
         let runtime = Handle::current();
         let stopping = self.stopping.clone();
         self.task = Some(tokio::task::spawn_blocking(move || {
-            capture(pid, source, &runtime, &stopping).context("WASAPI process loopback")
+            capture(
+                target,
+                || stopping.load(Ordering::Relaxed),
+                |at, data| {
+                    if recorder.active() {
+                        recorder.audio(0, at, data.clone());
+                    }
+                    runtime.block_on(async {
+                        tokio::time::timeout(
+                            Duration::from_secs(1),
+                            source.capture_frame(&AudioFrame {
+                                data: Cow::Owned(data),
+                                sample_rate: RATE,
+                                num_channels: CHANNELS,
+                                samples_per_channel: FRAMES,
+                            }),
+                        )
+                        .await??;
+                        Ok(())
+                    })
+                },
+            )
+            .context("WASAPI process loopback")
         }));
         Ok(())
     }
@@ -75,15 +108,29 @@ impl Worker {
     }
 }
 
-fn capture(
-    pid: u32,
-    source: NativeAudioSource,
-    runtime: &Handle,
-    stopping: &AtomicBool,
+pub fn capture(
+    target: Target,
+    stopping: impl Fn() -> bool,
+    mut consume: impl FnMut(Instant, Vec<i16>) -> Result<()>,
 ) -> Result<()> {
     wasapi::initialize_mta().ok()?;
     let result = (|| {
-        let mut client = AudioClient::new_application_loopback_client(pid, true)?;
+        let mut client = match target {
+            Target::Process { pid, include } => {
+                AudioClient::new_application_loopback_client(pid, include)?
+            }
+            Target::Microphone(ref name) => {
+                let devices = DeviceEnumerator::new()?;
+                let device = if let Some(name) = name {
+                    devices
+                        .get_device_collection(Direction::Capture)?
+                        .get_device_with_name(name)?
+                } else {
+                    devices.get_default_device_for_role(Direction::Capture, Role::Communications)?
+                };
+                device.get_iaudioclient()?
+            }
+        };
         let format = WaveFormat::new(
             16,
             16,
@@ -106,27 +153,18 @@ fn capture(
         let mut bytes = VecDeque::new();
         client.start_stream()?;
         let result = (|| {
-            while !stopping.load(Ordering::Relaxed) {
+            while !stopping() {
                 while reader.get_next_packet_size()?.unwrap_or(0) > 0 {
                     reader.read_from_device_to_deque(&mut bytes)?;
                 }
-                while bytes.len() >= CHUNK_BYTES && !stopping.load(Ordering::Relaxed) {
+                let now = Instant::now();
+                while bytes.len() >= CHUNK_BYTES && !stopping() {
                     let (samples, _) = bytes.make_contiguous()[..CHUNK_BYTES].as_chunks::<2>();
                     let data = samples.iter().copied().map(i16::from_le_bytes).collect();
+                    let pending =
+                        Duration::from_micros((bytes.len() as u64 * 10_000) / CHUNK_BYTES as u64);
                     bytes.drain(..CHUNK_BYTES);
-                    runtime.block_on(async {
-                        tokio::time::timeout(
-                            Duration::from_secs(1),
-                            source.capture_frame(&AudioFrame {
-                                data: Cow::Owned(data),
-                                sample_rate: RATE,
-                                num_channels: CHANNELS,
-                                samples_per_channel: FRAMES,
-                            }),
-                        )
-                        .await??;
-                        Ok::<_, anyhow::Error>(())
-                    })?;
+                    consume(now.checked_sub(pending).unwrap_or(now), data)?;
                 }
                 let _ = event.wait_for_event(20);
             }

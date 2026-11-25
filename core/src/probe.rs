@@ -231,7 +231,7 @@ pub fn nvenc_recommendation(
 }
 
 fn measure(name: &str, res: Resolution, fps: u32, kbps: u32, tuning: Tuning) -> Result<Outcome> {
-    let mut session = encoder::open(name, res, fps, kbps, None, tuning)?;
+    let mut session = encoder::open(name, res.dimensions(), fps, kbps, None, tuning)?;
     let (width, height) = res.dimensions();
     let mut frames: Vec<_> = (0..4)
         .map(|phase| {

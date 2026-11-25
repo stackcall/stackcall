@@ -16,8 +16,8 @@ O diretório indicado em `FFMPEG_DIR` fica fora do repositório e deve
 conter `include`, `lib` e `bin`. A compilação usa as bibliotecas de importação
 MSVC. O WebRTC pré-compilado usa o runtime C++ estático. O FFmpeg
 continua vinculado por DLL. As chamadas importam explicitamente
-`avcodec-63.dll`, `avutil-61.dll` e `swscale-10.dll` para separar o FFmpeg
-LGPL dos símbolos internos do WebRTC. A pilha de 16 MiB evita o estouro observado ao gerar as bindings
+`avcodec-63.dll`, `avformat-63.dll`, `avutil-61.dll` e `swscale-10.dll` para
+separar o FFmpeg LGPL dos símbolos internos do WebRTC. A pilha de 16 MiB evita o estouro observado ao gerar as bindings
 do FFmpeg com bindgen. Use um diretório de build curto para que o MSVC
 encontre os cabeçalhos aninhados do WebRTC. Para executar, mantenha o diretório `bin` no PATH ou coloque as DLLs
 dele ao lado de `stackcall-core.exe`.

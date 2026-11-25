@@ -9,6 +9,7 @@ foreach ($resource in $config.bundle.resources.PSObject.Properties) {
         $dlls[$resource.Value] = Get-Item -LiteralPath (Join-Path $tauri $resource.Name)
     }
 }
+if (!$dlls.ContainsKey('avformat-63.dll')) { throw 'O muxer de clipes precisa de avformat-63.dll no pacote.' }
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
 $dumpbin = & $vswhere -latest -products '*' -find 'VC/Tools/MSVC/**/bin/Hostx64/x64/dumpbin.exe' |
@@ -29,6 +30,8 @@ $missing = foreach ($file in (@($core) + @($dlls.Values))) {
         if ($dlls.ContainsKey($dll) -or $dll -match '^(api|ext)-ms-win-') { continue }
         $systemDll = Get-Item -LiteralPath (Join-Path ([Environment]::SystemDirectory) $dll) `
             -ErrorAction SilentlyContinue
+        # The localized product name for the Windows property system can be Windows Search.
+        if ($systemDll -and $dll -eq 'propsys.dll') { continue }
         # System32 can also contain separately installed runtimes such as the VC++ redistributable.
         if ($systemDll.VersionInfo.ProductName -notmatch 'Microsoft.*Windows') {
             "$($file.Name) -> $dll"

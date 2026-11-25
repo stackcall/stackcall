@@ -38,6 +38,7 @@
     ],
     "resources": {
       "sidecar/avcodec-63.dll": "avcodec-63.dll",
+      "sidecar/avformat-63.dll": "avformat-63.dll",
       "sidecar/avutil-61.dll": "avutil-61.dll",
       "sidecar/swscale-10.dll": "swscale-10.dll",
       "sidecar/swresample-7.dll": "swresample-7.dll",

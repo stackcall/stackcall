@@ -1,7 +1,8 @@
 use crate::media::{self, Frame as AvFrame, Picture, Scaler};
 use crate::{
-    cli::{Codec, Publish, Source, bits_per_second},
-    encoder, gpu,
+    audio::{self, Target as AudioTarget},
+    cli::{Codec, Publish, Resolution, Source, bits_per_second},
+    encoder, gpu, replay,
 };
 use anyhow::{Context as _, Result, ensure};
 use livekit::{
@@ -14,11 +15,11 @@ use livekit::{
 };
 use serde::Deserialize;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     io::{BufRead, Write},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicU32, Ordering},
+        atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -36,17 +37,24 @@ type Control = CaptureControl<Capture, anyhow::Error>;
 #[derive(Clone)]
 struct Setup {
     args: Publish,
+    size: (u32, u32),
     source: NativeVideoSource,
     stats: Arc<Mutex<Stats>>,
     requests: Arc<Requests>,
     tuning: encoder::Tuning,
+    recorder: Option<replay::Recorder>,
 }
 
 #[derive(Default)]
 struct Requests {
     kbps: AtomicU32,
     keyframe: AtomicBool,
+    network: AtomicU8,
 }
+
+const NETWORK_OFF: u8 = 0;
+const NETWORK_KEY: u8 = 1;
+const NETWORK_ACTIVE: u8 = 2;
 
 #[derive(Deserialize)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
@@ -54,8 +62,22 @@ enum Command {
     Stop,
     Pause,
     Resume,
-    Bitrate { kbps: u32 },
+    Bitrate {
+        kbps: u32,
+    },
     Keyframe,
+    Replay {
+        segundos: Option<u32>,
+    },
+    Microphone {
+        ativo: bool,
+        dispositivo: Option<String>,
+    },
+    Light {
+        participante: String,
+        assistir: bool,
+    },
+    Clip,
 }
 
 fn stop_capture(control: Control) -> Result<()> {
@@ -100,7 +122,7 @@ struct Stats {
 struct Capture {
     setup: Setup,
     session: Option<Session>,
-    first_timestamp: Option<i64>,
+    first_timestamp: Option<(i64, Instant)>,
     last_key_request: Option<i64>,
     last_slot: Option<u128>,
     kbps: u32,
@@ -115,7 +137,7 @@ struct Session {
     encoder: encoder::Session,
     conversion: Conversion,
     input_size: (u32, u32),
-    pending: BTreeMap<i64, (i64, Instant)>,
+    pending: BTreeMap<i64, (i64, Instant, Instant)>,
 }
 
 #[derive(Default)]
@@ -158,20 +180,32 @@ fn start_capture(setup: Setup) -> Result<Control> {
         let monitor = window.monitor();
         start(window, monitor, setup)
     };
-    match &setup.args.source {
+    match resolve_target(&setup.args.source)? {
+        CaptureTarget::Window(window) => start_window(window, setup),
+        CaptureTarget::Monitor(monitor) => start(monitor, Some(monitor), setup),
+    }
+}
+
+enum CaptureTarget {
+    Window(Window),
+    Monitor(Monitor),
+}
+
+fn resolve_target(source: &Source) -> Result<CaptureTarget> {
+    Ok(match source {
         Source::Monitor(index) => {
             let monitor = *Monitor::enumerate()?
                 .get(*index)
                 .context("monitor index out of range")?;
-            start(monitor, Some(monitor), setup)
+            CaptureTarget::Monitor(monitor)
         }
-        Source::Window(title) => start_window(Window::from_name(title)?, setup),
+        Source::Window(title) => CaptureTarget::Window(Window::from_name(title)?),
         Source::Pid(pid) => {
             let window = Window::enumerate()?
                 .into_iter()
                 .find(|window| window.process_id().ok() == Some(*pid))
                 .context("no capturable window for this PID")?;
-            start_window(window, setup)
+            CaptureTarget::Window(window)
         }
         Source::WindowHandle { handle, pid } => {
             let window = Window::from_raw_hwnd(*handle as *mut _);
@@ -179,16 +213,66 @@ fn start_capture(setup: Setup) -> Result<Control> {
                 window.is_valid() && window.process_id().ok() == Some(*pid),
                 "A janela escolhida foi fechada."
             );
-            start_window(window, setup)
+            CaptureTarget::Window(window)
         }
         Source::MonitorHandle(handle) => {
             let monitor = Monitor::enumerate()?
                 .into_iter()
                 .find(|monitor| monitor.as_raw_hmonitor() as usize == *handle)
                 .context("A tela escolhida foi desconectada.")?;
-            start(monitor, Some(monitor), setup)
+            CaptureTarget::Monitor(monitor)
         }
-    }
+    })
+}
+
+fn local_dimensions(target: &CaptureTarget, preset: (u32, u32)) -> Result<(u32, u32)> {
+    let (width, height) = match target {
+        CaptureTarget::Monitor(monitor) => (monitor.width()?, monitor.height()?),
+        CaptureTarget::Window(window) => (
+            window.width()?.max(0) as u32,
+            window.height()?.max(0) as u32,
+        ),
+    };
+    ensure!(
+        width >= 2 && height >= 2,
+        "A fonte do replay não tem uma área visível."
+    );
+    let scale = (f64::from(preset.0) / f64::from(width))
+        .min(f64::from(preset.1) / f64::from(height))
+        .min(1.0);
+    Ok((
+        ((f64::from(width) * scale) as u32).max(2) & !1,
+        ((f64::from(height) * scale) as u32).max(2) & !1,
+    ))
+}
+
+async fn publish_video(room: &Room, setup: &Setup, name: &str) -> Result<TrackSid> {
+    let video_codec = match setup.args.codec {
+        Codec::H264 => VideoCodec::H264,
+        Codec::Av1 => VideoCodec::AV1,
+    };
+    let publication = room
+        .local_participant()
+        .publish_track(
+            LocalTrack::Video(LocalVideoTrack::create_video_track(
+                name,
+                RtcVideoSource::Native(setup.source.clone()),
+            )),
+            TrackPublishOptions {
+                source: TrackSource::Screenshare,
+                stream: "screen".into(),
+                video_codec,
+                video_encoder: VideoEncoderBackend::PreEncoded,
+                video_encoding: Some(VideoEncoding {
+                    max_bitrate: bits_per_second(setup.args.bitrate) as u64,
+                    max_framerate: f64::from(setup.args.fps),
+                }),
+                simulcast: false,
+                ..Default::default()
+            },
+        )
+        .await?;
+    Ok(publication.sid())
 }
 
 fn capture_interval_us(fps: u32, refresh: Option<u32>) -> u64 {
@@ -209,7 +293,94 @@ fn capture_interval_preserves_target_on_high_refresh_displays() {
     }
 }
 
-pub async fn run(args: Publish) -> Result<()> {
+#[derive(Default)]
+struct Light {
+    viewers: HashMap<String, Instant>,
+    running: Option<(Control, TrackSid)>,
+    failed: bool,
+}
+
+impl Light {
+    fn request(&mut self, identity: String, assistir: bool) {
+        if identity.is_empty() || identity.len() > 128 || identity.ends_with(":tela") {
+            return;
+        }
+        if assistir {
+            self.viewers.insert(identity, Instant::now());
+        } else {
+            self.viewers.remove(&identity);
+        }
+    }
+
+    async fn stop(&mut self, room: &Room) {
+        if let Some((control, sid)) = self.running.take() {
+            if let Err(error) = stop_capture(control) {
+                eprintln!("Faixa leve: {error:#}");
+            }
+            if let Err(error) = room.local_participant().unpublish_track(&sid).await {
+                eprintln!("Encerrar faixa leve: {error:#}");
+            }
+        }
+    }
+
+    async fn update(&mut self, room: &Room, main: &Setup) {
+        self.viewers
+            .retain(|_, last| last.elapsed() < Duration::from_secs(45));
+        if self.viewers.is_empty() {
+            self.stop(room).await;
+            self.failed = false;
+        } else if self
+            .running
+            .as_ref()
+            .is_some_and(|(capture, _)| capture.is_finished())
+        {
+            self.stop(room).await;
+            self.fail("O segundo codificador não está disponível.");
+        } else if self.running.is_none() && !self.failed {
+            let mut setup = main.clone();
+            setup.args.codec = Codec::H264;
+            setup.args.res = Resolution::P720;
+            setup.args.bitrate = 1500;
+            setup.args.fps = 30;
+            setup.args.limit_capture_fps = true;
+            setup.args.nvenc_probe = None;
+            setup.size = setup.args.res.dimensions();
+            setup.source = NativeVideoSource::new_encoded(VideoResolution {
+                width: setup.size.0,
+                height: setup.size.1,
+            });
+            setup.stats = Arc::new(Mutex::new(Stats::default()));
+            setup.requests = Arc::new(Requests::default());
+            setup
+                .requests
+                .network
+                .store(NETWORK_ACTIVE, Ordering::Relaxed);
+            setup.recorder = None;
+            let result = async {
+                let sid = publish_video(room, &setup, "screen-low").await?;
+                match start_capture(setup) {
+                    Ok(capture) => Ok((capture, sid)),
+                    Err(error) => {
+                        let _ = room.local_participant().unpublish_track(&sid).await;
+                        Err(error)
+                    }
+                }
+            }
+            .await;
+            match result {
+                Ok(running) => self.running = Some(running),
+                Err(error) => self.fail(format!("{error:#}")),
+            }
+        }
+    }
+
+    fn fail(&mut self, reason: impl std::fmt::Display) {
+        self.failed = true;
+        emit(serde_json::json!({"event":"light_error","reason":reason.to_string()}));
+    }
+}
+
+pub async fn run(mut args: Publish) -> Result<()> {
     media::init().context("Não foi possível carregar o FFmpeg")?;
     let nvenc_preset = args
         .nvenc_probe
@@ -227,59 +398,99 @@ pub async fn run(args: Publish) -> Result<()> {
         high_profile: args.hardware_quality,
         nvenc_preset,
     };
-    let (width, height) = args.res.dimensions();
-    let (codec, source) = (
-        match args.codec {
-            Codec::H264 => VideoCodec::H264,
-            Codec::Av1 => VideoCodec::AV1,
-        },
-        NativeVideoSource::new_encoded(VideoResolution { width, height }),
-    );
+    let target = resolve_target(&args.source)?;
+    let size = if args.local_replay {
+        if let CaptureTarget::Monitor(monitor) = &target
+            && let Ok(refresh) = monitor.refresh_rate()
+        {
+            args.fps = args.fps.min(refresh.max(1));
+        }
+        local_dimensions(&target, args.res.dimensions())?
+    } else {
+        args.res.dimensions()
+    };
+    let source = NativeVideoSource::new_encoded(VideoResolution {
+        width: size.0,
+        height: size.1,
+    });
     let duration = args.duration.map(Duration::from_secs);
-    let audio_pid = args.audio_pid;
+    let published_audio = args.audio_pid.map(|pid| AudioTarget::Process {
+        pid,
+        include: !args.audio_exclude,
+    });
+    let game = match target {
+        CaptureTarget::Window(window) => Some(AudioTarget::Process {
+            pid: window.process_id()?,
+            include: true,
+        }),
+        CaptureTarget::Monitor(_) => args
+            .app_pid
+            .map(|pid| AudioTarget::Process {
+                pid,
+                include: false,
+            })
+            .or_else(|| published_audio.clone()),
+    };
+    let call = args
+        .app_pid
+        .map(|pid| AudioTarget::Process { pid, include: true });
+    let mut replay = replay::Replay::new(
+        args.replay_dir.clone(),
+        if published_audio.is_some() && !args.local_replay {
+            None
+        } else {
+            game
+        },
+        call,
+    );
+    let replay_seconds = args.replay_seconds;
+    let local = args.local_replay;
     let controlled = args.control_stdin;
     let pause_when_alone = args.pause_when_alone;
-    let token = match &args.token {
-        Some(token) => token.clone(),
-        None => {
-            let mut token = String::new();
-            std::io::stdin().read_line(&mut token)?;
-            ensure!(
-                !token.trim().is_empty(),
-                "O núcleo não recebeu o token de transmissão."
-            );
-            token.trim().to_owned()
-        }
+    let (room, mut events) = if let Some(url) = &args.url {
+        let token = match &args.token {
+            Some(token) => token.clone(),
+            None => {
+                let mut token = String::new();
+                std::io::stdin().read_line(&mut token)?;
+                ensure!(
+                    !token.trim().is_empty(),
+                    "O núcleo não recebeu o token de transmissão."
+                );
+                token.trim().to_owned()
+            }
+        };
+        let mut room_options = RoomOptions::default();
+        room_options.auto_subscribe = false;
+        let (room, events) = Room::connect(url, &token, room_options)
+            .await
+            .context("Não foi possível conectar a transmissão à sala")?;
+        (Some(room), Some(events))
+    } else {
+        (None, None)
     };
     let mut commands = controlled.then(stdin_commands);
-    let mut room_options = RoomOptions::default();
-    room_options.auto_subscribe = false;
-    let (room, mut events) = Room::connect(&args.url, &token, room_options)
-        .await
-        .context("Não foi possível conectar a transmissão à sala")?;
     let result = async {
-        room.local_participant().publish_track(
-            LocalTrack::Video(LocalVideoTrack::create_video_track("screen", RtcVideoSource::Native(source.clone()))),
-            TrackPublishOptions {
-                source: TrackSource::Screenshare,
-                    stream: "screen".into(),
-                video_codec: codec,
-                video_encoder: VideoEncoderBackend::PreEncoded,
-                video_encoding: Some(VideoEncoding { max_bitrate: bits_per_second(args.bitrate) as u64, max_framerate: f64::from(args.fps) }),
-                simulcast: false,
-                ..Default::default()
-            },
-        ).await.context("O servidor recusou a publicação da tela")?;
         let stats = Arc::new(Mutex::new(Stats::default()));
         let requests = Arc::new(Requests::default());
-        let mut setup = Setup { args, source, stats: stats.clone(), requests: requests.clone(), tuning };
+        if !local { requests.network.store(NETWORK_ACTIVE, Ordering::Relaxed); }
+        let mut setup = Setup { args, source, size, stats: stats.clone(), requests: requests.clone(), tuning, recorder: Some(replay.recorder.clone()) };
+        if let Some(room) = &room {
+            publish_video(room, &setup, "screen").await.context("O servidor recusou a publicação da tela")?;
+        }
+        if let Err(error) = replay.configure(replay_seconds).await {
+            if local { return Err(error); }
+            replay::report_error(error);
+        }
         let mut control = Some(start_capture(setup.clone()).context("Não foi possível iniciar a captura")?);
-        let mut alone = pause_when_alone && room.remote_participants().is_empty();
+        let mut alone = pause_when_alone && room.as_ref().is_some_and(|room| room.remote_participants().is_empty());
         let mut manual_pause = false;
-        let mut audio = crate::audio::Worker::default();
+        let mut was_paused = false;
+        let mut audio = audio::Worker::default();
+        let mut light = Light::default();
         let result = async {
-            if let Some(pid) = audio_pid {
-                audio.start(&room, pid).await.context("Não foi possível capturar o som do app")?;
+            if let (Some(room), Some(target)) = (&room, published_audio) {
+                audio.start(room, target, replay.recorder.clone()).await.context("Não foi possível capturar o som do jogo")?;
             }
             let start = Instant::now();
             let mut sample_start = start;
@@ -307,14 +518,27 @@ pub async fn run(args: Publish) -> Result<()> {
                             requests.kbps.store(kbps, Ordering::Relaxed);
                         }
                         Some(Command::Keyframe) => { requests.keyframe.store(true, Ordering::Relaxed); }
+                        Some(Command::Replay { segundos }) => {
+                            if let Err(error) = replay.configure(segundos).await { replay::report_error(error); }
+                            if local && !replay.recorder.active() { break; }
+                            requests.keyframe.store(true, Ordering::Relaxed);
+                        }
+                        Some(Command::Microphone { ativo, dispositivo }) => replay.microphone(ativo, dispositivo).await,
+                        Some(Command::Light { participante, assistir }) => light.request(participante, assistir),
+                        Some(Command::Clip) => { if let Err(error) = replay.save() { replay::report_error(error); } }
                         Some(Command::Bitrate { .. }) => eprintln!("Bitrate fora do intervalo de 1 a 100.000 kbps."),
                     },
-                    event = events.recv() => {
+                    event = async { match events.as_mut() { Some(rx) => rx.recv().await, None => std::future::pending().await } } => {
+                        let room = room.as_ref().context("Evento sem sala")?;
                         match event {
                             None | Some(RoomEvent::Disconnected { .. }) => {
                                 anyhow::bail!("A conexão com a sala caiu.");
                             }
-                            Some(RoomEvent::ParticipantConnected(_) | RoomEvent::ParticipantDisconnected(_) |
+                            Some(RoomEvent::ParticipantDisconnected(participant)) => {
+                                light.viewers.remove(&participant.identity().to_string());
+                                if pause_when_alone { alone = room.remote_participants().is_empty(); }
+                            }
+                            Some(RoomEvent::ParticipantConnected(_) |
                                 RoomEvent::Reconnecting | RoomEvent::Reconnected) if pause_when_alone => {
                                 // The public SDK reports joins and leaves, but no last-subscriber event.
                                 alone = room.connection_state() == ConnectionState::Connected
@@ -385,31 +609,41 @@ pub async fn run(args: Publish) -> Result<()> {
                     }
                 }
                 let paused = manual_pause || alone;
-                if paused != control.is_none() && stats.lock().unwrap().encoder.is_some() {
+                if !local && paused != was_paused && stats.lock().unwrap().encoder.is_some() {
+                    requests.network.store(if paused { NETWORK_OFF } else { NETWORK_KEY }, Ordering::Relaxed);
+                    if !paused { requests.keyframe.store(true, Ordering::Relaxed); }
+                    was_paused = paused;
+                    if controlled { emit(serde_json::json!({"event":"pause_changed", "paused": paused})); }
+                }
+                let sleep = was_paused && !replay.recorder.active();
+                if sleep != control.is_none() {
                     if let Some(capture) = control.take() {
                         stop_capture(capture)?;
                     } else {
                         // A new encoder session sends a keyframe first. Keep the published track.
                         control = Some(start_capture(setup.clone()).context("Não foi possível retomar a captura")?);
                     }
-                    if controlled {
-                        emit(serde_json::json!({"event":"pause_changed", "paused": paused}));
-                    }
                 }
+                if let Some(room) = &room { light.update(room, &setup).await; }
             }
             Ok::<_, anyhow::Error>(())
         }.await;
         let capture_result = control.map_or(Ok(()), stop_capture);
+        if let Some(room) = &room { light.stop(room).await; }
         let audio_result = audio.stop().await;
         capture_result.and(result).and(audio_result)
     }.await;
-    let close = room.close().await;
+    replay.close().await;
+    let close = match room {
+        Some(room) => room.close().await,
+        None => Ok(()),
+    };
     result?;
     close.context("Não foi possível encerrar a conexão com a sala")?;
     Ok(())
 }
 
-fn emit(event: serde_json::Value) {
+pub fn emit(event: serde_json::Value) {
     let mut stdout = std::io::stdout().lock();
     let _ = writeln!(stdout, "{event}");
     let _ = stdout.flush();
@@ -463,10 +697,13 @@ impl GraphicsCaptureApiHandler for Capture {
         let mut stats = self.setup.stats.lock().unwrap();
         stats.captured += 1;
         let timestamp = frame.timestamp()?.Duration / 10;
-        let elapsed_us = timestamp.saturating_sub(*self.first_timestamp.get_or_insert(timestamp));
+        let (origin_us, origin) = *self
+            .first_timestamp
+            .get_or_insert_with(|| (timestamp, Instant::now()));
+        let elapsed_us = timestamp.saturating_sub(origin_us).max(0) as u64;
         let args = &self.setup.args;
         let dimensions = (frame.width(), frame.height());
-        let slot = (elapsed_us.max(0) as u128 * u128::from(args.fps) + 500_000) / 1_000_000;
+        let slot = (u128::from(elapsed_us) * u128::from(args.fps) + 500_000) / 1_000_000;
         if let Some(last) = self.last_slot {
             if slot <= last {
                 return Ok(());
@@ -480,9 +717,13 @@ impl GraphicsCaptureApiHandler for Capture {
         if manual != 0 {
             self.limit_kbps = manual;
         }
-        let requested = source.take_rate_control_request().map(|rate| {
-            (rate.target_bitrate_bps / 1000).clamp(1, u64::from(self.limit_kbps)) as u32
-        });
+        let online = self.setup.requests.network.load(Ordering::Relaxed) != NETWORK_OFF;
+        let requested = source
+            .take_rate_control_request()
+            .filter(|_| online)
+            .map(|rate| {
+                (rate.target_bitrate_bps / 1000).clamp(1, u64::from(self.limit_kbps)) as u32
+            });
         let update = if args.adaptive_bitrate {
             if let Some(target) = (manual != 0).then_some(manual).or(requested) {
                 self.pending_kbps = Some(target);
@@ -507,10 +748,17 @@ impl GraphicsCaptureApiHandler for Capture {
             self.last_bitrate_change = Instant::now();
         }
         let mut in_place = false;
+        // QSV can emit a corrupt access unit during an in-place reset. An
+        // exported clip must decode across bitrate changes without recovery.
         if args.adaptive_bitrate
             && self.qsv_reset_supported
             && !input_changed
             && update.is_some()
+            && !self
+                .setup
+                .recorder
+                .as_ref()
+                .is_some_and(replay::Recorder::active)
             && let Some(session) = self.session.as_mut()
             && session.name.ends_with("_qsv")
         {
@@ -547,12 +795,12 @@ impl GraphicsCaptureApiHandler for Capture {
                 };
                 let scaler = match cache {
                     Some(scaler) => scaler,
-                    None => cache.insert(Scaler::new(dimensions, args.res.dimensions())?),
+                    None => cache.insert(Scaler::new(dimensions, self.setup.size)?),
                 };
                 cpu_convert(frame, scaler)?
             }
         };
-        let (width, height) = args.res.dimensions();
+        let (width, height) = self.setup.size;
         picture.set_size(width, height);
         let encoder_pts = pts * 9 / 100;
         picture.raw_mut().pts = encoder_pts;
@@ -561,7 +809,14 @@ impl GraphicsCaptureApiHandler for Capture {
         } else {
             Picture::AV_PICTURE_TYPE_NONE
         };
-        session.pending.insert(encoder_pts, (pts, Instant::now()));
+        session.pending.insert(
+            encoder_pts,
+            (
+                pts,
+                origin + Duration::from_micros(elapsed_us),
+                Instant::now(),
+            ),
+        );
         let result = session
             .encoder
             .send_frame(&picture)
@@ -607,7 +862,7 @@ impl Capture {
         let open = |name, conversion: Conversion| {
             let encoder = encoder::open(
                 name,
-                args.res,
+                self.setup.size,
                 args.fps,
                 self.kbps,
                 conversion.gpu.as_ref().map(gpu::Converter::output_pool),
@@ -632,7 +887,7 @@ impl Capture {
             let attempt = if args.cpu_path {
                 open(name, Conversion::default())
             } else {
-                let (width, height) = args.res.dimensions();
+                let (width, height) = self.setup.size;
                 gpu::Converter::new(frame, width, height, args.fps, name.ends_with("_qsv"))
                     .and_then(|gpu| {
                         open(
@@ -657,7 +912,7 @@ impl Capture {
     }
 
     fn send_packets(&self, session: &mut Session) -> Result<()> {
-        let (width, height) = self.setup.args.res.dimensions();
+        let (width, height) = self.setup.size;
         let codec = match self.setup.args.codec {
             Codec::H264 => EncodedVideoCodec::H264,
             Codec::Av1 => EncodedVideoCodec::AV1,
@@ -665,27 +920,56 @@ impl Capture {
         encoder::drain(&mut session.encoder, |packet| {
             let pts = packet.pts().context("encoded packet missing PTS")?;
             let payload = packet.data().context("encoded packet missing data")?;
-            let (timestamp_us, started) = session
+            let (timestamp_us, captured_at, started) = session
                 .pending
                 .remove(&pts)
                 .context("unexpected encoded packet timestamp")?;
             let encode_ms = started.elapsed().as_secs_f64() * 1000.0;
-            let accepted = self.setup.source.capture_encoded_frame(&EncodedVideoFrame {
-                codec,
-                payload,
-                timestamp_us,
-                resolution: VideoResolution { width, height },
-                frame_metadata: None,
-                frame_type: if packet.is_key() {
-                    EncodedFrameType::Key
-                } else {
-                    EncodedFrameType::Delta
-                },
-            });
-            ensure!(
-                accepted,
-                "LiveKit 0.12.0 rejected {codec:?} access unit in capture_encoded_frame"
-            );
+            let key = packet.is_key();
+            if let Some(recorder) = &self.setup.recorder {
+                recorder.video(
+                    replay::VideoFormat {
+                        codec: self.setup.args.codec,
+                        width,
+                        height,
+                        fps: self.setup.args.fps,
+                    },
+                    captured_at,
+                    key,
+                    payload,
+                );
+            }
+            let network = &self.setup.requests.network;
+            let send = match network.load(Ordering::Relaxed) {
+                NETWORK_ACTIVE => true,
+                NETWORK_KEY if key => network
+                    .compare_exchange(
+                        NETWORK_KEY,
+                        NETWORK_ACTIVE,
+                        Ordering::Relaxed,
+                        Ordering::Relaxed,
+                    )
+                    .is_ok(),
+                _ => false,
+            };
+            if send {
+                let accepted = self.setup.source.capture_encoded_frame(&EncodedVideoFrame {
+                    codec,
+                    payload,
+                    timestamp_us,
+                    resolution: VideoResolution { width, height },
+                    frame_metadata: None,
+                    frame_type: if key {
+                        EncodedFrameType::Key
+                    } else {
+                        EncodedFrameType::Delta
+                    },
+                });
+                ensure!(
+                    accepted,
+                    "LiveKit 0.12.0 rejected {codec:?} access unit in capture_encoded_frame"
+                );
+            }
             let mut stats = self.setup.stats.lock().unwrap();
             stats.encoded += 1;
             stats.bytes += payload.len() as u64;
@@ -703,4 +987,56 @@ fn cpu_convert(frame: &mut Frame, scaler: &mut Scaler) -> Result<AvFrame> {
     let pitch = buffer.row_pitch() as usize;
     scaler.copy_bgra(buffer.as_raw_buffer(), pitch);
     scaler.scale_nv12()
+}
+
+#[tokio::test]
+#[ignore = "requires a local publish, a voice token and light requests on publisher stdin"]
+async fn local_light_track_is_published_and_removed() -> Result<()> {
+    let token = std::env::var("STACKCALL_TEST_VOICE_TOKEN")?;
+    let (room, mut events) =
+        Room::connect("ws://127.0.0.1:7880", &token, RoomOptions::default()).await?;
+    let name = "teste-v05:tela";
+    tokio::time::timeout(Duration::from_secs(18), async {
+        while !room.remote_participants().values().any(|part| {
+            part.identity().to_string() == name
+                && part
+                    .track_publications()
+                    .values()
+                    .any(|track| track.name() == "screen")
+        }) {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    })
+    .await?;
+    for assistir in [true, false] {
+        tokio::time::timeout(Duration::from_secs(20), async {
+            while let Some(event) = events.recv().await {
+                match event {
+                    RoomEvent::TrackSubscribed { publication, .. }
+                        if assistir && publication.name() == "screen-low" =>
+                    {
+                        return Ok(());
+                    }
+                    RoomEvent::TrackUnpublished { publication, .. }
+                        if !assistir && publication.name() == "screen-low" =>
+                    {
+                        return Ok(());
+                    }
+                    _ => (),
+                }
+            }
+            anyhow::bail!("A sala fechou antes da confirmação da faixa leve")
+        })
+        .await??;
+        println!(
+            "screen-low: {}",
+            if assistir {
+                "publicada e assinada"
+            } else {
+                "removida"
+            }
+        );
+    }
+    room.close().await?;
+    Ok(())
 }
