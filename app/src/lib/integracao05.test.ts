@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { destinoCs2, salasVisiveis, subSala } from './cs2';
-import { guardarClipe, lerClipes, tirarClipe, titulo } from './clipes';
-import { posicaoFalantes, replay } from './nucleo';
+import { apagarClipe, listarClipes, titulo } from './clipes';
+import { pedidoFalantes, replay } from './nucleo';
+import { PREFERENCIAS_PADRAO } from './preferencias';
 import type { Sala } from './servidor';
 
 const cs: Sala = { id: 'cs', nome: 'CS', ordem: 1, pessoas: 3, noAr: false, paiId: null, time: null };
@@ -27,24 +28,22 @@ describe('sala do mapa do CS2', () => {
 });
 
 describe('janela quem fala', () => {
-  const m = { x: -1920, y: 0, largura: 1920, altura: 1080, escala: 1.5 };
-  it('puts the 320 × 96 window in a corner of the monitor, in physical pixels', () => {
-    expect(posicaoFalantes('sup-esq', m)).toEqual({ x: -1884, y: 36 });
-    expect(posicaoFalantes('meio-dir', m)).toEqual({ x: -516, y: 468 });
-    expect(posicaoFalantes('inf-dir', m)).toEqual({ x: -516, y: 900 });
-    expect(posicaoFalantes('livre', m)).toBeNull();
+  const estado = { sala: 'CS', ping: 40, replay: false, pessoas: Array.from({ length: 10 }, (_, n) => ({ id: `p${n}`, nome: `P${n}`, cor: null, falando: n < 2, mudo: false })) };
+  it('sends size, visible rows (at most 8) and corner; closed when hidden', () => {
+    expect(pedidoFalantes({ ...PREFERENCIAS_PADRAO, quemFalaMostrar: true, quemFalaTamanho: 'g', quemFalaPosicao: 'inf-dir' }, estado))
+      .toEqual({ tamanho: 'g', linhas: 8, posicao: 'inf-dir' });
+    expect(pedidoFalantes({ ...PREFERENCIAS_PADRAO, quemFalaMostrar: true, quemFalaConteudo: 'falando' }, estado)?.linhas).toBe(2);
+    expect(pedidoFalantes({ ...PREFERENCIAS_PADRAO, quemFalaMostrar: true }, null)?.linhas).toBe(0);
+    expect(pedidoFalantes({ ...PREFERENCIAS_PADRAO, quemFalaMostrar: false }, estado)).toBeNull();
   });
 });
 
 describe('clipes', () => {
-  it('keeps the clips the core saved, newest first, and "tirar da lista" hides one', async () => {
-    localStorage.clear();
-    guardarClipe({ caminho: 'C:\\V\\a.mp4', duracao: 30, tamanho: 1, em: 1 });
-    guardarClipe({ caminho: 'C:\\V\\b.mp4', duracao: 60, tamanho: 2, em: 2 });
-    expect(lerClipes().map(titulo)).toEqual(['b', 'a']);
-    tirarClipe('C:\\V\\b.mp4');
-    expect(lerClipes().map(titulo)).toEqual(['a']);
-    localStorage.clear();
+  it('lists the fake folder newest first and deletes one (demo)', async () => {
+    const antes = await listarClipes();
+    expect(antes.map(titulo)[0]).toBe('Clutch 1v3 no B');
+    await apagarClipe(antes[0]);
+    expect((await listarClipes()).map((c) => c.nome)).not.toContain(antes[0].nome);
   });
 
   it('the fake replay saves only while on (demo and tests)', async () => {

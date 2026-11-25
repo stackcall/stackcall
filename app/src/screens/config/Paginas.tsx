@@ -4,7 +4,7 @@ import { Faixa } from '../../components/Faixa';
 import { Icone } from '../../components/Icone';
 import { QuemFalaLista } from '../../components/QuemFalaLista';
 import { falar, fraseCutucada, vozPortugues } from '../../lib/cutucar';
-import { JANELA_FALANTES, nucleo } from '../../lib/nucleo';
+import { LARGURA_FALANTES, nucleo } from '../../lib/nucleo';
 import { usePreferencias, type PosicaoQuemFala } from '../../lib/preferencias';
 import { ESTADO_EXEMPLO } from '../../lib/quemfala';
 import { lerAtalhos } from '../../lib/atalhos';
@@ -185,7 +185,7 @@ export function PaginaQuemFala({ destaque }: Pagina) {
           <Linha ajuste="quemfala-opacidade" titulo="Opacidade" descricao="Mais baixa deixa ver o jogo por trás." destaque={destaque === 'quemfala-opacidade'}>
             <Deslizante rotulo="Opacidade da janela" valor={p.quemFalaOpacidade} min={20} max={100} passo={5} onMudar={(quemFalaOpacidade) => mudar({ quemFalaOpacidade })} />
           </Linha>
-          <Linha ajuste="quemfala-tamanho" titulo="Tamanho" destaque={destaque === 'quemfala-tamanho'}>
+          <Linha ajuste="quemfala-tamanho" titulo="Tamanho" descricao="Muda a janela aberta na hora. Ela cresce até 8 nomes." destaque={destaque === 'quemfala-tamanho'}>
             <Segmento rotulo="Tamanho da janela" valor={p.quemFalaTamanho} opcoes={[['p', 'Pequeno'], ['m', 'Médio'], ['g', 'Grande']]} onMudar={(quemFalaTamanho) => mudar({ quemFalaTamanho })} />
           </Linha>
           <Linha ajuste="quemfala-posicao" titulo="Posição" destaque={destaque === 'quemfala-posicao'}
@@ -209,7 +209,7 @@ export function PaginaQuemFala({ destaque }: Pagina) {
           <div className="relative aspect-video overflow-hidden bg-[linear-gradient(#56636f_0_46%,#7c6f58_46%_100%)]">
             <span aria-hidden="true" className="absolute top-[40%] right-[30%] bottom-[30%] left-[30%] bg-[#a08f6d]" />
             <div className={`absolute scale-[0.7] ${POSICAO_PREVIA[p.quemFalaPosicao]}`}>
-              <QuemFalaLista estado={ESTADO_EXEMPLO} prefs={p} largura={JANELA_FALANTES.largura} />
+              <QuemFalaLista estado={ESTADO_EXEMPLO} prefs={p} largura={LARGURA_FALANTES[p.quemFalaTamanho]} />
             </div>
           </div>
           <p className="m-0 px-3 py-2.5 text-[13px] text-texto-fraco">{p.quemFalaMostrar ? 'Assim ela aparece por cima do jogo.' : 'Desligada: a janela não aparece.'}</p>
@@ -246,7 +246,7 @@ export function PaginaCs2({ destaque }: Pagina) {
   return (
     <>
       <Cabecalho rotulo="Você · vale para este PC" titulo="Mapa do CS2">
-        Durante a partida, a sala se divide em CT e TR sozinha. As telas do outro time ficam escondidas até o fim do round.
+        Durante a partida, a sala se divide em CT e TR sozinha. A sub-sala do outro time some das abas até o fim da partida.
       </Cabecalho>
       <Linha ajuste="cs2-sala" titulo="Sala do mapa" destaque={destaque === 'cs2-sala'}
         descricao="Liga a troca automática para a sub-sala do seu time. Precisa da integração com o CS2, logo abaixo.">

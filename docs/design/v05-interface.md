@@ -234,8 +234,8 @@ Tudo que vale para este PC e não tinha chave antes fica num JSON só, `stackcal
 O app segue `docs/api-v05-app.md` (`app/src/lib/nucleo.ts`). No app instalado, erro de comando chega à tela; o falso responde só fora do Tauri (demo `?demo=1` e testes).
 
 - Replay: a preferência vai para `replay_definir` ao abrir o app e a cada mudança. "Sempre ligado" grava o monitor principal fora do ar. "720p" manda `resolucao: "720p"`; "Igual à transmissão" usa o padrão do núcleo. A sala lê `replay_atual`, ouve `stackcall-replay` e publica `stackcall.replay`. `replay_microfone` acompanha o microfone aberto.
-- Clipes: o núcleo só avisa pelo evento `saved`; a galeria guarda a lista neste PC (`stackcall.clipes`).
-- Janela quem fala: `falantes_abrir`, `falantes_fechar` e `falantes_posicionar`. A janela carrega `index.html?falantes=1`. O estado chega pelos eventos `quem-fala:estado` e `quem-fala:pedir`.
+- Clipes: a galeria lê `clipes_listar` ao abrir, ao receber `saved` e depois de apagar. "Apagar" pede confirmação e chama `clipes_apagar`, que manda o arquivo para a Lixeira.
+- Janela quem fala: `falantes_abrir`, `falantes_fechar` e `falantes_redimensionar({ tamanho, linhas, posicao })`, chamado ao abrir e quando muda o tamanho, o canto ou o número de linhas visíveis (até 8). A janela carrega `index.html?falantes=1`. O estado chega pelos eventos `quem-fala:estado` e `quem-fala:pedir`.
 - GSI: `gsi_cs2_localizar`, depois `gsi_cs2_instalar({ confirmado: true })` com o caminho mostrado na confirmação. O evento `stackcall-gsi` move a sala (`lib/cs2.ts`).
 - Jogo na presença: `presenca_jogo_atual({ ativa: true })` a cada 30 s, só com a preferência ligada.
 - Faixa leve: "Leve" pede `screen-low` no tópico `stackcall.tela-leve` a cada 20 s e assina essa faixa quando ela aparece. Quem transmite repassa o pedido a `mudar_faixa_leve`.
@@ -243,8 +243,8 @@ O app segue `docs/api-v05-app.md` (`app/src/lib/nucleo.ts`). No app instalado, e
 Diferenças do desenho por causa do contrato:
 
 1. A pasta dos clipes é fixa (`Vídeos\Stackcall`): o núcleo não recebe pasta. A preferência `replayPasta` saiu.
-2. A galeria não apaga arquivo: o núcleo não tem comando para isso. "Tirar da lista" só esconde o clipe. Não há prévia em vídeo dentro do app; "Mostrar na pasta" abre o Explorer com o arquivo marcado.
-3. A janela quem fala tem tamanho fixo de 320 × 96 definido pelo núcleo. "Tamanho" muda só a altura das linhas. Não há "Arrastar com o mouse": o núcleo deixa o clique sempre passar através dela. A posição é um dos seis cantos do monitor principal.
+2. Não há prévia em vídeo dentro do app; "Mostrar na pasta" abre o Explorer com o arquivo marcado.
+3. Não há "Arrastar com o mouse" na janela quem fala: o núcleo deixa o clique sempre passar através dela. A posição é um dos seis cantos do monitor principal.
 
 ### Rota proposta ao servidor
 

@@ -1,50 +1,30 @@
-import { isTauri } from '@tauri-apps/api/core';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
-import { modoFalso } from './falso';
-import { replay } from './nucleo';
 
 /**
- * Clips saved on this PC. The core writes the MP4 in Vídeos\Stackcall and tells only in the
- * `saved` event; it has no command to list or delete files, so this list is kept here.
- * shortcut: a clip deleted in the Explorer stays listed until "Tirar da lista"; upgrade when the core lists the folder.
+ * Clips in Vídeos\Stackcall, read by the core (docs/api-v05-app.md, "Galeria de clipes").
+ * `nome` includes ".mp4"; `em` in ms; `duracao` in seconds or null when Windows has no metadata.
+ * Outside the app (demo and tests) a fake list answers.
  */
-export type Clipe = { caminho: string; duracao: number; tamanho: number; em: number };
+export type Clipe = { nome: string; caminho: string; em: number; duracao: number | null; tamanho: number };
 
-const CHAVE = 'stackcall.clipes';
-const MAXIMO = 200;
-export const titulo = (c: Clipe) => c.caminho.split(/[\\/]/).pop()!.replace(/\.mp4$/i, '');
+export const titulo = (c: Clipe) => c.nome.replace(/\.mp4$/i, '');
 
 const agora = Date.now();
-const EXEMPLOS: Clipe[] = [
-  { caminho: 'C:\\Users\\voce\\Videos\\Stackcall\\Clutch 1v3 no B.mp4', duracao: 45, tamanho: 38e6, em: agora - 1_800_000 },
-  { caminho: 'C:\\Users\\voce\\Videos\\Stackcall\\Stackcall 2026-11-25 08-41.mp4', duracao: 60, tamanho: 52e6, em: agora - 4_200_000 },
-  { caminho: 'C:\\Users\\voce\\Videos\\Stackcall\\Ace de deagle.mp4', duracao: 30, tamanho: 21e6, em: agora - 90_000_000 },
+let exemplos: Clipe[] = [
+  { nome: 'Clutch 1v3 no B.mp4', caminho: 'C:\\Users\\voce\\Videos\\Stackcall\\Clutch 1v3 no B.mp4', em: agora - 1_800_000, duracao: 45, tamanho: 38e6 },
+  { nome: 'Stackcall 2026-11-25 08-41.mp4', caminho: 'C:\\Users\\voce\\Videos\\Stackcall\\Stackcall 2026-11-25 08-41.mp4', em: agora - 4_200_000, duracao: 60, tamanho: 52e6 },
+  { nome: 'Ace de deagle.mp4', caminho: 'C:\\Users\\voce\\Videos\\Stackcall\\Ace de deagle.mp4', em: agora - 90_000_000, duracao: null, tamanho: 21e6 },
 ];
 
-export function lerClipes(): Clipe[] {
-  try {
-    const v = JSON.parse(localStorage.getItem(CHAVE) ?? 'null') as Clipe[] | null;
-    if (Array.isArray(v)) return v.filter((c) => typeof c?.caminho === 'string');
-  } catch {
-    // corrupt: start over below
-  }
-  return !isTauri() && modoFalso() ? EXEMPLOS : [];
+/** Newest first. */
+export const listarClipes = (): Promise<Clipe[]> => (isTauri() ? invoke<Clipe[]>('clipes_listar') : Promise.resolve([...exemplos]));
+
+/** Sends the file to the Windows Recycle Bin; on error the clip stays in the folder. */
+export async function apagarClipe(c: Clipe) {
+  if (isTauri()) return invoke<void>('clipes_apagar', { nome: c.nome });
+  exemplos = exemplos.filter((x) => x.nome !== c.nome);
 }
 
-const gravar = (lista: Clipe[]) => {
-  try {
-    localStorage.setItem(CHAVE, JSON.stringify(lista.slice(0, MAXIMO)));
-  } catch {
-    // Storage blocked: the list lasts until the app closes.
-  }
-};
-export const guardarClipe = (c: Clipe) => gravar([c, ...lerClipes().filter((x) => x.caminho !== c.caminho)]);
-export const tirarClipe = (caminho: string) => gravar(lerClipes().filter((c) => c.caminho !== caminho));
-
-/** Opens the Explorer with the file selected (the folder is Vídeos\Stackcall). */
-export const mostrarNaPasta = (caminho: string) => (isTauri() ? revealItemInDir(caminho) : Promise.resolve());
-
-/** Main window, once: every clip the core saves goes to the list. */
-export const iniciarClipes = () => replay.aoEvento((e) => {
-  if (e.event === 'saved') guardarClipe({ caminho: e.caminho, duracao: e.duracao, tamanho: e.tamanho, em: Date.now() });
-});
+/** Opens the Explorer with the file selected. */
+export const mostrarNaPasta = (c: Clipe) => (isTauri() ? revealItemInDir(c.caminho) : Promise.resolve());
