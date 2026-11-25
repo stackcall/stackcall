@@ -17,7 +17,9 @@ const pessoa = (id: string, nome: string, p: Partial<Pessoa> = {}): Pessoa => ({
 export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
   let sessao = new URLSearchParams(location.search).get('tela') !== 'entrada';
   let eu: Usuario = { id: 'bronze', nome: 'bronze', papel: 'dono', avatar: null, banner: null, bio: 'entro de awp', tema: 'papel', cor: '#c8191f' };
-  const pessoas: Pessoa[] = [
+  // ?grupo=pequeno: the real common case (one room, nobody in voice, one friend offline).
+  const pequeno = new URLSearchParams(location.search).get('grupo') === 'pequeno';
+  const pessoas: Pessoa[] = pequeno ? [pessoa('caio', 'Caio', { online: false, sala: null, amigo: true })] : [
     pessoa('rafa', 'Rafa', { amigo: true, bio: 'clutch ou nada', tema: 'noite', cor: '#ff5a5f' }),
     pessoa('duda', 'Duda', { amigo: true, tema: 'lima', bio: 'mira de rifle, coração de pistol' }),
     pessoa('leo', 'Léo', { sala: 'cs' }),
@@ -27,7 +29,7 @@ export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
     pessoa('tati', 'Tati', { sala: null }),
     pessoa('caio', 'Caio', { online: false, sala: null }),
   ];
-  let salas: Sala[] = [
+  let salas: Sala[] = pequeno ? [{ id: 'geral', nome: 'Geral', ordem: 1, pessoas: 0, noAr: false }] : [
     { id: 'cs', nome: 'CS', ordem: 1, pessoas: 5, noAr: true },
     { id: 'lobby', nome: 'Lobby', ordem: 2, pessoas: 2, noAr: false },
     { id: 'cinema', nome: 'Cinema', ordem: 3, pessoas: 0, noAr: false },

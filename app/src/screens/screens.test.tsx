@@ -276,3 +276,18 @@ test('friends: add and remove from the side panel', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Adicionar Léo aos amigos' }));
   expect(screen.getByRole('button', { name: 'Remover Léo dos amigos' })).toBeInTheDocument();
 });
+
+test('lobby, small group with nobody in voice: rooms, invite and people outside voice, no room columns', async () => {
+  history.replaceState(null, '', '/?demo=1&tela=saguao&grupo=pequeno');
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+  render(<App />);
+  expect(await screen.findByRole('heading', { name: 'Escolha uma sala' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Entrar na sala Geral' })).toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: /^Sala / })).not.toBeInTheDocument();
+  const fora = screen.getByRole('region', { name: 'Fora da voz' });
+  expect(within(fora).getByText('Caio')).toBeInTheDocument();
+  await userEvent.click(within(screen.getByRole('region', { name: 'Chame a galera' })).getByRole('button', { name: 'Convidar' }));
+  expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/\/c\//));
+  expect(await screen.findByText('Link copiado.')).toBeInTheDocument();
+});
