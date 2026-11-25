@@ -187,9 +187,8 @@ impl Aac {
             let frame = self.frame.raw_mut();
             check(media::av_frame_make_writable(frame))?;
             frame.pts = pts;
-            for channel in 0..2 {
-                let dest =
-                    std::slice::from_raw_parts_mut(frame.data[channel].cast::<f32>(), self.size);
+            for (channel, plane) in frame.data.iter().copied().enumerate().take(2) {
+                let dest = std::slice::from_raw_parts_mut(plane.cast::<f32>(), self.size);
                 for (i, value) in dest.iter_mut().enumerate() {
                     let sample = i * 2 + channel;
                     let mixed: i32 = sources[usize::from(!include_game)..]
