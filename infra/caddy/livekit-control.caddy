@@ -1,0 +1,28 @@
+{
+	admin off
+	auto_https off
+}
+
+:8080 {
+	@start {
+		method POST
+		path /start
+	}
+	handle @start {
+		rewrite * /v1.44/containers/{$LIVEKIT_CONTAINER}/start?t=5
+		reverse_proxy unix//var/run/docker.sock
+	}
+
+	@stop {
+		method POST
+		path /stop
+	}
+	handle @stop {
+		rewrite * /v1.44/containers/{$LIVEKIT_CONTAINER}/stop?t=5
+		reverse_proxy unix//var/run/docker.sock
+	}
+
+	handle {
+		respond 404
+	}
+}

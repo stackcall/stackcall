@@ -17,7 +17,7 @@ valid_ip() {
 
 main() {
     local local_mode=false update=false simulate=false domain='' ip='' origin livekit_url
-    local bind_ip port site external_ip ports invite script infra temp_env key secret
+    local bind_ip port site external_ip ports invite script infra temp_env key secret idle_minutes
     local -a compose curl_options up_options=(-d --build)
     while (( $# )); do
         case "$1" in
@@ -158,6 +158,7 @@ STACKCALL_DOMAIN=$domain
 STACKCALL_BIND_IP=$bind_ip
 CADDY_PORT=$port
 CADDY_SITE=$site
+LIVEKIT_IDLE_MINUTES=0
 EOF
         ln -- "$temp_env" "$env_file" || die 'Outro processo criou o .env. Rode o instalador novamente.'
         rm -- "$temp_env"
@@ -169,6 +170,17 @@ EOF
     compose=(docker compose --project-name stackcall-selfhost --env-file "$env_file" -f "$infra/docker-compose.selfhost.yml")
     if ! $local_mode; then
         compose+=(-f "$infra/docker-compose.public.yml")
+    fi
+    idle_minutes=$(sed -n 's/^LIVEKIT_IDLE_MINUTES=//p' "$env_file")
+    idle_minutes=${idle_minutes:-0}
+    [[ "$idle_minutes" =~ ^[0-9]{1,5}$ ]] && (( 10#$idle_minutes <= 10080 )) ||
+        die 'LIVEKIT_IDLE_MINUTES deve estar entre 0 e 10080.'
+    if (( 10#$idle_minutes > 0 )); then
+        [[ -f "$infra/docker-compose.sleep.yml" ]] || die 'O checkout não inclui o Compose de suspensão.'
+        compose+=(-f "$infra/docker-compose.sleep.yml")
+    elif [[ -f "$infra/docker-compose.sleep.yml" ]]; then
+        # Desativa um controlador criado numa instalação anterior.
+        "${compose[@]}" -f "$infra/docker-compose.sleep.yml" rm --force --stop livekit-control
     fi
     printf '%s\n' "$ports"
     "${compose[@]}" config --quiet

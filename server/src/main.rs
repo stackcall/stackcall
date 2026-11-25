@@ -1,12 +1,17 @@
 #[cfg(test)]
 mod api_tests;
+mod audio;
 mod auth;
+mod calls;
 mod db;
 mod invites;
 mod livekit;
+mod moderation;
 mod people;
 mod profile;
 mod rooms;
+mod sleep;
+mod soundboard;
 
 use axum::{
     Json, Router,
@@ -49,6 +54,7 @@ struct Attempts {
 
 struct Config {
     livekit: livekit::LiveKit,
+    sleep: Option<sleep::Sleep>,
     server_name: String,
     public_url: Url,
     members_can_invite: bool,
@@ -58,6 +64,7 @@ struct Config {
     api_attempts: Mutex<Attempts>,
     uploads: Mutex<Attempts>,
     image_jobs: Arc<tokio::sync::Semaphore>,
+    sound_jobs: Arc<tokio::sync::Semaphore>,
 }
 
 fn valid_name(value: &str) -> bool {
@@ -185,7 +192,7 @@ async fn api_policy(
     }
     let no_cache = path.starts_with("/api/") || path.starts_with("/c/");
     let mut response = next.run(request).await;
-    if no_cache {
+    if no_cache && !response.headers().contains_key(header::CACHE_CONTROL) {
         response
             .headers_mut()
             .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
@@ -207,8 +214,11 @@ fn app(config: Arc<Config>) -> Router {
         .merge(auth::routes())
         .merge(invites::routes())
         .merge(rooms::routes())
+        .merge(moderation::routes())
         .merge(people::routes())
+        .merge(calls::routes())
         .merge(profile::routes())
+        .merge(soundboard::routes())
         .route(
             "/api/upload-test",
             post(upload_test)
@@ -236,7 +246,8 @@ fn app(config: Arc<Config>) -> Router {
                     Method::PUT,
                     Method::DELETE,
                 ])
-                .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]),
+                .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
+                .expose_headers([header::RETRY_AFTER]),
         )
         .with_state(config)
 }
@@ -279,6 +290,7 @@ async fn main() -> std::io::Result<()> {
         )?,
     )
     .map_err(std::io::Error::other)?;
+    let sleep = sleep::Sleep::from_env()?;
     let mut conn = db::open(env::var("PORTEIRO_DB").unwrap_or_else(|_| "stackcall.sqlite3".into()))
         .map_err(std::io::Error::other)?;
     let configured_name = env::var("SERVIDOR_NOME").ok();
@@ -314,6 +326,7 @@ async fn main() -> std::io::Result<()> {
     }
     let config = Arc::new(Config {
         livekit,
+        sleep,
         server_name,
         public_url,
         members_can_invite,
@@ -323,7 +336,9 @@ async fn main() -> std::io::Result<()> {
         api_attempts: Mutex::default(),
         uploads: Mutex::default(),
         image_jobs: Arc::new(tokio::sync::Semaphore::new(1)),
+        sound_jobs: Arc::new(tokio::sync::Semaphore::new(1)),
     });
+    sleep::monitor(config.clone());
     eprintln!("Porteiro ouvindo em {}", listener.local_addr()?);
     axum::serve(
         listener,

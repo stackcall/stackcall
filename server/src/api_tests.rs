@@ -12,6 +12,8 @@ struct Fixture {
     config: Arc<Config>,
     owner_code: String,
     online: Arc<Mutex<Vec<String>>>,
+    subrooms: Arc<Mutex<HashMap<String, Vec<String>>>>,
+    commands: Arc<Mutex<Vec<&'static str>>>,
     kicked: Arc<Mutex<Vec<String>>>,
     livekit: tokio::task::JoinHandle<()>,
 }
@@ -23,32 +25,114 @@ impl Drop for Fixture {
 }
 
 async fn fixture(members_can_invite: bool) -> Fixture {
+    fixture_with_sleep(members_can_invite, None).await
+}
+
+async fn fixture_with_sleep(members_can_invite: bool, idle: Option<Duration>) -> Fixture {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let internal_url = format!("http://{}", listener.local_addr().unwrap())
+    let internal_url: Url = format!("http://{}", listener.local_addr().unwrap())
         .parse()
         .unwrap();
     let online = Arc::new(Mutex::new(Vec::<String>::new()));
+    let subrooms = Arc::new(Mutex::new(HashMap::<String, Vec<String>>::new()));
+    let commands = Arc::new(Mutex::new(Vec::new()));
     let kicked = Arc::new(Mutex::new(Vec::<String>::new()));
     let livekit = tokio::spawn({
         let online = online.clone();
+        let subrooms = subrooms.clone();
+        let commands = commands.clone();
         let kicked = kicked.clone();
         async move {
             let api = Router::new()
                 .route(
+                    "/start",
+                    post({
+                        let commands = commands.clone();
+                        move || async move {
+                            commands.lock().unwrap().push("start");
+                            StatusCode::NO_CONTENT
+                        }
+                    }),
+                )
+                .route(
+                    "/stop",
+                    post(move || async move {
+                        commands.lock().unwrap().push("stop");
+                        StatusCode::NO_CONTENT
+                    }),
+                )
+                .route(
                     "/twirp/livekit.RoomService/ListRooms",
-                    post(|| async { Json(json!({"rooms":[{"name":"room-in-use"}]})) }),
+                    post({
+                        let subrooms = subrooms.clone();
+                        move || async move {
+                            let mut rooms = vec![json!({"name":"room-in-use"})];
+                            rooms.extend(
+                                subrooms
+                                    .lock()
+                                    .unwrap()
+                                    .keys()
+                                    .map(|name| json!({"name":name})),
+                            );
+                            Json(json!({"rooms":rooms}))
+                        }
+                    }),
                 )
                 .route(
                     "/twirp/livekit.RoomService/ListParticipants",
-                    post(move || async move {
-                        let identities: Vec<_> = online
-                            .lock()
-                            .unwrap()
+                    post(move |Json(body): Json<Value>| async move {
+                        let room = body["room"].as_str().unwrap();
+                        let people = if room == "room-in-use" {
+                            online.lock().unwrap().clone()
+                        } else {
+                            subrooms
+                                .lock()
+                                .unwrap()
+                                .get(room)
+                                .cloned()
+                                .unwrap_or_default()
+                        };
+                        let identities: Vec<_> = people
                             .iter()
-                            .map(|id| json!({"identity": id}))
+                            .map(|id| {
+                                json!({"identity": id, "tracks": [
+                                    {"sid":"microphone", "source":"MICROPHONE"},
+                                    {"sid":"screen-audio", "source":"SCREEN_SHARE_AUDIO"}
+                                ]})
+                            })
                             .collect();
                         Json(json!({"participants": identities}))
                     }),
+                )
+                .route(
+                    "/twirp/livekit.RoomService/MutePublishedTrack",
+                    post(|Json(body): Json<Value>| async move {
+                        assert_eq!(body["room"], "room-in-use");
+                        assert_eq!(body["trackSid"], "microphone");
+                        assert_eq!(body["muted"], true);
+                        StatusCode::OK
+                    }),
+                )
+                .route(
+                    "/twirp/livekit.RoomService/MoveParticipant",
+                    post(
+                        |headers: axum::http::HeaderMap, Json(body): Json<Value>| async move {
+                            let jwt = headers[header::AUTHORIZATION]
+                                .to_str()
+                                .unwrap()
+                                .strip_prefix("Bearer ")
+                                .unwrap();
+                            let claims = TokenVerifier::with_api_key("test_key", "test_secret")
+                                .verify(jwt)
+                                .unwrap();
+                            assert_eq!(claims.video.room, body["room"]);
+                            assert_eq!(claims.video.destination_room, body["destinationRoom"]);
+                            (
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                Json(json!({"code":"unknown","msg":"not implemented"})),
+                            )
+                        },
+                    ),
                 )
                 .route(
                     "/twirp/livekit.RoomService/RemoveParticipant",
@@ -68,10 +152,12 @@ async fn fixture(members_can_invite: bool) -> Fixture {
     let owner_code = invites::bootstrap(&mut db).unwrap().unwrap();
     assert!(invites::bootstrap(&mut db).unwrap().is_none());
     let config = Arc::new(Config {
+        sleep: idle.map(|idle| sleep::Sleep::new(idle, internal_url.clone()).unwrap()),
         server_name: "Galera teste".into(),
         public_url: "https://example.test/".parse().unwrap(),
         members_can_invite,
         image_jobs: Arc::new(tokio::sync::Semaphore::new(1)),
+        sound_jobs: Arc::new(tokio::sync::Semaphore::new(1)),
         db: Mutex::new(db),
         livekit: livekit::LiveKit::new(
             "test_key".into(),
@@ -90,6 +176,8 @@ async fn fixture(members_can_invite: bool) -> Fixture {
         config,
         owner_code,
         online,
+        subrooms,
+        commands,
         kicked,
         livekit,
     }
@@ -169,6 +257,573 @@ async fn make_invite(app: &Router, owner: &str) -> Value {
 async fn member(app: &Router, owner: &str) -> Value {
     let invite = make_invite(app, owner).await;
     join(app, invite["codigo"].as_str().unwrap(), "Membro").await
+}
+
+#[tokio::test]
+async fn livekit_sleeps_only_after_idle_and_starts_on_an_authenticated_token_request() {
+    let fixture = fixture_with_sleep(false, Some(Duration::from_millis(20))).await;
+    let app = &fixture.app;
+    let owner = join(app, &fixture.owner_code, "Dono").await;
+    let sleep = fixture.config.sleep.as_ref().unwrap();
+    let livekit = &fixture.config.livekit;
+    fixture
+        .config
+        .db
+        .lock()
+        .unwrap()
+        .execute("INSERT INTO salas VALUES ('room-in-use', 'Em uso', 99)", [])
+        .unwrap();
+    sleep.check_idle(livekit).await;
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    fixture
+        .online
+        .lock()
+        .unwrap()
+        .push(format!("{}:tela", id(&owner)));
+    sleep.check_idle(livekit).await;
+    assert!(fixture.commands.lock().unwrap().is_empty());
+    fixture.online.lock().unwrap().clear();
+    sleep.check_idle(livekit).await;
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    sleep.check_idle(livekit).await;
+    assert_eq!(*fixture.commands.lock().unwrap(), ["stop"]);
+
+    let uri = "/api/salas/room-in-use/token";
+    assert_eq!(
+        send(app, Method::POST, uri, None, Value::Null).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        send(
+            app,
+            Method::GET,
+            "/api/salas",
+            Some(session(&owner)),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(*fixture.commands.lock().unwrap(), ["stop"]);
+    let token = || send(app, Method::POST, uri, Some(session(&owner)), Value::Null);
+    assert_eq!(
+        token().await,
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            json!({"erro":"livekit_acordando"})
+        )
+    );
+    let mut response = (StatusCode::SERVICE_UNAVAILABLE, Value::Null);
+    for _ in 0..10 {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        response = token().await;
+        if response.0 == StatusCode::OK {
+            break;
+        }
+    }
+    assert_eq!(response.0, StatusCode::OK);
+    assert!(response.1["token"].is_string());
+    assert_eq!(*fixture.commands.lock().unwrap(), ["stop", "start"]);
+}
+
+#[tokio::test]
+async fn cs2_rooms_have_stable_team_ids_and_are_listed_only_while_occupied() {
+    let fixture = fixture(false).await;
+    let app = &fixture.app;
+    let owner = join(app, &fixture.owner_code, "Dono").await;
+    let player = member(app, session(&owner)).await;
+    let session = Some(session(&player));
+    fixture
+        .config
+        .db
+        .lock()
+        .unwrap()
+        .execute("INSERT INTO salas VALUES ('cs', 'CS', 1)", [])
+        .unwrap();
+    let enter = |room: &'static str, team: &'static str| async move {
+        send(
+            app,
+            Method::POST,
+            &format!("/api/salas/{room}/cs2/token"),
+            session,
+            json!({"time":team}),
+        )
+        .await
+    };
+    assert_eq!(
+        enter("cs", "invalid").await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    assert_eq!(enter("missing", "ct").await.0, StatusCode::NOT_FOUND);
+    assert_eq!(enter("cs:cs:ct", "ct").await.0, StatusCode::NOT_FOUND);
+    let (status, ct) = enter("cs", "ct").await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, tr) = enter("cs", "tr").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_ne!(ct["sala_id"], tr["sala_id"]);
+    assert_eq!(enter("cs", "ct").await.1["sala_id"], ct["sala_id"]);
+    for field in ["token", "screen_token"] {
+        let claims = TokenVerifier::with_api_key("test_key", "test_secret")
+            .verify(ct[field].as_str().unwrap())
+            .unwrap();
+        assert_eq!(claims.video.room, ct["sala_id"]);
+    }
+    let child = ct["sala_id"].as_str().unwrap();
+    let rooms = || async {
+        let (_, rooms) = send(app, Method::GET, "/api/salas", session, Value::Null).await;
+        rooms
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["id"] == child)
+            .cloned()
+    };
+    assert!(rooms().await.is_none());
+    fixture.subrooms.lock().unwrap().insert(
+        child.into(),
+        vec![id(&player).into(), format!("{}:tela", id(&player))],
+    );
+    let room = rooms().await.unwrap();
+    assert_eq!(room["nome"], "CS · CT");
+    assert_eq!(room["pai_id"], "cs");
+    assert_eq!(room["time"], "ct");
+    assert_eq!(room["pessoas"], 1);
+    assert_eq!(room["no_ar"], true);
+    let (status, token) = send(
+        app,
+        Method::POST,
+        &format!("/api/salas/{child}/token"),
+        session,
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(token["sala_id"], child);
+    fixture
+        .subrooms
+        .lock()
+        .unwrap()
+        .get_mut(child)
+        .unwrap()
+        .clear();
+    assert!(rooms().await.is_none());
+    fixture
+        .config
+        .db
+        .lock()
+        .unwrap()
+        .execute("DELETE FROM salas WHERE id = 'cs'", [])
+        .unwrap();
+    assert_eq!(enter("cs", "ct").await.0, StatusCode::NOT_FOUND);
+    assert_eq!(
+        send(
+            app,
+            Method::POST,
+            &format!("/api/salas/{child}/token"),
+            session,
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn soundboard_rejects_invalid_uploads_and_serves_private_files() {
+    let fixture = fixture(false).await;
+    let app = &fixture.app;
+    let owner = join(app, &fixture.owner_code, "Dono").await;
+    let member = member(app, session(&owner)).await;
+    let upload = |viewer: String, uri: &'static str, bytes: Vec<u8>| async move {
+        result(
+            app,
+            request(
+                Method::POST,
+                uri,
+                Some(&viewer),
+                Body::from(bytes),
+                "192.0.2.200:1234".parse().unwrap(),
+            ),
+        )
+        .await
+    };
+    let uri = "/api/soundboard?nome=Sino&emoji=%F0%9F%94%94";
+    let opus = audio::silent_opus(40);
+    assert_eq!(
+        upload(session(&member).into(), uri, opus.clone()).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        upload(
+            session(&owner).into(),
+            "/api/soundboard?nome=Sino&emoji=x",
+            opus.clone()
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        upload(session(&owner).into(), uri, vec![0; audio::MAX_BYTES + 1])
+            .await
+            .0,
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
+    assert_eq!(
+        upload(session(&owner).into(), uri, b"OggSfake".to_vec())
+            .await
+            .0,
+        StatusCode::UNSUPPORTED_MEDIA_TYPE
+    );
+    assert_eq!(
+        upload(session(&owner).into(), uri, audio::silent_opus(251))
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let (status, item) = upload(session(&owner).into(), uri, opus.clone()).await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(item["duracao_ms"], 800);
+    fixture.config.db.lock().unwrap().execute(
+        "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 23)
+         INSERT INTO sons SELECT printf('fixture-%02d', n), 'Sino', '🔔', 'audio/ogg', 800, ?1 FROM seq",
+        [&opus],
+    ).unwrap();
+    assert_eq!(
+        upload(session(&owner).into(), uri, opus.clone()).await.0,
+        StatusCode::CONFLICT
+    );
+    let (_, list) = send(
+        app,
+        Method::GET,
+        "/api/soundboard",
+        Some(session(&member)),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(list.as_array().unwrap().len(), 24);
+    let url = item["url"].as_str().unwrap();
+    let download = |token| {
+        request(
+            Method::GET,
+            url,
+            token,
+            Body::empty(),
+            "192.0.2.200:1234".parse().unwrap(),
+        )
+    };
+    assert_eq!(
+        app.clone().oneshot(download(None)).await.unwrap().status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let response = app
+        .clone()
+        .oneshot(download(Some(session(&member))))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()[header::CONTENT_TYPE], "audio/ogg");
+    assert_eq!(
+        response.headers()[header::CACHE_CONTROL],
+        "private, max-age=86400, immutable"
+    );
+    assert_eq!(
+        to_bytes(response.into_body(), audio::MAX_BYTES)
+            .await
+            .unwrap()
+            .as_ref(),
+        &opus
+    );
+    let remove = format!("/api/soundboard/{}", item["id"].as_str().unwrap());
+    assert_eq!(
+        send(
+            app,
+            Method::DELETE,
+            &remove,
+            Some(session(&owner)),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        app.clone()
+            .oneshot(download(Some(session(&member))))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn calls_reach_only_friends_online_at_send_time_and_are_rate_limited() {
+    let fixture = fixture(false).await;
+    let app = &fixture.app;
+    let owner = join(app, &fixture.owner_code, "Dono").await;
+    let online = member(app, session(&owner)).await;
+    let offline = member(app, session(&owner)).await;
+    let stranger = member(app, session(&owner)).await;
+    fixture
+        .config
+        .db
+        .lock()
+        .unwrap()
+        .execute("INSERT INTO salas VALUES ('room-in-use', 'Em uso', 99)", [])
+        .unwrap();
+    for friend in [&online, &offline] {
+        assert_eq!(
+            send(
+                app,
+                Method::POST,
+                &format!("/api/amigos/{}", id(friend)),
+                Some(session(&owner)),
+                Value::Null
+            )
+            .await
+            .0,
+            StatusCode::NO_CONTENT
+        );
+    }
+    *fixture.online.lock().unwrap() = vec![id(&online).into(), id(&stranger).into()];
+    let call = || {
+        send(
+            app,
+            Method::POST,
+            "/api/chamar",
+            Some(session(&owner)),
+            json!({"sala_id":"room-in-use","mensagem":" Bora? "}),
+        )
+    };
+    let (first, second) = tokio::join!(call(), call());
+    let mut results = [first.0, second.0];
+    results.sort();
+    assert_eq!(
+        results,
+        [StatusCode::CREATED, StatusCode::TOO_MANY_REQUESTS]
+    );
+    fixture.online.lock().unwrap().push(id(&offline).into());
+    let calls = |viewer: String| async move {
+        let (_, people) = send(app, Method::GET, "/api/pessoas", Some(&viewer), Value::Null).await;
+        people
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["papel"] == "dono")
+            .unwrap()["chamados"]
+            .clone()
+    };
+    let visible = calls(session(&online).into()).await;
+    assert_eq!(visible[0]["sala_id"], "room-in-use");
+    assert_eq!(visible[0]["mensagem"], "Bora?");
+    assert_eq!(calls(session(&online).into()).await, visible);
+    for viewer in [&owner, &offline, &stranger] {
+        assert_eq!(calls(session(viewer).into()).await, json!([]));
+    }
+    fixture
+        .config
+        .db
+        .lock()
+        .unwrap()
+        .execute("UPDATE chamados SET criado_em = unixepoch() - 120", [])
+        .unwrap();
+    assert_eq!(calls(session(&online).into()).await, json!([]));
+    assert_eq!(call().await.0, StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn game_presence_expires_and_can_be_cleared() {
+    let fixture = fixture(false).await;
+    let app = &fixture.app;
+    let owner = join(app, &fixture.owner_code, "Dono").await;
+    let player = member(app, session(&owner)).await;
+    let set = |name: Value| {
+        send(
+            app,
+            Method::PUT,
+            "/api/eu/jogo",
+            Some(session(&player)),
+            json!({"jogo":name}),
+        )
+    };
+    let read = || async {
+        let (status, profiles) = send(
+            app,
+            Method::GET,
+            "/api/pessoas",
+            Some(session(&owner)),
+            Value::Null,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        profiles
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["id"] == id(&player))
+            .unwrap()["jogo"]
+            .clone()
+    };
+    assert!(read().await.is_null());
+    assert_eq!(set(json!("CS2\n")).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(set(json!("a".repeat(61))).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(set(json!(" CS2 ")).await.0, StatusCode::NO_CONTENT);
+    assert_eq!(read().await, "CS2");
+    fixture
+        .config
+        .db
+        .lock()
+        .unwrap()
+        .execute(
+            "UPDATE usuarios SET jogo_expira_em = unixepoch() WHERE id = ?1",
+            [id(&player)],
+        )
+        .unwrap();
+    assert!(read().await.is_null());
+    assert_eq!(set(json!("CS2")).await.0, StatusCode::NO_CONTENT);
+    assert_eq!(set(json!("")).await.0, StatusCode::NO_CONTENT);
+    assert!(read().await.is_null());
+}
+
+#[tokio::test]
+async fn room_moderation_checks_roles_and_keeps_the_target_in_the_group() {
+    let fixture = fixture(false).await;
+    let app = &fixture.app;
+    let owner = join(app, &fixture.owner_code, "Dono").await;
+    let admin = member(app, session(&owner)).await;
+    let target = member(app, session(&owner)).await;
+    {
+        let db = fixture.config.db.lock().unwrap();
+        db.execute(
+            "UPDATE usuarios SET papel = 'admin' WHERE id = ?1",
+            [id(&admin)],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO salas VALUES ('room-in-use', 'Em uso', 99), ('dest', 'Destino', 100)",
+            [],
+        )
+        .unwrap();
+    }
+    *fixture.online.lock().unwrap() = vec![id(&target).into(), format!("{}:tela", id(&target))];
+    for (path, payload) in [
+        ("silenciar", json!({})),
+        (
+            "mover",
+            json!({"usuario_id": id(&target), "destino_id": "dest"}),
+        ),
+        ("retirar", json!({"usuario_id": id(&target)})),
+    ] {
+        let uri = format!("/api/salas/room-in-use/moderacao/{path}");
+        assert_eq!(
+            send(
+                app,
+                Method::POST,
+                &uri,
+                Some(session(&target)),
+                payload.clone()
+            )
+            .await
+            .0,
+            StatusCode::FORBIDDEN
+        );
+        for manager in [&owner, &admin] {
+            let expected = if path == "mover" {
+                StatusCode::ACCEPTED
+            } else {
+                StatusCode::NO_CONTENT
+            };
+            assert_eq!(
+                send(
+                    app,
+                    Method::POST,
+                    &uri,
+                    Some(session(manager)),
+                    payload.clone()
+                )
+                .await
+                .0,
+                expected
+            );
+        }
+        if path == "mover" {
+            let (_, people) = send(
+                app,
+                Method::GET,
+                "/api/pessoas",
+                Some(session(&target)),
+                Value::Null,
+            )
+            .await;
+            let own = people
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|person| person["id"] == id(&target))
+                .unwrap();
+            assert_eq!(own["mudanca_sala"]["destino_id"], "dest");
+            let (_, people) = send(
+                app,
+                Method::GET,
+                "/api/pessoas",
+                Some(session(&owner)),
+                Value::Null,
+            )
+            .await;
+            assert!(
+                people
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|person| person["mudanca_sala"].is_null())
+            );
+        }
+    }
+    assert_eq!(
+        send(
+            app,
+            Method::GET,
+            "/api/eu",
+            Some(session(&target)),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (_, people) = send(
+        app,
+        Method::GET,
+        "/api/pessoas",
+        Some(session(&target)),
+        Value::Null,
+    )
+    .await;
+    let target_profile = people
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|person| person["id"] == id(&target))
+        .unwrap();
+    assert!(target_profile["mudanca_sala"].is_null());
+    assert_eq!(fixture.kicked.lock().unwrap().len(), 8);
+    assert_eq!(
+        fixture
+            .config
+            .db
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT count(*) FROM moderacao_log WHERE resultado IN ('ok', 'reconectar')",
+                [],
+                |row| row.get::<_, i64>(0)
+            )
+            .unwrap(),
+        6
+    );
 }
 
 #[tokio::test]

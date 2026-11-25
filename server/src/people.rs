@@ -1,21 +1,22 @@
 use crate::{
     Config,
     auth::{self, Profile, User},
-    db,
+    calls, db, moderation, sleep,
 };
 use axum::{
     Json, Router,
     extract::{Path, State},
     http::StatusCode,
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
 };
 use rusqlite::{OptionalExtension, TransactionBehavior, params};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, sync::Arc};
 
 pub fn routes() -> Router<Arc<Config>> {
     Router::new()
         .route("/api/pessoas", get(list))
+        .route("/api/eu/jogo", put(set_game))
         .route("/api/amigos/{id}", post(add_friend).delete(remove_friend))
         .route("/api/pessoas/{id}", delete(remove_person))
         .route("/api/pessoas/{id}/aparelhos", delete(remove_devices))
@@ -28,46 +29,89 @@ struct Person {
     amigo: bool,
     online: bool,
     sala: Option<String>,
+    jogo: Option<String>,
+    chamados: Vec<calls::Call>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mudanca_sala: Option<moderation::RoomMove>,
 }
 
 async fn list(
     State(config): State<Arc<Config>>,
     user: User,
 ) -> Result<Json<Vec<Person>>, StatusCode> {
-    let online = config.livekit.online().await;
+    let online = sleep::presence(&config).await;
     db::run(config, move |conn| {
         user.ensure_active(conn)?;
+        let mut calls = calls::for_recipient(conn, &user.id)?;
         let mut friends = conn
             .prepare("SELECT amigo_id FROM amizades WHERE usuario_id = ?1")
             .map_err(db::internal)?;
         let friends = friends
-            .query_map([user.id], |row| row.get(0))
+            .query_map([&user.id], |row| row.get(0))
             .map_err(db::internal)?
             .collect::<rusqlite::Result<HashSet<String>>>()
             .map_err(db::internal)?;
         let mut users = conn
             .prepare(&format!(
-                "SELECT {} FROM usuarios WHERE removido_em IS NULL ORDER BY nome, id",
+                "SELECT {}, CASE WHEN jogo_expira_em > unixepoch() THEN jogo END
+                 FROM usuarios WHERE removido_em IS NULL ORDER BY nome, id",
                 auth::PROFILE_FIELDS,
             ))
             .map_err(db::internal)?;
-        let people = users
-            .query_map([], Profile::from_row)
+        let mut people = users
+            .query_map([], |row| Ok((Profile::from_row(row)?, row.get(9)?)))
             .map_err(db::internal)?
             .map(|row| {
-                row.map(|profile| {
+                row.map(|(profile, jogo)| {
                     let sala = online.room_for(&profile.id);
                     Person {
                         amigo: friends.contains(&profile.id),
                         online: sala.is_some(),
                         sala: sala.map(str::to_owned),
+                        jogo,
+                        chamados: calls.remove(&profile.id).unwrap_or_default(),
                         profile,
+                        mudanca_sala: None,
                     }
                 })
             })
             .collect::<rusqlite::Result<Vec<_>>>()
             .map_err(db::internal)?;
+        if let Some(own) = people
+            .iter_mut()
+            .find(|person| person.profile.id == user.id)
+        {
+            own.mudanca_sala = moderation::pending_move(conn, &user.id)?;
+        }
         Ok(Json(people))
+    })
+    .await
+}
+
+#[derive(Deserialize)]
+struct Game {
+    jogo: String,
+}
+
+async fn set_game(
+    State(config): State<Arc<Config>>,
+    user: User,
+    Json(input): Json<Game>,
+) -> Result<StatusCode, StatusCode> {
+    let game = input.jogo.trim();
+    if game.chars().count() > 60 || input.jogo.chars().any(char::is_control) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let game = game.to_owned();
+    db::run(config, move |conn| {
+        user.ensure_active(conn)?;
+        conn.execute(
+            "UPDATE usuarios SET jogo = NULLIF(?1, ''),
+             jogo_expira_em = CASE WHEN ?1 <> '' THEN unixepoch() + 120 END WHERE id = ?2",
+            params![game, user.id],
+        )
+        .map_err(db::internal)?;
+        Ok(StatusCode::NO_CONTENT)
     })
     .await
 }
