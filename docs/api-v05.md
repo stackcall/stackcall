@@ -19,3 +19,9 @@ O porteiro chama `MoveParticipant` primeiro. A edição aberta do LiveKit 1.13.1
 ## Jogo na presença
 
 `PUT /api/eu/jogo` recebe `{"jogo":"Counter-Strike 2"}` e retorna `204`. O nome tem até 60 caracteres após retirar espaços nas pontas e deve ser livre de caracteres de controle. Envie `{"jogo":""}` para limpar. O app deve renovar enquanto o jogo continuar aberto, por exemplo a cada 60 s. Cada perfil da lista de `GET /api/pessoas` recebe `jogo`, com o nome ou `null` após 120 s sem renovação. A presença de jogo pode aparecer mesmo quando a pessoa está fora da voz.
+
+## Chamar para jogar
+
+`POST /api/chamar` recebe `{"sala_id":"…","mensagem":"Bora?"}` e retorna `201` com `{id,sala_id,mensagem,expira_em}`. A mensagem é opcional, tem até 120 caracteres após retirar espaços nas pontas e deve ser livre de caracteres de controle. O limite por pessoa é uma chamada a cada 60 s, somando todos os aparelhos. O excesso recebe `429`.
+
+Recebem o chamado os amigos que o remetente adicionou e que estavam em alguma sala de voz quando o convite foi emitido. No `GET /api/pessoas` de cada destinatário, o perfil do remetente traz `chamados`, uma lista desses objetos de resposta. A lista fica vazia quando não há convites para a sessão solicitante. Os chamados reaparecem durante 120 s para tolerar falhas de rede. Deduplique notificações por `id` e use `sala_id` no fluxo de entrada ao aceitar.

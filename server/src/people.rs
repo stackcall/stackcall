@@ -1,7 +1,7 @@
 use crate::{
     Config,
     auth::{self, Profile, User},
-    db, moderation,
+    calls, db, moderation,
 };
 use axum::{
     Json, Router,
@@ -30,6 +30,7 @@ struct Person {
     online: bool,
     sala: Option<String>,
     jogo: Option<String>,
+    chamados: Vec<calls::Call>,
     #[serde(skip_serializing_if = "Option::is_none")]
     mudanca_sala: Option<moderation::RoomMove>,
 }
@@ -41,6 +42,7 @@ async fn list(
     let online = config.livekit.online().await;
     db::run(config, move |conn| {
         user.ensure_active(conn)?;
+        let mut calls = calls::for_recipient(conn, &user.id)?;
         let mut friends = conn
             .prepare("SELECT amigo_id FROM amizades WHERE usuario_id = ?1")
             .map_err(db::internal)?;
@@ -67,6 +69,7 @@ async fn list(
                         online: sala.is_some(),
                         sala: sala.map(str::to_owned),
                         jogo,
+                        chamados: calls.remove(&profile.id).unwrap_or_default(),
                         profile,
                         mudanca_sala: None,
                     }

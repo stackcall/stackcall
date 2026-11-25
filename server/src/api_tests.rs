@@ -207,6 +207,81 @@ async fn member(app: &Router, owner: &str) -> Value {
 }
 
 #[tokio::test]
+async fn calls_reach_only_friends_online_at_send_time_and_are_rate_limited() {
+    let fixture = fixture(false).await;
+    let app = &fixture.app;
+    let owner = join(app, &fixture.owner_code, "Dono").await;
+    let online = member(app, session(&owner)).await;
+    let offline = member(app, session(&owner)).await;
+    let stranger = member(app, session(&owner)).await;
+    fixture
+        .config
+        .db
+        .lock()
+        .unwrap()
+        .execute("INSERT INTO salas VALUES ('room-in-use', 'Em uso', 99)", [])
+        .unwrap();
+    for friend in [&online, &offline] {
+        assert_eq!(
+            send(
+                app,
+                Method::POST,
+                &format!("/api/amigos/{}", id(friend)),
+                Some(session(&owner)),
+                Value::Null
+            )
+            .await
+            .0,
+            StatusCode::NO_CONTENT
+        );
+    }
+    *fixture.online.lock().unwrap() = vec![id(&online).into(), id(&stranger).into()];
+    let call = || {
+        send(
+            app,
+            Method::POST,
+            "/api/chamar",
+            Some(session(&owner)),
+            json!({"sala_id":"room-in-use","mensagem":" Bora? "}),
+        )
+    };
+    let (first, second) = tokio::join!(call(), call());
+    let mut results = [first.0, second.0];
+    results.sort();
+    assert_eq!(
+        results,
+        [StatusCode::CREATED, StatusCode::TOO_MANY_REQUESTS]
+    );
+    fixture.online.lock().unwrap().push(id(&offline).into());
+    let calls = |viewer: String| async move {
+        let (_, people) = send(app, Method::GET, "/api/pessoas", Some(&viewer), Value::Null).await;
+        people
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["papel"] == "dono")
+            .unwrap()["chamados"]
+            .clone()
+    };
+    let visible = calls(session(&online).into()).await;
+    assert_eq!(visible[0]["sala_id"], "room-in-use");
+    assert_eq!(visible[0]["mensagem"], "Bora?");
+    assert_eq!(calls(session(&online).into()).await, visible);
+    for viewer in [&owner, &offline, &stranger] {
+        assert_eq!(calls(session(viewer).into()).await, json!([]));
+    }
+    fixture
+        .config
+        .db
+        .lock()
+        .unwrap()
+        .execute("UPDATE chamados SET criado_em = unixepoch() - 120", [])
+        .unwrap();
+    assert_eq!(calls(session(&online).into()).await, json!([]));
+    assert_eq!(call().await.0, StatusCode::CREATED);
+}
+
+#[tokio::test]
 async fn game_presence_expires_and_can_be_cleared() {
     let fixture = fixture(false).await;
     let app = &fixture.app;
