@@ -1,3 +1,5 @@
+#[cfg(windows)]
+mod atalhos;
 mod conta;
 mod modo_jogo;
 mod sidecar;
@@ -68,7 +70,13 @@ fn update_visibility(window: &WebviewWindow, visible: bool) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(windows)]
+    let builder = builder
+        // The Win32 registration is process-wide. Only the shortcut worker needs device events.
+        .device_event_filter(tauri::DeviceEventFilter::Always)
+        .manage(atalhos::Hotkeys::default());
+    builder
         // First plugin: a second launch (deep link from the browser) focuses this one and forwards the URL.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             mostrar(app)
@@ -134,6 +142,10 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            #[cfg(windows)]
+            atalhos::atalhos_definir,
+            #[cfg(windows)]
+            atalhos::atalhos_gravar,
             remote_changelog,
             conta::api,
             conta::sessao_existe,
@@ -145,6 +157,12 @@ pub fn run() {
             sidecar::mudar_bitrate,
             sidecar::mudar_pausa_transmissao
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to run Stackcall");
+        .build(tauri::generate_context!())
+        .expect("failed to build Stackcall")
+        .run(|_app, _event| {
+            #[cfg(windows)]
+            if matches!(_event, tauri::RunEvent::Exit) {
+                _app.state::<atalhos::Hotkeys>().stop();
+            }
+        });
 }
