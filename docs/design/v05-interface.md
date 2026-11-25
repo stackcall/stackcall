@@ -206,7 +206,6 @@ Tudo que vale para este PC e não tinha chave antes fica num JSON só, `stackcal
 | `replayLigado` | booleano | `false` | sala (replay sempre ligado) |
 | `replaySegundos` | `30`, `60`, `120` | `60` | sala e núcleo |
 | `replayQualidade` | `transmissao`, `720p` | `transmissao` | núcleo |
-| `replayPasta` | texto até 260; vazio = `Vídeos\Stackcall` | `""` | núcleo |
 | `cutucarVoz` | booleano | `true` | `lib/cutucar.ts` |
 | `cutucarVolume` | 0 a 100 | `70` | `lib/cutucar.ts` |
 | `cutucarMesmoSilenciado` | booleano | `true` | `lib/cutucar.ts` (a sala informa se está silenciada) |
@@ -230,21 +229,22 @@ Tudo que vale para este PC e não tinha chave antes fica num JSON só, `stackcal
 - O saguão saiu de `screens/Room.tsx` para `screens/Saguao.tsx`, com a barra do topo em `components/Topo.tsx` (mesma marcação da barra da sala, com botões opcionais de busca e clipes). O `App` mostra o saguão fora da voz e a `RoomScreen` só dentro de uma sala. O `Saguao` interno de `Room.tsx` ficou sem uso e pode sair na branch da sala.
 - Atalho novo `quemFala` em `lib/atalhos.ts`, tratado fora da sala (liga e desliga `quemFalaMostrar`).
 
-### Contrato provisório com o núcleo
+### Contrato com o núcleo
 
-O `docs/api-v05-app.md` da branch `feat/v05-nucleo` não existia quando a interface foi feita. O app chama estes comandos (`lib/nucleo.ts`); comando ausente devolve o valor de reserva e a tela segue funcionando:
+O app segue `docs/api-v05-app.md` (`app/src/lib/nucleo.ts`). No app instalado, erro de comando chega à tela; o falso responde só fora do Tauri (demo `?demo=1` e testes).
 
-| Comando | Argumentos | Resposta | Reserva |
-|---|---|---|---|
-| `jogo_detectado` | — | nome do jogo na frente ou `null` | `null` |
-| `cs2_gsi_estado` | — | `{ instalado, caminho }` | `null` ("o núcleo ainda não instala") |
-| `cs2_gsi_instalar` | — | `{ instalado, caminho }`; erro em texto | erro |
-| `escolher_pasta` | — | caminho ou `null` | `null` |
-| `quem_fala_disponivel` | — | booleano | `false` |
-| `quem_fala_janela` | `{ janela: { mostrar, posicao, tamanho, largura } }` | — | nada |
-| `quem_fala_arrastar` | `{ ligado }` | — | nada |
+- Replay: a preferência vai para `replay_definir` ao abrir o app e a cada mudança. "Sempre ligado" grava o monitor principal fora do ar. "720p" manda `resolucao: "720p"`; "Igual à transmissão" usa o padrão do núcleo. A sala lê `replay_atual`, ouve `stackcall-replay` e publica `stackcall.replay`. `replay_microfone` acompanha o microfone aberto.
+- Clipes: o núcleo só avisa pelo evento `saved`; a galeria guarda a lista neste PC (`stackcall.clipes`).
+- Janela quem fala: `falantes_abrir`, `falantes_fechar` e `falantes_posicionar`. A janela carrega `index.html?falantes=1`. O estado chega pelos eventos `quem-fala:estado` e `quem-fala:pedir`.
+- GSI: `gsi_cs2_localizar`, depois `gsi_cs2_instalar({ confirmado: true })` com o caminho mostrado na confirmação. O evento `stackcall-gsi` move a sala (`lib/cs2.ts`).
+- Jogo na presença: `presenca_jogo_atual({ ativa: true })` a cada 30 s, só com a preferência ligada.
+- Faixa leve: "Leve" pede `screen-low` no tópico `stackcall.tela-leve` a cada 20 s e assina essa faixa quando ela aparece. Quem transmite repassa o pedido a `mudar_faixa_leve`.
 
-A janela quem fala abre `index.html?janela=quemfala`: sem borda, fundo transparente, sempre no topo, clique atravessando, sem foco. O estado chega pelos eventos Tauri `quem-fala:estado` (a janela pede o último com `quem-fala:pedir` ao abrir).
+Diferenças do desenho por causa do contrato:
+
+1. A pasta dos clipes é fixa (`Vídeos\Stackcall`): o núcleo não recebe pasta. A preferência `replayPasta` saiu.
+2. A galeria não apaga arquivo: o núcleo não tem comando para isso. "Tirar da lista" só esconde o clipe. Não há prévia em vídeo dentro do app; "Mostrar na pasta" abre o Explorer com o arquivo marcado.
+3. A janela quem fala tem tamanho fixo de 320 × 96 definido pelo núcleo. "Tamanho" muda só a altura das linhas. Não há "Arrastar com o mouse": o núcleo deixa o clique sempre passar através dela. A posição é um dos seis cantos do monitor principal.
 
 ### Rota proposta ao servidor
 
@@ -257,7 +257,7 @@ A janela quem fala abre `index.html?janela=quemfala`: sem borda, fundo transpare
 3. Membros e cargos mostra o cargo, mas não troca: não há rota para mudar cargo.
 4. O saguão diz "jogando CS2 · 40 min" contando desde quando este PC viu o jogo pela primeira vez; a API só manda o nome.
 5. "Silenciar na sala" saiu do menu da pessoa. A rota `POST /api/salas/{sala}/moderacao/silenciar` desliga o microfone de todos e não recebe pessoa; ficou como "Silenciar todos" no menu da sala (⋯), para dono e admin.
-6. `stackcall.ouve.v1`: `docs/api-v05.md` pede só quem tem "volume acima de zero", mas a decisão 2 diz que o "silenciar para mim" não aparece para quem foi silenciado. O app segue a decisão 2 e publica quem está assinado, com qualquer volume. Falta alinhar o texto da API.
+6. `stackcall.ouve.v1` (decisão de 25/11/2026): "Quem me ouve" conta todos na sala que não estão com "silenciar tudo" ligado. O "silenciar para mim" de cada pessoa não é revelado nem desconta. `docs/api-v05.md` foi alinhado.
 
 ## 8. Decisões registradas
 

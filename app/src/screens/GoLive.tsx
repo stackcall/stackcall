@@ -160,7 +160,8 @@ export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart, on
   const codecLabel = codec.codec === 'av1' ? 'AV1' : 'H.264';
   const surface = SURFACE[track?.getSettings().displaySurface ?? ''] ?? 'fonte';
   const sourceName = native ? source?.title : demo ? 'Counter-Strike 2' : track ? track.label || surface : null;
-  const withAudio = native && !!source?.pid && audio;
+  // A window gives the sound of that game; a monitor gives the whole PC minus the Stackcall (core does both).
+  const withAudio = native && !!source && audio;
   const canStart = !busy && !!chosen && (native ? !!source && !testing : !!track || demo);
 
   function pick(next: CaptureSource) {
@@ -375,13 +376,13 @@ export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart, on
         )}
         <div className="flex h-[72px] items-center gap-3 border-t border-texto bg-superficie px-8">
           <span className="min-w-0 flex-1 truncate text-[14px] text-texto-fraco">
-            Vai transmitir <b className="text-texto">{sourceName ?? 'nenhuma fonte'}</b>{chosen && <> em <b className="text-texto">{presetLabel(chosen)}</b></>}, {withAudio ? 'com' : 'sem'} som do jogo.
+            Vai transmitir <b className="text-texto">{sourceName ?? 'nenhuma fonte'}</b>{chosen && <> em <b className="text-texto">{presetLabel(chosen)}</b></>}, {!withAudio ? 'sem som do jogo' : source?.pid ? 'com o som do jogo' : 'com o som do PC, menos o Stackcall'}.
           </span>
           <span className="shrink-0 text-[13px] font-bold" id="som-do-jogo">Som do jogo</span>
           <div className="abas shrink-0" role="group" aria-labelledby="som-do-jogo"
-            title={native && source?.pid ? `Só o áudio de ${source.process_name ?? source.title}. Voz e música ficam fora.` : 'Só em janela de jogo ou programa'}>
+            title={!native ? 'Só no app instalado' : source?.pid ? `Só o áudio de ${source.process_name ?? source.title}. Voz e música ficam fora.` : 'Todo o som do PC, menos o Stackcall: a voz da call não volta para quem assiste.'}>
             {([true, false] as const).map((on) => (
-              <button key={String(on)} type="button" aria-pressed={withAudio === on} disabled={!native || !source?.pid || busy}
+              <button key={String(on)} type="button" aria-pressed={withAudio === on} disabled={!native || !source || busy}
                 onClick={() => { setAudio(on); store.set('somDoJogo', on ? '1' : '0'); }}>{on ? 'Ligado' : 'Desligado'}</button>
             ))}
           </div>

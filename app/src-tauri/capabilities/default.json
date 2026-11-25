@@ -2,7 +2,9 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Main window permissions",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-set-fullscreen",
@@ -13,9 +15,45 @@
     "updater:default",
     "process:allow-restart",
     "deep-link:default",
+    "opener:allow-reveal-item-in-dir",
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "https://*" }, { "url": "http://localhost:*" }, { "url": "http://192.168.*" }, { "url": "http://10.*" }]
-    }
+      "allow": [
+        {
+          "url": "https://*"
+        },
+        {
+          "url": "http://localhost:*"
+        },
+        {
+          "url": "http://192.168.*"
+        },
+        {
+          "url": "http://10.*"
+        }
+      ]
+    },
+    "allow-atalhos-definir",
+    "allow-atalhos-gravar",
+    "allow-remote-changelog",
+    "allow-api",
+    "allow-sessao-existe",
+    "allow-modo-jogo-atual",
+    "allow-falantes-abrir",
+    "allow-falantes-fechar",
+    "allow-falantes-posicionar",
+    "allow-gsi-cs2-localizar",
+    "allow-gsi-cs2-instalar",
+    "allow-presenca-jogo-atual",
+    "allow-listar-fontes",
+    "allow-testar-maquina",
+    "allow-iniciar-transmissao",
+    "allow-parar-transmissao",
+    "allow-mudar-pausa-transmissao",
+    "allow-mudar-faixa-leve",
+    "allow-replay-definir",
+    "allow-replay-atual",
+    "allow-replay-microfone",
+    "allow-replay-salvar"
   ]
 }

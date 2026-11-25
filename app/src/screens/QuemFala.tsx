@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { QuemFalaLista } from '../components/QuemFalaLista';
-import { LARGURA_QUEM_FALA } from '../lib/nucleo';
+import { JANELA_FALANTES } from '../lib/nucleo';
 import { usePreferencias } from '../lib/preferencias';
 import { ESTADO_EXEMPLO, ouvirQuemFala, type EstadoQuemFala } from '../lib/quemfala';
 
 /**
- * Page of the second Tauri window (index.html?janela=quemfala). The core creates the window:
- * borderless, transparent, always on top, clicks pass through. This page only draws the list.
+ * Page of the "falantes" window (index.html?falantes=1, docs/api-v05-app.md). The core creates it:
+ * 320 × 96, borderless, transparent, always on top, clicks pass through. This page only draws the list.
  * Out of voice it draws nothing. `demo` shows a sample room over a dark backdrop.
  */
 export function JanelaQuemFala({ demo = false }: { demo?: boolean }) {
@@ -18,7 +18,7 @@ export function JanelaQuemFala({ demo = false }: { demo?: boolean }) {
   }, [demo]);
   return (
     <main className={`h-full ${demo ? 'bg-palco p-5' : ''}`}>
-      <QuemFalaLista estado={estado} prefs={prefs} largura={LARGURA_QUEM_FALA[prefs.quemFalaTamanho]} />
+      <QuemFalaLista estado={estado} prefs={prefs} largura={JANELA_FALANTES.largura} />
     </main>
   );
 }

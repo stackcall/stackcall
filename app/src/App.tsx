@@ -22,6 +22,9 @@ import { Saguao } from './screens/Saguao';
 import { aoReceberCutucada, type Cutucada } from './lib/cutucar';
 import { iniciarDeteccaoJogo } from './lib/jogo';
 import type { PaginaId } from './lib/buscaConfig';
+import { aoGsi } from './lib/nucleo';
+import { lerPreferencias } from './lib/preferencias';
+import { destinoCs2, salasVisiveis, subSala } from './lib/cs2';
 
 export type Overlay = null | 'settings' | 'perfil' | { novidades: string | null } | { cartao: string };
 
@@ -67,6 +70,10 @@ export function App() {
   const [cutucada, setCutucada] = useState<Cutucada | null>(() => (falso && tela === 'saguao' && new URLSearchParams(location.search).get('grupo') !== 'pequeno'
     ? { id: 'demo', de: 'Rafa', recado: 'a sala tá pronta', salaId: 'cs', salaNome: 'CS' } : null));
   useEffect(() => aoReceberCutucada(setCutucada), []);
+  // CS2 team sub-room: kept here until GET /api/salas lists it (only occupied ones are listed).
+  const [subSalaAtual, setSubSalaAtual] = useState<Sala | null>(null);
+  const salaAtual = salas.find((s) => s.id === sala) ?? (subSalaAtual?.id === sala ? subSalaAtual : undefined);
+  const visiveis = salasVisiveis(salas, salaAtual);
 
   const carregar = useCallback(async (s: Servidor) => {
     try {
@@ -292,6 +299,25 @@ export function App() {
     );
   }
 
+  // "Sala do mapa do CS2": the GSI team moves me to the CT/TR sub-room, and back at the end of the match.
+  const cs2 = useRef({ srv, salaAtual, salas, ocupado: false });
+  Object.assign(cs2.current, { srv, salaAtual, salas });
+  useEffect(() => aoGsi((e) => {
+    const c = cs2.current;
+    if (!c.srv || c.ocupado || !lerPreferencias().cs2SalaMapa) return;
+    const d = destinoCs2(e, c.salaAtual);
+    if (!d) return;
+    if (d.ir === 'pai') return escolherSala(d.pai);
+    const pai = c.salas.find((s) => s.id === d.pai);
+    if (!pai) return;
+    c.ocupado = true;
+    c.srv.tokenCs2(d.pai, d.time).then((id) => {
+      setSubSalaAtual(subSala(id, pai, d.time));
+      escolherSala(id);
+    }, (err: unknown) => setAviso({ tipo: 'erro', texto: `Não deu para entrar na sala do time. ${err instanceof Error ? err.message : String(err)}` }))
+      .finally(() => (c.ocupado = false));
+  }), [escolherSala]);
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <UpdateBanner updater={updater} inCall={!!sala} room={salas.find((s) => s.id === sala)?.nome ?? ''} onNotes={() => setOverlay({ novidades: null })} />
@@ -304,7 +330,7 @@ export function App() {
         {comSala && srv && eu && !sala && (
           <div hidden={!!corpo} className="h-full">
             <Saguao
-              nomeServidor={nomeServidor} eu={eu} salas={salas} pessoas={pessoas} cutucada={cutucada}
+              nomeServidor={nomeServidor} eu={eu} salas={visiveis} pessoas={pessoas} cutucada={cutucada}
               onSala={(id) => {
                 if (cutucada?.salaId === id) setCutucada(null);
                 escolherSala(id);
@@ -320,7 +346,7 @@ export function App() {
         {comSala && srv && eu && sala && (
           <div hidden={!!corpo} className="h-full">
             <RoomScreen
-              servidor={srv} nomeServidor={nomeServidor} eu={eu} salas={salas} pessoas={pessoas} sala={sala} demo={falso}
+              servidor={srv} nomeServidor={nomeServidor} eu={eu} salas={visiveis} pessoas={pessoas} sala={sala} demo={falso}
               onSala={escolherSala}
               onPresenceChange={avisarPresenca}
               onConfig={() => setOverlay('settings')}
@@ -333,7 +359,7 @@ export function App() {
           </div>
         )}
         {corpo}
-        <Camada05 servidor={estado.fase === 'pronto' ? srv : null} eu={eu} pessoas={pessoas} salas={salas} sala={sala}
+        <Camada05 servidor={estado.fase === 'pronto' ? srv : null} eu={eu} pessoas={pessoas} salas={visiveis} sala={sala}
           onSala={escolherSala} onCartao={(id) => setOverlay({ cartao: id })}
           onConfig={(pagina) => { setPaginaConfig(pagina); setOverlay('settings'); }} />
         {overlay === 'settings' && (

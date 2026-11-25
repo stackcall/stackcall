@@ -4,7 +4,7 @@ import { Clipes } from '../screens/Clipes';
 import { AJUSTES, GRUPOS, paginaDe, paginasVisiveis, type PaginaId } from '../lib/buscaConfig';
 import { receberCutucada } from '../lib/cutucar';
 import { cutucadasPendentes, somSilenciado } from '../lib/cutucadas';
-import { replay } from '../lib/nucleo';
+import { salvarPreferencias } from '../lib/preferencias';
 import { aoAbrir, itensSala, type ItemPaleta } from '../lib/paleta';
 import type { Pessoa, Sala, Servidor, Usuario } from '../lib/servidor';
 import { useTema } from '../lib/tema';
@@ -79,7 +79,7 @@ export function Camada05({ servidor, eu, pessoas, salas, sala, onSala, onConfig,
 
   return (
     <>
-      {clipes && <Clipes onFechar={() => setClipes(false)} onReplay={() => void replay.alternar()} />}
+      {clipes && <Clipes onFechar={() => setClipes(false)} onReplay={() => salvarPreferencias({ replayLigado: true })} />}
       {paleta !== null && <Paleta itens={itens()} inicial={paleta} onFechar={() => setPaleta(null)} onConfiguracoes={() => onConfig()} />}
     </>
   );

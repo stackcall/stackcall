@@ -11,24 +11,23 @@ describe('quem recebe você (item 2)', () => {
     ], 'eu', new Set(['rafa']));
     expect(r).toEqual([
       { id: 'rafa', nome: 'Rafa', voz: true, motivo: undefined, tela: true },
-      { id: 'duda', nome: 'Duda', voz: false, motivo: undefined, tela: false },
+      { id: 'duda', nome: 'Duda', voz: false, motivo: 'conectando', tela: false },
     ]);
   });
 
-  it('gives only technical reasons', () => {
+  it('gives only technical reasons, and "som desligado" for silenciar tudo', () => {
     const r = quemRecebe([
       { id: 'a', nome: 'A', conectado: false },
-      { id: 'b', nome: 'B', conectado: true, redeRuim: true, attributes: ouve() },
+      { id: 'b', nome: 'B', conectado: true, attributes: ouve() },
       { id: 'c', nome: 'C', conectado: true },
       { id: 'd', nome: 'D', conectado: true, attributes: { [ATRIBUTO_OUVE]: 'not json' } },
     ], 'eu', new Set());
-    expect(r.map((x) => x.motivo)).toEqual(['conectando', 'modo internet ruim', 'app antigo', 'app antigo']);
+    expect(r.map((x) => x.motivo)).toEqual(['conectando', 'som desligado', 'app antigo', 'app antigo']);
   });
 
-  it('keeps someone silenced for me in the published list (the volume is never published)', () => {
-    // ouveLista has no volume input: a person at volume 0 is still subscribed, so still listed.
-    expect(ouveLista([{ id: 'leo', assinado: true }, { id: 'ana', assinado: true }, { id: 'zé', assinado: false }], false)).toEqual(['ana', 'leo']);
-    expect(ouveLista([{ id: 'leo', assinado: true }], true)).toEqual([]);
+  it('lists everyone in the room unless "silenciar tudo" is on; the volume is never an input', () => {
+    expect(ouveLista(['leo', 'ana', 'zé'], false)).toEqual(['ana', 'leo', 'zé']);
+    expect(ouveLista(['leo'], true)).toEqual([]);
   });
 });
 
