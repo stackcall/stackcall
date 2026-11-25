@@ -20,7 +20,7 @@
         "minHeight": 700,
         "backgroundColor": "#f4f4f1",
         "visible": false,
-        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required"
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI --autoplay-policy=no-user-gesture-required"
       }
     ],
     "security": {
@@ -43,7 +43,12 @@
       "sidecar/swresample-7.dll": "swresample-7.dll",
       "sidecar/FFmpeg-LGPL.txt": "FFmpeg-LGPL.txt",
       "sidecar/FFmpeg-GPL.txt": "FFmpeg-GPL.txt",
-      "../../NOTICE": "NOTICE"
+      "../../LICENSE": "LICENSE",
+      "../../NOTICE": "NOTICE",
+      "../node_modules/@fontsource/anton/LICENSE": "licenses/Anton.txt",
+      "../node_modules/@fontsource/hanken-grotesk/LICENSE": "licenses/Hanken-Grotesk.txt",
+      "../node_modules/@fontsource/jetbrains-mono/LICENSE": "licenses/JetBrains-Mono.txt",
+      "../node_modules/@fontsource/permanent-marker/LICENSE": "licenses/Permanent-Marker.txt"
     },
     "icon": [
       "icons/32x32.png",

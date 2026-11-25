@@ -18,13 +18,22 @@ Na página da última versão, abra a seção **Assets** e baixe o arquivo que t
 ## Instalar
 
 1. Abra o arquivo `-setup.exe` que você baixou.
-2. Se aparecer **O Windows protegeu o computador**, clique em **Mais informações** e depois em **Executar assim mesmo**. Esse aviso aparece porque o Stackcall ainda não tem um certificado pago de assinatura do Windows.
-3. Siga os passos do instalador e abra o Stackcall.
+2. Siga os passos do instalador e abra o Stackcall.
 
-Se o **Controle Inteligente de Aplicativos (Smart App Control)** estiver ligado no seu PC, o Windows bloqueia a instalação nesta fase.
+Enquanto a assinatura estiver pendente, o Windows pode mostrar **O Windows protegeu o computador**. Para instalar uma versão ainda sem assinatura que você baixou da página oficial, use **Mais informações** e **Executar assim mesmo**, se essas opções estiverem disponíveis. O **Controle Inteligente de Aplicativos (Smart App Control)** pode bloquear versões sem assinatura.
+
+As versões assinadas têm **SignPath Foundation** como editor. Para conferir a assinatura, abra **Propriedades > Assinaturas Digitais** no arquivo baixado. O SmartScreen também considera a reputação do arquivo e ainda pode exibir um aviso.
+
+Para desinstalar, abra **Configurações > Aplicativos**, procure **Stackcall** e escolha **Desinstalar**.
 
 ## Atualizações e novidades
 
 O próprio Stackcall avisa quando houver uma atualização. Você pode atualizar pelo app sem baixar o instalador de novo.
 
 As notas de cada versão ficam no [histórico de versões](https://github.com/stackcall/releases/releases).
+
+## Code signing policy
+
+Free code signing provided by SignPath.io, certificate by SignPath Foundation
+
+[Code signing policy](https://github.com/stackcall/stackcall/blob/main/CODE_SIGNING_POLICY.md)

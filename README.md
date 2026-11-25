@@ -86,10 +86,16 @@ Informe o domínio ou pressione Enter para usar `<ip-publico>.sslip.io`. Guarde 
    git push --tags
    ```
 
-O Actions confere as versões, gera as notas e o histórico, compila o instalador NSIS no Windows e assina o pacote para o updater. A release fica em rascunho até o instalador, o manifesto e o changelog estarem anexados. Tags como `v0.2.0-teste.1` saem como pré-release. Para testar a compilação sem publicar, execute o workflow **Release** manualmente com a versão já gravada no app, sem o prefixo `v`. O instalador e a assinatura ficam nos artefatos da execução.
+O Actions confere as versões, gera as notas e o histórico e monta o instalador NSIS no Windows. Quando a SignPath está configurada, assina os executáveis e o instalador. Na publicação por tag, o Tauri gera a assinatura do atualizador sobre o instalador final. A release fica em rascunho até o instalador, o manifesto e o changelog estarem anexados. Tags como `v0.2.0-teste.1` saem como pré-release. Para testar a compilação sem publicar, execute o workflow **Release** manualmente com a versão já gravada no app, sem o prefixo `v`. O instalador fica nos artefatos da execução.
 
 Os instaladores e o histórico público ficam em [Stackcall Releases](https://github.com/stackcall/releases/releases). O updater consulta [o manifesto da versão estável](https://github.com/stackcall/releases/releases/latest/download/latest.json).
 
+## Code signing policy
+
+Free code signing provided by SignPath.io, certificate by SignPath Foundation
+
+[Code signing policy](CODE_SIGNING_POLICY.md) · [Configuração e teste da assinatura](docs/assinatura.md)
+
 ## Licença
 
-Código privado por enquanto, todos os direitos reservados. A abertura com licença livre está prevista para depois (ver decisão D3 no plano).
+O Stackcall é licenciado sob [GNU AGPL-3.0](LICENSE). Consulte [NOTICE](NOTICE) para as licenças dos componentes distribuídos com o app.
