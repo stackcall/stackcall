@@ -2,18 +2,22 @@
  * Short confirmation sounds for global shortcuts, synthesized with Web Audio: no audio file
  * to ship, nothing to download. Quiet on purpose (it plays over the game).
  */
-export type Som = 'liga' | 'desliga' | 'silenciou';
+export type Som = 'liga' | 'desliga' | 'silenciou' | 'entrou' | 'saiu' | 'cutucada';
 
 /** Tones in Hz, played one after the other (90 ms each). */
 export const TONS: Record<Som, number[]> = {
   liga: [660, 990],
   desliga: [660, 440],
   silenciou: [330, 330],
+  entrou: [523, 784],
+  saiu: [784, 523],
+  cutucada: [880, 660, 880],
 };
 
 let ctx: AudioContext | null = null;
 
-export function tocarSom(som: Som) {
+/** `volume` 0..1 scales the quiet default (0.08 peak). */
+export function tocarSom(som: Som, volume = 1) {
   if (typeof AudioContext === 'undefined') return;
   try {
     ctx ??= new AudioContext({ latencyHint: 'interactive' });
@@ -27,7 +31,7 @@ export function tocarSom(som: Som) {
       osc.frequency.value = hz;
       // Short attack and decay: no click at the start or the end.
       ganho.gain.setValueAtTime(0, t);
-      ganho.gain.linearRampToValueAtTime(0.08, t + 0.01);
+      ganho.gain.linearRampToValueAtTime(Math.max(0.0002, 0.08 * volume), t + 0.01);
       ganho.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
       osc.connect(ganho).connect(ctx!.destination);
       osc.start(t);

@@ -15,11 +15,34 @@ const CAMINHOS = {
   mais: 'M12 5v14M5 12h14',
   fechar: 'M6 6l12 12M18 6L6 18',
   copiar: 'M8 8h12v12H8zM16 8V4H4v12h4',
+  replay: 'M4 12a8 8 0 1 0 2.6-5.9M4 3v5h5M12 9v4l3 2',
+  pontos: 'M5 12h.01M12 12h.01M19 12h.01',
+  busca: 'M10 4a6 6 0 1 0 0 12 6 6 0 1 0 0-12zM15 15l5 5',
+  pip: 'M3 5h18v14H3zM12 12h6v4h-6z',
+  filme: 'M3 5h18v14H3zM7 5v14M17 5v14M3 9.5h4M3 14.5h4M17 9.5h4M17 14.5h4',
+  antena: 'M12 11v10M8.5 7.5a5 5 0 0 0 0 7M15.5 7.5a5 5 0 0 1 0 7M5.5 4.5a9 9 0 0 0 0 13M18.5 4.5a9 9 0 0 1 0 13',
+  escudo: 'M12 3l8 3v6c0 5-4 8-8 9-4-1-8-4-8-9V6z',
+  cutuca: 'M9 11V4.5a1.5 1.5 0 0 1 3 0V11M12 10V8.5a1.5 1.5 0 0 1 3 0V11M15 10.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7L3.5 14a1.5 1.5 0 0 1 2.4-1.8L9 15',
+  volume: 'M4 9h4l5-4v14l-5-4H4zM16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11',
+  mudo: 'M4 9h4l5-4v14l-5-4H4zM16 9l5 6M21 9l-5 6',
+  mover: 'M4 12h12M12 8l4 4-4 4M20 4v16',
+  pessoa: 'M12 4a4 4 0 1 0 0 8 4 4 0 1 0 0-8zM4 21c1-4 4-6 8-6s7 2 8 6',
+  dir: 'M9 6l6 6-6 6',
+  menos: 'M5 12h14',
+  chat: 'M4 5h16v11H9l-5 4z',
+  uma: 'M3 5h18v14H3z',
+  grade: 'M3 5h8v14H3zM13 5h8v14h-8z',
+  pasta: 'M3 6h7l2 2h9v11H3z',
+  lixo: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',
+  play: 'M7 4l13 8-13 8z',
 } as const;
 
-export function Icone({ nome, tamanho = 18 }: { nome: keyof typeof CAMINHOS; tamanho?: number }) {
+export type NomeIcone = keyof typeof CAMINHOS;
+
+export function Icone({ nome, tamanho = 18 }: { nome: NomeIcone; tamanho?: number }) {
   return (
-    <svg width={tamanho} height={tamanho} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" aria-hidden="true">
+    <svg width={tamanho} height={tamanho} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"
+      strokeWidth={nome === 'pontos' ? 3.4 : 2} strokeLinecap="square">
       <path d={CAMINHOS[nome]} />
     </svg>
   );

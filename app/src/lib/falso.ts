@@ -20,8 +20,8 @@ export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
   // ?grupo=pequeno: the real common case (one room, nobody in voice, one friend offline).
   const pequeno = new URLSearchParams(location.search).get('grupo') === 'pequeno';
   const pessoas: Pessoa[] = pequeno ? [pessoa('caio', 'Caio', { online: false, sala: null, amigo: true })] : [
-    pessoa('rafa', 'Rafa', { amigo: true, bio: 'clutch ou nada', tema: 'noite', cor: '#ff5a5f' }),
-    pessoa('duda', 'Duda', { amigo: true, tema: 'lima', bio: 'mira de rifle, coração de pistol' }),
+    pessoa('rafa', 'Rafa', { amigo: true, bio: 'clutch ou nada', tema: 'noite', cor: '#ff5a5f', jogo: 'CS2' }),
+    pessoa('duda', 'Duda', { amigo: true, tema: 'lima', bio: 'mira de rifle, coração de pistol', jogo: 'CS2' }),
     pessoa('leo', 'Léo', { sala: 'cs' }),
     pessoa('nanda', 'Nanda', { papel: 'admin' }),
     pessoa('bia', 'Bia', { sala: 'lobby', amigo: true }),
@@ -29,6 +29,12 @@ export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
     pessoa('tati', 'Tati', { sala: null }),
     pessoa('caio', 'Caio', { online: false, sala: null }),
   ];
+  const cutucou = new Map<string, number>();
+  // ?cutucada=1: Rafa poked me (to review the incoming strip and the voice).
+  if (new URLSearchParams(location.search).has('cutucada')) {
+    const rafa = pessoas.find((p) => p.id === 'rafa');
+    if (rafa) rafa.cutucadas = [{ id: 'k-demo', recado: 'a sala tá pronta', salaId: 'cs', expiraEm: 4_000_000_000 }];
+  }
   let salas: Sala[] = pequeno ? [{ id: 'geral', nome: 'Geral', ordem: 1, pessoas: 0, noAr: false }] : [
     { id: 'cs', nome: 'CS', ordem: 1, pessoas: 5, noAr: true },
     { id: 'lobby', nome: 'Lobby', ordem: 2, pessoas: 2, noAr: false },
@@ -97,5 +103,18 @@ export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
       return c;
     },
     revogarConvite: async (id) => void (convites = convites.filter((c) => c.id !== id)),
+    cutucar: async (usuarioId, recado) => {
+      await espera();
+      if (Date.now() - (cutucou.get(usuarioId) ?? 0) < 30_000) throw new ApiError(429, 'Espere 30 s para cutucar essa pessoa de novo.');
+      cutucou.set(usuarioId, Date.now());
+      return { id: `k${Date.now()}`, recado, salaId: null, expiraEm: Math.floor(Date.now() / 1000) + 120 };
+    },
+    moderar: async (_salaId, a) => {
+      await espera();
+      const p = pessoas.find((x) => x.id === a.usuarioId);
+      if (!p) throw new ApiError(404, 'Não encontrado.');
+      if (a.acao === 'mover') p.sala = a.destinoId;
+      if (a.acao === 'retirar') p.sala = null;
+    },
   };
 }

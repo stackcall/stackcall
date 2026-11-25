@@ -2,9 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import {
-  AudioPresets, Participant, RemoteParticipant, RemoteTrackPublication, Room, RoomEvent, Track,
+  AudioPresets, Participant, RemoteParticipant, RemoteTrackPublication, Room, RoomEvent, Track, VideoQuality,
   type DisconnectReason,
 } from 'livekit-client';
+import { ATRIBUTO_REPLAY } from '../lib/nucleo';
+import { lerRede, lerSons, salvarRede } from '../lib/preferencias';
+import { tocarSom } from '../lib/sons';
+import { ATRIBUTO_OUVE, ATRIBUTO_REDE, ouveLista, quemRecebe, redeDe } from './sala05';
 import { interfaceAtiva, useInterfaceAtiva } from '../lib/leveza';
 import type { Servidor } from '../lib/servidor';
 import { resolutionOf, type Codec, type Preset } from '../lib/presets';
@@ -62,11 +66,18 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
   const checkPauseRef = useRef<(() => void) | null>(null);
   const live = useRef<{ track: MediaStreamTrack; info: string } | null>(null);
   const native = useRef<NativeStream | null>(null);
+  const redeRuimRef = useRef(lerRede().ruim);
+  const qualidadeRef = useRef<Record<string, 'original' | 'leve'>>({});
+  const somTelaRef = useRef<string | null>(null);
+  const publicarOuveRef = useRef<() => void>(() => undefined);
+  /** Video may come in: window visible and bad internet mode off. */
+  const videoPermitido = () => watchedVideoEnabled.current && !redeRuimRef.current;
 
   const applyVolume = (p: RemoteParticipant) => {
     const v = deafRef.current ? 0 : volumes.current.get(screenOwner(p.identity)) ?? 1;
     p.setVolume(v, Track.Source.Microphone);
-    p.setVolume(v, Track.Source.ScreenShareAudio);
+    // Grid: only the marked screen plays its sound.
+    p.setVolume(somTelaRef.current && somTelaRef.current !== screenOwner(p.identity) ? 0 : v, Track.Source.ScreenShareAudio);
   };
 
   const sendWatch = (room: Room, target: string | null, to?: string[]) =>
@@ -76,7 +87,7 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
 
   const announceWatch = (room: Room, repeat = false) => {
     if (roomRef.current !== room || room.state !== 'connected') return;
-    const owner = watchedVideoEnabled.current ? watchingRef.current : null;
+    const owner = videoPermitido() ? watchingRef.current : null;
     const screen = owner
       ? [owner + SCREEN_SUFFIX, owner].find((id) =>
         room.remoteParticipants.get(id)?.getTrackPublication(Track.Source.ScreenShare)) ?? null
@@ -123,6 +134,7 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
     roomRef.current = room;
     let closed = false;
     let falando = '';
+    let conectadoEm = Infinity;
     const audioElements = new Set<HTMLMediaElement>();
     setState('connecting');
     setError(undefined);
@@ -190,7 +202,7 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
         if (pub.source === Track.Source.ScreenShare) pub.setSubscribed(true);
       } else if (!SCREEN.includes(pub.source) || watchingRef.current === owner) {
         pub.setSubscribed(true);
-        if (pub.source === Track.Source.ScreenShare && !watchedVideoEnabled.current) pub.setEnabled(false);
+        if (pub.source === Track.Source.ScreenShare && !videoPermitido()) pub.setEnabled(false);
       }
     };
 
@@ -235,6 +247,10 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
       .on(RoomEvent.ParticipantConnected, (p) => {
         if (closed) return;
         onPresenceChange?.();
+        if (!screenParticipant(p.identity)) {
+          somEntrada('entrou');
+          publicarOuve();
+        }
         applyVolume(p);
         const mine = watchingRef.current;
         if (mine && !screenParticipant(p.identity)) void sendWatch(room, mine, [p.identity]);
@@ -244,14 +260,19 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
       .on(RoomEvent.ParticipantActive, (p) => {
         if (!screenParticipant(p.identity)) announceWatch(room, true);
       })
-      .on(RoomEvent.ParticipantAttributesChanged, (_changed, p) => {
+      .on(RoomEvent.ParticipantAttributesChanged, (changed, p) => {
         if (closed) return;
         if (supportsWatching(p.attributes) && legacyWatchers.current.delete(p.identity)) rerender();
+        else if (ATRIBUTO_OUVE in changed || ATRIBUTO_REPLAY in changed || ATRIBUTO_REDE in changed) rerender();
         checkPause();
       })
       .on(RoomEvent.ParticipantDisconnected, (p) => {
         if (closed) return;
         onPresenceChange?.();
+        if (!screenParticipant(p.identity)) {
+          somEntrada('saiu');
+          publicarOuve();
+        }
         legacyWatchers.current.delete(p.identity);
         viewers.leave(p.identity);
         if (screenParticipant(p.identity) || !room.remoteParticipants.has(p.identity + SCREEN_SUFFIX)) {
@@ -291,6 +312,9 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
         falando = ids;
         rerender();
       })
+      // Rare (quality steps), not continuous: fine to re-render.
+      .on(RoomEvent.ConnectionQualityChanged, rerender)
+      .on(RoomEvent.TrackSubscribed, () => publicarOuve())
       .on(RoomEvent.TrackMuted, rerender)
       .on(RoomEvent.TrackUnmuted, rerender)
       .on(RoomEvent.LocalTrackPublished, (pub) => {
@@ -328,6 +352,8 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
         if (closed) return void room.disconnect();
         onPresenceChange?.();
         advertise();
+        conectadoEm = performance.now();
+        publicarOuve();
         room.remoteParticipants.forEach((p) => {
           applyVolume(p);
           p.trackPublications.forEach((pub) => subscribeDefault(pub, p));
@@ -350,6 +376,42 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
         setError(e instanceof Error ? e.message : String(e));
       }
     })();
+
+    // Join and leave sound (Settings > Sons e avisos); not for the people already there when I arrive.
+    function somEntrada(som: 'entrou' | 'saiu') {
+      const s = lerSons();
+      if (s.entrada && !deafRef.current && performance.now() - conectadoEm > 1500) tocarSom(som, s.volume);
+    }
+    // "Quem me ouve": publish whose microphone I receive, grouping changes that come close together.
+    let ouveTimer: ReturnType<typeof setTimeout> | undefined;
+    let ouvePublicado = '';
+    function publicarOuve() {
+      clearTimeout(ouveTimer);
+      ouveTimer = setTimeout(() => {
+        if (closed || room.state !== 'connected') return;
+        const vozes = [...room.remoteParticipants.values()].filter((p) => !screenParticipant(p.identity)).map((p) => {
+          const mic = p.getTrackPublication(Track.Source.Microphone);
+          // No microphone published yet: it will be received as soon as it is (voice subscribes at once).
+          return { id: p.identity, assinado: !mic || mic.isSubscribed };
+        });
+        const valor = JSON.stringify(ouveLista(vozes, deafRef.current));
+        if (valor === ouvePublicado) return;
+        ouvePublicado = valor;
+        void room.localParticipant.setAttributes({ [ATRIBUTO_OUVE]: valor }).catch(() => undefined);
+      }, 400);
+    }
+    publicarOuveRef.current = publicarOuve;
+
+    // My round trip and loss for the others' channels; republished only on a real change, at most every 10 s.
+    let redePublicada = { ms: -1, perda: -1, em: -Infinity };
+    function publicarRede(ms: number | null, perda: number | null) {
+      if (ms === null) return;
+      const p = perda ?? 0;
+      const mudou = Math.abs(ms - redePublicada.ms) > 25 || Math.abs(p - redePublicada.perda) > 0.01;
+      if (!mudou || performance.now() - redePublicada.em < 10_000) return;
+      redePublicada = { ms, perda: p, em: performance.now() };
+      void room.localParticipant.setAttributes({ [ATRIBUTO_REDE]: JSON.stringify({ ms, perda: Math.round(p * 1000) / 1000 }) }).catch(() => undefined);
+    }
 
     // Strong suppression (RNNoise): on failure the mic is back to normal; say so and turn the option off.
     function forte(ligar: boolean) {
@@ -387,7 +449,9 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
         ...[...room.remoteParticipants.values()].flatMap((p) => [...p.audioTrackPublications.values()].map((pub) => pub.track)),
       ].filter((t) => !!t);
       const audio = await tracks[0]?.getRTCStatsReport().catch(() => undefined);
-      setPing(audio ? rttOf(audio) : null);
+      const rtt = audio ? rttOf(audio) : null;
+      setPing(rtt);
+      publicarRede(rtt, audio ? perdaDe(audio) : null);
       if (!watchingRef.current && !lastVideo) return; // nothing watched: skip the stats object
       const owner = watchingRef.current;
       const screen = owner
@@ -401,6 +465,7 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
     }, 2000);
     return () => {
       closed = true;
+      clearTimeout(ouveTimer);
       pararVoz();
       clearInterval(stats);
       clearInterval(heartbeat);
@@ -426,7 +491,7 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
       [...p.trackPublications.values()].filter((pub) => pub.source === Track.Source.ScreenShare && pub.isSubscribed));
     if (ativa) {
       watchedVideoEnabled.current = true;
-      telas().forEach((pub) => pub.setEnabled(true));
+      telas().forEach((pub) => pub.setEnabled(videoPermitido()));
       announceWatch(room);
       return;
     }
@@ -462,8 +527,17 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
       volume: volumes.current.get(p.identity) ?? 1,
       camera: cam?.videoTrack && !cam.isMuted ? cam.videoTrack : undefined,
       live: screenByOwner.has(p.identity) || (p === lp && native.current !== null),
+      rede: redeDe(String(p.connectionQuality), p.attributes),
+      replay: p.attributes?.[ATRIBUTO_REPLAY] === '1',
     };
   });
+  // Who watches my screen, for "Quem recebe você".
+  const minhaTela = lp ? screenByOwner.get(lp.identity) : undefined;
+  const meVeem = new Set<string>(room && lp && minhaTela ? [...room.remoteParticipants.keys()].filter((id) =>
+    audience.current.watching(id, minhaTela.identity) || legacyWatchers.current.get(id) === lp.identity) : []);
+  const receptores = room && lp ? quemRecebe([...room.remoteParticipants.values()].filter((p) => !screenParticipant(p.identity)).map((p) => ({
+    id: p.identity, nome: p.name || p.identity, attributes: p.attributes, conectado: true,
+  })), lp.identity, meVeem) : [];
 
   const streams: Stream[] = [...screenByOwner].map(([id, p]) => {
     const owner = people.find((p) => p.id === id) ?? {
@@ -486,7 +560,10 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
       room?.remoteParticipants.get(identity)?.trackPublications.forEach((pub) => {
         if (SCREEN.includes(pub.source)) {
           pub.setSubscribed(on);
-          if (on && pub.source === Track.Source.ScreenShare) pub.setEnabled(watchedVideoEnabled.current);
+          if (on && pub.source === Track.Source.ScreenShare) {
+            pub.setEnabled(videoPermitido());
+            if (qualidadeRef.current[id] === 'leve') pub.setVideoQuality(VideoQuality.LOW);
+          }
         }
       });
     }
@@ -512,6 +589,7 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
       deafRef.current = next;
       setDeafened(next);
       room.remoteParticipants.forEach(applyVolume);
+      publicarOuveRef.current();
       // Deafen also mutes the mic; undeafen restores the previous mic state.
       if (next) micBeforeDeafen.current = lp.isMicrophoneEnabled;
       void lp.setMicrophoneEnabled(next ? false : micBeforeDeafen.current).catch(() => undefined).finally(rerender);
@@ -609,6 +687,33 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
       }
     },
     clearStreamError: () => setStreamError(undefined),
+    setRedeRuim: (on) => {
+      redeRuimRef.current = on;
+      salvarRede(on);
+      room?.remoteParticipants.forEach((p) => p.trackPublications.forEach((pub) => {
+        if (pub.source === Track.Source.ScreenShare && pub.isSubscribed) pub.setEnabled(videoPermitido());
+      }));
+      if (room) announceWatch(room);
+      rerender();
+    },
+    setQualidade: (ownerId, q) => {
+      qualidadeRef.current = { ...qualidadeRef.current, [ownerId]: q };
+      // "Leve" asks the SFU for the low simulcast layer; it only differs when the sender publishes layers.
+      for (const identity of [ownerId, ownerId + SCREEN_SUFFIX]) {
+        room?.remoteParticipants.get(identity)?.getTrackPublication(Track.Source.ScreenShare)
+          ?.setVideoQuality(q === 'leve' ? VideoQuality.LOW : VideoQuality.HIGH);
+      }
+      rerender();
+    },
+    assistirTodas: (on) => {
+      for (const s of streams) if (!s.owner.isLocal && s.owner.id !== watchingRef.current) setScreenSubscribed(s.owner.id, on);
+      rerender();
+    },
+    setSomTela: (ownerId) => {
+      somTelaRef.current = ownerId;
+      room?.remoteParticipants.forEach(applyVolume);
+      rerender();
+    },
     stopLive: () => {
       if (native.current) {
         void stopTransmission(native.current.id).catch(() => setStreamError('Falha ao encerrar a transmissão.'));
@@ -623,6 +728,7 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
   return {
     room: roomId, state, error, autoRetry, people, streams, chat, deafened, micError, streamError, ping, stageStats,
     videoPaused: native.current?.paused,
+    receptores, redeRuim: redeRuimRef.current, qualidade: qualidadeRef.current, somTela: somTelaRef.current,
     micOn: !!lp?.isMicrophoneEnabled,
     cameraOn: !!lp?.isCameraEnabled,
     ...actions,
@@ -638,6 +744,15 @@ function rttOf(report: RTCStatsReport) {
     }
   });
   return rtt;
+}
+
+/** Loss (0..1) the SFU reports for my outgoing audio (remote-inbound-rtp fractionLost). */
+function perdaDe(report: RTCStatsReport) {
+  let perda: number | null = null;
+  report.forEach((s) => {
+    if (s.type === 'remote-inbound-rtp' && s.kind === 'audio' && typeof s.fractionLost === 'number') perda = s.fractionLost;
+  });
+  return perda;
 }
 
 /** Resolution, frame rate, codec and bitrate of the watched screen. */

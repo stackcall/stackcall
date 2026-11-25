@@ -1,5 +1,6 @@
 import type { Codec, Preset, PresetCard } from '../lib/presets';
 import type { CaptureSource } from '../lib/sidecar';
+import type { Receptor, Rede } from './sala05';
 
 /** Anything that can render into a media element (a LiveKit Track). */
 export type Attachable = {
@@ -22,6 +23,10 @@ export type Person = {
   volume: number;
   camera?: Attachable;
   live: boolean;
+  /** 0.5: network of that person (LiveKit connectionQuality + published numbers). */
+  rede?: Rede;
+  /** 0.5: this person's replay buffer records the room (attribute stackcall.replay=1). */
+  replay?: boolean;
 };
 
 export type Stream = {
@@ -58,6 +63,14 @@ export type RoomModel = {
   /** Round trip to the media server in ms (ICE candidate pair), null until measured. */
   ping: number | null;
   stageStats: StreamStats | null;
+  /** 0.5 "Quem recebe você" (remote people only). */
+  receptores?: Receptor[];
+  /** 0.5 bad internet mode: no incoming video, voice first. */
+  redeRuim?: boolean;
+  /** 0.5 quality asked for each watched screen. */
+  qualidade?: Record<string, 'original' | 'leve'>;
+  /** 0.5 grid: whose screen audio plays (null = all). */
+  somTela?: string | null;
 };
 
 export type RoomActions = {
@@ -74,4 +87,9 @@ export type RoomActions = {
   goLiveNative?(source: CaptureSource, preset: PresetCard, codec: Codec, audio: boolean): Promise<void>;
   clearStreamError?(): void;
   stopLive(): void;
+  setRedeRuim?(on: boolean): void;
+  setQualidade?(ownerId: string, q: 'original' | 'leve'): void;
+  /** Grid: receive every screen in the room (true) or only the watched one (false). */
+  assistirTodas?(on: boolean): void;
+  setSomTela?(ownerId: string | null): void;
 };

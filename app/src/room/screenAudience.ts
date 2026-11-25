@@ -26,6 +26,11 @@ export class ScreenAudience {
     return this.viewers.has(viewer);
   }
 
+  /** `viewer` currently watches `screen`. */
+  watching(viewer: string, screen: string): boolean {
+    return this.viewers.get(viewer)?.screen === screen;
+  }
+
   expire(now: number): boolean {
     let changed = false;
     for (const [viewer, { until }] of this.viewers) {
