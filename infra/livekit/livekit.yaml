@@ -7,9 +7,20 @@ rtc:
   tcp_port: 7881
   udp_port: 7882
   use_external_ip: true
+  # Buffer de retransmissao (NACK) maior para 1440p60/4K.
+  packet_buffer_size_video: 1000
+  # Recupera mais rapido de perda de pacote (padrao: 1 s em high).
+  pli_throttle:
+    low_quality: 300ms
+    mid_quality: 500ms
+    high_quality: 500ms
 turn:
   enabled: true
   udp_port: 3478
   domain: stackcall.80-190-79-129.sslip.io
   # TURN/TLS fica para uma fase com certificado e porta dedicados.
+# Medidor de voz e "falando" a cada 200 ms (padrao 400-500 ms).
+audio:
+  update_interval: 200
+  smooth_intervals: 2
 # As chaves vem de LIVEKIT_KEYS. Redis entra quando houver mais de um no.
