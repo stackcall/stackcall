@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.5.0
+
+### Novidades
+
+- Atalhos globais configuráveis, que funcionam com o jogo em tela cheia: microfone, silenciar tudo, apertar para falar, entrar no ar, salvar clipe e outros. Nenhum vem ligado de fábrica
+- Modo apertar para falar, com som de confirmação quando a ação vem pelo atalho
+- Clipes: uma tecla salva os últimos 30 a 120 segundos da tela com o som do jogo e a voz de quem falava, em Vídeos\Stackcall. Todos na sala veem quando alguém está com o replay ligado
+- Galeria de clipes para abrir, mostrar na pasta e apagar
+- Cutucar: mande um recado curto e uma voz lê no PC da pessoa, mesmo com o som dela silenciado
+- Sala do mapa no CS2: CT e TR em sub-salas automáticas pela integração oficial da Valve, sem tocar no jogo
+- Janela "quem fala" por cima do jogo, com opacidade, tamanho e posição configuráveis
+- Qualidade de rede por pessoa e teste de rede
+- Zoom, janela flutuante e grade para ver várias telas
+- Versão leve da tela para quem tem internet fraca, e modo internet ruim
+- "Quem me ouve": veja quantos recebem a sua voz e a sua tela
+- Jogo detectado na presença ("jogando CS2")
+- Busca Ctrl+K para achar ações, pessoas e configurações
+- Moderação para dono e admin: mover de sala, silenciar todos e tirar da sala; troca de cargo pelo dono
+- Configurações reorganizadas em Você, Servidor e App, com busca
+
+### Melhorias
+
+- O som do jogo agora sai também transmitindo a tela inteira (todo o som do PC menos as vozes da call)
+- Som de entrada e saída na sala
+- Servidor pode dormir sem ninguém em sala e acordar sozinho (opção de quem hospeda)
+- As permissões internas do app ficaram mais fechadas: cada janela só chama o que usa
+
 ## v0.4.1
 
 ### Correções

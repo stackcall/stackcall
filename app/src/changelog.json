@@ -1,5 +1,40 @@
 [
   {
+    "version": "0.5.0",
+    "date": "2026-11-25",
+    "categories": [
+      {
+        "name": "Novidades",
+        "items": [
+          { "message": "Atalhos globais configuráveis, que funcionam com o jogo em tela cheia: microfone, silenciar tudo, apertar para falar, entrar no ar, salvar clipe e outros. Nenhum vem ligado de fábrica", "breaking": false },
+          { "message": "Modo apertar para falar, com som de confirmação quando a ação vem pelo atalho", "breaking": false },
+          { "message": "Clipes: uma tecla salva os últimos 30 a 120 segundos da tela com o som do jogo e a voz de quem falava, em Vídeos\\Stackcall. Todos na sala veem quando alguém está com o replay ligado", "breaking": false },
+          { "message": "Galeria de clipes para abrir, mostrar na pasta e apagar", "breaking": false },
+          { "message": "Cutucar: mande um recado curto e uma voz lê no PC da pessoa, mesmo com o som dela silenciado", "breaking": false },
+          { "message": "Sala do mapa no CS2: CT e TR em sub-salas automáticas pela integração oficial da Valve, sem tocar no jogo", "breaking": false },
+          { "message": "Janela \"quem fala\" por cima do jogo, com opacidade, tamanho e posição configuráveis", "breaking": false },
+          { "message": "Qualidade de rede por pessoa e teste de rede", "breaking": false },
+          { "message": "Zoom, janela flutuante e grade para ver várias telas", "breaking": false },
+          { "message": "Versão leve da tela para quem tem internet fraca, e modo internet ruim", "breaking": false },
+          { "message": "\"Quem me ouve\": veja quantos recebem a sua voz e a sua tela", "breaking": false },
+          { "message": "Jogo detectado na presença (\"jogando CS2\")", "breaking": false },
+          { "message": "Busca Ctrl+K para achar ações, pessoas e configurações", "breaking": false },
+          { "message": "Moderação para dono e admin: mover de sala, silenciar todos e tirar da sala; troca de cargo pelo dono", "breaking": false },
+          { "message": "Configurações reorganizadas em Você, Servidor e App, com busca", "breaking": false }
+        ]
+      },
+      {
+        "name": "Melhorias",
+        "items": [
+          { "message": "O som do jogo agora sai também transmitindo a tela inteira (todo o som do PC menos as vozes da call)", "breaking": false },
+          { "message": "Som de entrada e saída na sala", "breaking": false },
+          { "message": "Servidor pode dormir sem ninguém em sala e acordar sozinho (opção de quem hospeda)", "breaking": false },
+          { "message": "As permissões internas do app ficaram mais fechadas: cada janela só chama o que usa", "breaking": false }
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.4.1",
     "date": "2026-11-25",
     "categories": [
