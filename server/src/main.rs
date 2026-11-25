@@ -152,10 +152,16 @@ async fn api_policy(
     next: Next,
 ) -> Result<Response, StatusCode> {
     let path = request.uri().path();
-    let bucket = if path.starts_with("/c/")
-        || path.starts_with("/api/convites")
-        || path.starts_with("/api/aparelhos/")
-    {
+    let method = request.method();
+    let invite = path.strip_prefix("/api/convites/");
+    let preview =
+        method == Method::GET && invite.is_some_and(|code| !code.is_empty() && !code.contains('/'));
+    let accept = method == Method::POST
+        && invite
+            .and_then(|route| route.strip_suffix("/aceitar"))
+            .is_some_and(|code| !code.is_empty() && !code.contains('/'));
+    let device = method == Method::POST && path == "/api/aparelhos/entrar";
+    let bucket = if path.starts_with("/c/") || preview || accept || device {
         Some((&config.invite_attempts, 10))
     } else if path.starts_with("/api/")
         && !matches!(

@@ -825,6 +825,68 @@ async fn invitation_limits_group_ipv6_addresses_by_prefix_and_keep_other_routes_
     );
 }
 
+#[tokio::test]
+async fn invitation_management_keeps_working_after_anonymous_limit() {
+    let fixture = fixture(false).await;
+    let app = &fixture.app;
+    let owner = join(app, &fixture.owner_code, "Dono").await;
+    let token = Some(session(&owner));
+
+    for _ in 0..9 {
+        assert_eq!(
+            send(
+                app,
+                Method::GET,
+                "/api/convites/invalido",
+                None,
+                Value::Null
+            )
+            .await
+            .0,
+            StatusCode::NOT_FOUND
+        );
+    }
+    assert_eq!(
+        send(
+            app,
+            Method::POST,
+            "/api/aparelhos/entrar",
+            None,
+            json!({"codigo": "invalido"})
+        )
+        .await
+        .0,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert_eq!(
+        send(
+            app,
+            Method::POST,
+            "/api/convites/invalid/aceitar",
+            None,
+            json!({})
+        )
+        .await
+        .0,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+
+    let invite = make_invite(app, session(&owner)).await;
+    assert_eq!(
+        send(app, Method::GET, "/api/convites", token, Value::Null)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let route = format!("/api/convites/{}", invite["id"].as_str().unwrap());
+    assert_eq!(
+        send(app, Method::DELETE, &route, token, Value::Null)
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+}
+
 #[tokio::test(start_paused = true)]
 async fn keeps_the_upload_probe_bounded_and_times_out_incomplete_bodies() {
     let fixture = fixture(false).await;
