@@ -187,23 +187,39 @@ export function servidorReal(url: string): Servidor {
   };
 }
 
-/** Upload speed in Mbit/s against `POST /api/upload-test`; null when unreachable. */
+const MB = 1024 * 1024;
+
+/** Mbit/s of one connection, counting only requests of 1 MB or more (the slow TCP start is left out). */
+export function taxaUpload(amostras: { bytes: number; ms: number }[]) {
+  const grandes = amostras.filter((a) => a.bytes >= MB);
+  const usadas = grandes.length ? grandes : amostras;
+  const bytes = usadas.reduce((t, a) => t + a.bytes, 0);
+  const ms = usadas.reduce((t, a) => t + a.ms, 0);
+  return ms > 0 ? (bytes * 8) / (ms / 1000) / 1e6 : 0;
+}
+
+/** Upload speed in Mbit/s against `POST /api/upload-test`, two connections in parallel; null when unreachable. */
 export async function medirUpload(url: string, segundos = 5) {
   const alvo = url.replace(/\/+$/, '') + '/api/upload-test';
-  let size = 256 * 1024;
-  let bytes = 0;
-  const start = performance.now();
-  try {
-    while (performance.now() - start < segundos * 1000) {
+  const fim = performance.now() + segundos * 1000;
+  const conexao = async () => {
+    const amostras: { bytes: number; ms: number }[] = [];
+    let size = 256 * 1024;
+    while (performance.now() < fim) {
       const sent = performance.now();
       const response = await fetch(alvo, { method: 'POST', body: new Uint8Array(size), cache: 'no-store' });
-      if (!response.ok) return null;
-      bytes += size;
+      if (!response.ok) throw new Error(String(response.status));
+      const ms = performance.now() - sent;
+      amostras.push({ bytes: size, ms });
       // Grow until one request takes ~1 s, capped below the server limit (16 MB).
-      if (performance.now() - sent < 1000 && size < 8 * 1024 * 1024) size *= 2;
+      if (ms < 1000 && size < 8 * MB) size *= 2;
     }
+    return taxaUpload(amostras);
+  };
+  try {
+    const taxas = await Promise.all([conexao(), conexao()]);
+    return taxas[0] + taxas[1];
   } catch {
     return null;
   }
-  return (bytes * 8) / ((performance.now() - start) / 1000) / 1e6;
 }
