@@ -2147,7 +2147,7 @@ dependencies = [
 
 [[package]]
 name = "porteiro"
-version = "0.5.0"
+version = "0.5.2"
 dependencies = [
  "axum",
  "futures-util",

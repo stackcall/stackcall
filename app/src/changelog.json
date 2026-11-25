@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.5.2",
+    "date": "2026-11-25",
+    "categories": [
+      {
+        "name": "Novidades",
+        "items": [
+          { "message": "Convite para grupo: um link só para mandar no grupo, para até 50 pessoas, valendo 1, 7 ou 30 dias", "breaking": false }
+        ]
+      },
+      {
+        "name": "Correções",
+        "items": [
+          { "message": "A transmissão sai sempre na qualidade escolhida, mesmo com a tela ou o jogo em outra resolução (Parsec, CS2 em 1280x960). Tela e jogo em tela cheia aparecem para quem assiste igual ao seu monitor", "breaking": false },
+          { "message": "A transmissão ficava preta ao abrir um jogo que muda a resolução da tela", "breaking": false },
+          { "message": "A janela do Stackcall ficava cortada, fora da tela, depois de um jogo mudar a resolução", "breaking": false },
+          { "message": "Com ninguém assistindo, o palco mostra \"Pausado\" em vez de ficar preto", "breaking": false }
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.5.1",
     "date": "2026-11-25",
     "categories": [

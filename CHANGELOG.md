@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.5.2
+
+### Novidades
+
+- Convite para grupo: um link só para mandar no grupo, para até 50 pessoas, valendo 1, 7 ou 30 dias
+
+### Correções
+
+- A transmissão sai sempre na qualidade escolhida, mesmo com a tela ou o jogo em outra resolução (Parsec, CS2 em 1280x960). Tela e jogo em tela cheia aparecem para quem assiste igual ao seu monitor
+- A transmissão ficava preta ao abrir um jogo que muda a resolução da tela
+- A janela do Stackcall ficava cortada, fora da tela, depois de um jogo mudar a resolução
+- Com ninguém assistindo, o palco mostra "Pausado" em vez de ficar preto
+
 ## v0.5.1
 
 ### Correções
