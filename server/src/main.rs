@@ -4,6 +4,7 @@ mod auth;
 mod db;
 mod invites;
 mod livekit;
+mod moderation;
 mod people;
 mod profile;
 mod rooms;
@@ -207,6 +208,7 @@ fn app(config: Arc<Config>) -> Router {
         .merge(auth::routes())
         .merge(invites::routes())
         .merge(rooms::routes())
+        .merge(moderation::routes())
         .merge(people::routes())
         .merge(profile::routes())
         .route(

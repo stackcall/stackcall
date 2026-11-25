@@ -45,10 +45,45 @@ async fn fixture(members_can_invite: bool) -> Fixture {
                             .lock()
                             .unwrap()
                             .iter()
-                            .map(|id| json!({"identity": id}))
+                            .map(|id| {
+                                json!({"identity": id, "tracks": [
+                                    {"sid":"microphone", "source":"MICROPHONE"},
+                                    {"sid":"screen-audio", "source":"SCREEN_SHARE_AUDIO"}
+                                ]})
+                            })
                             .collect();
                         Json(json!({"participants": identities}))
                     }),
+                )
+                .route(
+                    "/twirp/livekit.RoomService/MutePublishedTrack",
+                    post(|Json(body): Json<Value>| async move {
+                        assert_eq!(body["room"], "room-in-use");
+                        assert_eq!(body["trackSid"], "microphone");
+                        assert_eq!(body["muted"], true);
+                        StatusCode::OK
+                    }),
+                )
+                .route(
+                    "/twirp/livekit.RoomService/MoveParticipant",
+                    post(
+                        |headers: axum::http::HeaderMap, Json(body): Json<Value>| async move {
+                            let jwt = headers[header::AUTHORIZATION]
+                                .to_str()
+                                .unwrap()
+                                .strip_prefix("Bearer ")
+                                .unwrap();
+                            let claims = TokenVerifier::with_api_key("test_key", "test_secret")
+                                .verify(jwt)
+                                .unwrap();
+                            assert_eq!(claims.video.room, body["room"]);
+                            assert_eq!(claims.video.destination_room, body["destinationRoom"]);
+                            (
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                Json(json!({"code":"unknown","msg":"not implemented"})),
+                            )
+                        },
+                    ),
                 )
                 .route(
                     "/twirp/livekit.RoomService/RemoveParticipant",
@@ -169,6 +204,144 @@ async fn make_invite(app: &Router, owner: &str) -> Value {
 async fn member(app: &Router, owner: &str) -> Value {
     let invite = make_invite(app, owner).await;
     join(app, invite["codigo"].as_str().unwrap(), "Membro").await
+}
+
+#[tokio::test]
+async fn room_moderation_checks_roles_and_keeps_the_target_in_the_group() {
+    let fixture = fixture(false).await;
+    let app = &fixture.app;
+    let owner = join(app, &fixture.owner_code, "Dono").await;
+    let admin = member(app, session(&owner)).await;
+    let target = member(app, session(&owner)).await;
+    {
+        let db = fixture.config.db.lock().unwrap();
+        db.execute(
+            "UPDATE usuarios SET papel = 'admin' WHERE id = ?1",
+            [id(&admin)],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO salas VALUES ('room-in-use', 'Em uso', 99), ('dest', 'Destino', 100)",
+            [],
+        )
+        .unwrap();
+    }
+    *fixture.online.lock().unwrap() = vec![id(&target).into(), format!("{}:tela", id(&target))];
+    for (path, payload) in [
+        ("silenciar", json!({})),
+        (
+            "mover",
+            json!({"usuario_id": id(&target), "destino_id": "dest"}),
+        ),
+        ("retirar", json!({"usuario_id": id(&target)})),
+    ] {
+        let uri = format!("/api/salas/room-in-use/moderacao/{path}");
+        assert_eq!(
+            send(
+                app,
+                Method::POST,
+                &uri,
+                Some(session(&target)),
+                payload.clone()
+            )
+            .await
+            .0,
+            StatusCode::FORBIDDEN
+        );
+        for manager in [&owner, &admin] {
+            let expected = if path == "mover" {
+                StatusCode::ACCEPTED
+            } else {
+                StatusCode::NO_CONTENT
+            };
+            assert_eq!(
+                send(
+                    app,
+                    Method::POST,
+                    &uri,
+                    Some(session(manager)),
+                    payload.clone()
+                )
+                .await
+                .0,
+                expected
+            );
+        }
+        if path == "mover" {
+            let (_, people) = send(
+                app,
+                Method::GET,
+                "/api/pessoas",
+                Some(session(&target)),
+                Value::Null,
+            )
+            .await;
+            let own = people
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|person| person["id"] == id(&target))
+                .unwrap();
+            assert_eq!(own["mudanca_sala"]["destino_id"], "dest");
+            let (_, people) = send(
+                app,
+                Method::GET,
+                "/api/pessoas",
+                Some(session(&owner)),
+                Value::Null,
+            )
+            .await;
+            assert!(
+                people
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|person| person["mudanca_sala"].is_null())
+            );
+        }
+    }
+    assert_eq!(
+        send(
+            app,
+            Method::GET,
+            "/api/eu",
+            Some(session(&target)),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (_, people) = send(
+        app,
+        Method::GET,
+        "/api/pessoas",
+        Some(session(&target)),
+        Value::Null,
+    )
+    .await;
+    let target_profile = people
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|person| person["id"] == id(&target))
+        .unwrap();
+    assert!(target_profile["mudanca_sala"].is_null());
+    assert_eq!(fixture.kicked.lock().unwrap().len(), 8);
+    assert_eq!(
+        fixture
+            .config
+            .db
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT count(*) FROM moderacao_log WHERE resultado IN ('ok', 'reconectar')",
+                [],
+                |row| row.get::<_, i64>(0)
+            )
+            .unwrap(),
+        6
+    );
 }
 
 #[tokio::test]

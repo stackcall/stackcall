@@ -1,7 +1,7 @@
 use crate::{
     Config,
     auth::{self, Profile, User},
-    db,
+    db, moderation,
 };
 use axum::{
     Json, Router,
@@ -28,6 +28,8 @@ struct Person {
     amigo: bool,
     online: bool,
     sala: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mudanca_sala: Option<moderation::RoomMove>,
 }
 
 async fn list(
@@ -41,7 +43,7 @@ async fn list(
             .prepare("SELECT amigo_id FROM amizades WHERE usuario_id = ?1")
             .map_err(db::internal)?;
         let friends = friends
-            .query_map([user.id], |row| row.get(0))
+            .query_map([&user.id], |row| row.get(0))
             .map_err(db::internal)?
             .collect::<rusqlite::Result<HashSet<String>>>()
             .map_err(db::internal)?;
@@ -51,7 +53,7 @@ async fn list(
                 auth::PROFILE_FIELDS,
             ))
             .map_err(db::internal)?;
-        let people = users
+        let mut people = users
             .query_map([], Profile::from_row)
             .map_err(db::internal)?
             .map(|row| {
@@ -62,11 +64,18 @@ async fn list(
                         online: sala.is_some(),
                         sala: sala.map(str::to_owned),
                         profile,
+                        mudanca_sala: None,
                     }
                 })
             })
             .collect::<rusqlite::Result<Vec<_>>>()
             .map_err(db::internal)?;
+        if let Some(own) = people
+            .iter_mut()
+            .find(|person| person.profile.id == user.id)
+        {
+            own.mudanca_sala = moderation::pending_move(conn, &user.id)?;
+        }
         Ok(Json(people))
     })
     .await

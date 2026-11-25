@@ -22,6 +22,21 @@ pub fn routes() -> Router<Arc<Config>> {
         .route("/api/salas/{id}/token", post(token))
 }
 
+pub fn ensure_exists(conn: &rusqlite::Connection, id: &str) -> Result<(), StatusCode> {
+    let exists: bool = conn
+        .query_row(
+            "SELECT EXISTS (SELECT 1 FROM salas WHERE id = ?1)",
+            [id],
+            |row| row.get(0),
+        )
+        .map_err(db::internal)?;
+    if exists {
+        Ok(())
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
+}
+
 #[derive(Serialize)]
 struct Room {
     id: String,
