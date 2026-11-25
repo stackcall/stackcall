@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.3.1
+
+### Correções
+
+- A lista de fontes mostrava janelas que não estavam abertas.
+- O preset 1080p60 ficava travado mesmo com upload suficiente.
+
 ## v0.3.0
 
 ### Novidades
