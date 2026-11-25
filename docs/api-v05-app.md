@@ -14,6 +14,12 @@ O replay começa desligado. A interface pode guardar a preferência e reaplicá-
 - A duração disponível pode ser menor enquanto o buffer enche ou ao alcançar o limite compartilhado de 180 MiB de amostras. O início é alinhado a um quadro-chave. Salvar um clipe reaproveita as mesmas amostras do buffer sem duplicá-las em RAM.
 - Ao conectar ou reconectar à sala, leia `replay_atual()`. Para cada mudança efetiva de estado, chame `localParticipant.setAttributes({ "stackcall.replay": ativo ? "1" : "" })` no participante de voz. Use `"1"` para indicar replay ativo aos demais. O participante `:tela` transmite mídia com um token distinto do participante de voz.
 
+### Galeria de clipes
+
+- `clipes_listar()` lê a pasta **Vídeos/Stackcall** e retorna `{ nome: string, caminho: string, em: number, duracao: number | null, tamanho: number }[]` do mais recente ao mais antigo. `nome` inclui a extensão. `em` é a data de criação em milissegundos desde a época Unix, com a data de modificação como reserva. `duracao` está em segundos e vale `null` quando o Windows não lê esse metadado. `tamanho` está em bytes. Uma pasta ainda inexistente retorna `[]`.
+- `clipes_apagar({ nome })` envia um arquivo à Lixeira do Windows. Passe o `nome` exato retornado pela listagem, incluindo `.mp4`. A pasta é fixa e a validação recusa separadores, caminhos relativos, links e subpastas. Se a Lixeira recusar o arquivo, o comando retorna erro e o clipe permanece na pasta.
+- Os dois comandos estão disponíveis apenas para a janela principal. Recarregue a lista ao abrir a galeria, ao receber `saved` ou após remover um item com sucesso.
+
 ## Faixa leve
 
 Envie um pacote de dados confiável no tópico `stackcall.tela-leve` com UTF-8 JSON `{ "tela": "<identidade completa do participante :tela>", "assistir": true }`. Repita a cada 20 s enquanto mantiver o pedido e envie `assistir: false` ao sair do modo leve.
@@ -26,7 +32,9 @@ Se o segundo codificador falhar, o evento local `stackcall-stream` inclui `{ eve
 
 ## Janela de falantes
 
-- `falantes_abrir()` mostra uma janela transparente de 320 × 96 pixels lógicos, no topo e com cliques passando por ela. O rótulo é `falantes` e ela carrega `index.html?falantes=1`. A interface renderiza essa janela e transmite os falantes ativos para ela pelo evento que escolher.
+- `falantes_abrir()` mostra uma janela transparente, no topo e com cliques passando por ela. Ao criar, o tamanho inicial é 320 × 96 pixels lógicos. O rótulo é `falantes` e ela carrega `index.html?falantes=1`. A interface renderiza essa janela e transmite os falantes ativos para ela pelo evento que escolher.
+- `falantes_redimensionar({ tamanho, linhas, posicao? })` redimensiona a janela aberta sem recriá-la. `tamanho` é `"p"`, `"m"` ou `"g"` (260, 320 ou 400 pixels lógicos). Passe a contagem de linhas a exibir conforme o filtro da interface. O núcleo limita o cálculo a 8 linhas. A altura reserva 26 pixels lógicos para o rodapé e soma 26, 32 ou 40 pixels por linha, de acordo com o tamanho.
+- Passe `posicao` como `"sup-esq"`, `"sup-dir"`, `"meio-esq"`, `"meio-dir"`, `"inf-esq"` ou `"inf-dir"` para ancorar à área útil do monitor principal com as dimensões novas. `"livre"` ou a omissão de `posicao` mantém o ponto atual. Faça a chamada da janela principal depois de abrir e ao mudar o tamanho, a posição ou a contagem de linhas visíveis.
 - `falantes_fechar()` fecha a janela. `falantes_posicionar({ x, y })` move e salva a posição em pixels físicos na área de trabalho virtual, incluindo coordenadas negativas. Pode ser chamado quando a janela estiver fechada.
 - Use em jogos em janela ou sem borda. Tela cheia exclusiva pode ocultar janelas comuns do Windows.
 

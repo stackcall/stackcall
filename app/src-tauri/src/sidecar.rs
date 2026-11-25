@@ -568,7 +568,7 @@ async fn end(mut running: Running) {
     let _ = running.ended.wait_for(|ended| *ended).await;
 }
 
-fn replay_dir(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn replay_dir(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
         .video_dir()
         .map(|path| path.join("Stackcall"))

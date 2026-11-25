@@ -10,6 +10,7 @@ const COMMANDS: &[&str] = &[
     "falantes_abrir",
     "falantes_fechar",
     "falantes_posicionar",
+    "falantes_redimensionar",
     "gsi_cs2_localizar",
     "gsi_cs2_instalar",
     "presenca_jogo_atual",
@@ -24,6 +25,8 @@ const COMMANDS: &[&str] = &[
     "replay_atual",
     "replay_microfone",
     "replay_salvar",
+    "clipes_listar",
+    "clipes_apagar",
 ];
 
 fn main() {
