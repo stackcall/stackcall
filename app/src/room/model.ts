@@ -14,8 +14,10 @@ export type Person = {
   isLocal: boolean;
   speaking: boolean;
   muted: boolean;
-  /** 0..1 */
+  /** 0..1, at the last render. */
   level: number;
+  /** 0..1, read live by the meter (requestAnimationFrame), outside React state. */
+  nivel?: () => number;
   /** 0..2 */
   volume: number;
   camera?: Attachable;

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import {
-  Participant, RemoteParticipant, RemoteTrackPublication, Room, RoomEvent, Track,
+  AudioPresets, Participant, RemoteParticipant, RemoteTrackPublication, Room, RoomEvent, Track,
   type DisconnectReason,
 } from 'livekit-client';
 import { interfaceAtiva, useInterfaceAtiva } from '../lib/leveza';
@@ -22,6 +22,8 @@ const streamInfo = (preset: Preset, codec: Codec) =>
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const MAX_CHAT = 200;
+/** Hidden this long (game on top, tray, minimized): stop receiving the watched screen. */
+export const VIDEO_OCULTO_MS = 10_000;
 const MIC_ERROR = 'Microfone indisponível. Confira a permissão do Windows e o dispositivo.';
 /** Disconnects that a retry would only repeat: same account elsewhere, removed, room gone. */
 const FIM: Partial<Record<number, string>> = {
@@ -41,7 +43,7 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
   const [micError, setMicError] = useState<string>();
   const [streamError, setStreamError] = useState<string>();
   const [chat, setChat] = useState<ChatMessage[]>([]);
-  useInterfaceAtiva();
+  const ativa = useInterfaceAtiva();
   const [ping, setPing] = useState<number | null>(null);
   const [stageStats, setStageStats] = useState<StreamStats | null>(null);
   const [deafened, setDeafened] = useState(false);
@@ -83,10 +85,13 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       webAudioMix: true, // lets per-person gain go above 100%
       adaptiveStream: true,
       dynacast: true,
-      audioCaptureDefaults: { noiseSuppression: true, echoCancellation: true, autoGainControl: true },
+      audioCaptureDefaults: { channelCount: 1, sampleRate: 48000, noiseSuppression: true, echoCancellation: true, autoGainControl: true },
+      // Opus 48 kbps with DTX (silence costs nothing) and RED (redundancy against packet loss).
+      publishDefaults: { audioPreset: AudioPresets.music, dtx: true, red: true },
     });
     roomRef.current = room;
     let closed = false;
+    let falando = '';
     const audioElements = new Set<HTMLMediaElement>();
     setState('connecting');
     setError(undefined);
@@ -169,8 +174,14 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
           rerender();
         }
       })
-      // Voice levels: nothing to draw while hidden; showing the window re-renders once (useInterfaceAtiva below).
-      .on(RoomEvent.ActiveSpeakersChanged, () => { if (interfaceAtiva()) rerender(); })
+      // Re-render only when who is speaking changes; the meters read the level themselves.
+      // Nothing to draw while hidden; showing the window re-renders once (useInterfaceAtiva).
+      .on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
+        const ids = speakers.map((p) => p.identity).sort().join(' ');
+        if (ids === falando || !interfaceAtiva()) return;
+        falando = ids;
+        rerender();
+      })
       .on(RoomEvent.TrackMuted, rerender)
       .on(RoomEvent.TrackUnmuted, rerender)
       .on(RoomEvent.LocalTrackPublished, rerender)
@@ -225,6 +236,7 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       ].filter((t) => !!t);
       const audio = await tracks[0]?.getRTCStatsReport().catch(() => undefined);
       setPing(audio ? rttOf(audio) : null);
+      if (!watchingRef.current && !lastVideo) return; // nothing watched: skip the stats object
       const owner = watchingRef.current;
       const screen = owner
         ? [room.remoteParticipants.get(owner + SCREEN_SUFFIX), room.remoteParticipants.get(owner)]
@@ -233,7 +245,7 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       const report = await screen?.getRTCStatsReport().catch(() => undefined);
       const next = report ? videoOf(report, lastVideo) : null;
       lastVideo = next ? { bytes: next.bytes, at: performance.now() } : null;
-      setStageStats(next);
+      setStageStats(next && { height: next.height, fps: next.fps, codec: next.codec, mbps: next.mbps });
     }, 2000);
     return () => {
       closed = true;
@@ -249,6 +261,20 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       roomRef.current = null;
     };
   }, [session, roomId, rerender]);
+
+  // Nobody sees the screen for VIDEO_OCULTO_MS: pause the watched video (no download, no decode).
+  useEffect(() => {
+    const room = roomRef.current;
+    if (!room) return;
+    const telas = () => [...room.remoteParticipants.values()].flatMap((p) =>
+      [...p.trackPublications.values()].filter((pub) => pub.source === Track.Source.ScreenShare && pub.isSubscribed));
+    if (ativa) {
+      telas().forEach((pub) => pub.setEnabled(true));
+      return;
+    }
+    const t = setTimeout(() => telas().forEach((pub) => pub.setEnabled(false)), VIDEO_OCULTO_MS);
+    return () => clearTimeout(t);
+  }, [ativa, state]);
 
   const room = roomRef.current;
   const lp = room?.localParticipant;
@@ -270,6 +296,7 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       speaking: p.isSpeaking,
       muted: !p.isMicrophoneEnabled,
       level: Math.min(1, p.audioLevel * 2),
+      nivel: () => Math.min(1, p.audioLevel * 2),
       volume: volumes.current.get(p.identity) ?? 1,
       camera: cam?.videoTrack && !cam.isMuted ? cam.videoTrack : undefined,
       live: screenByOwner.has(p.identity) || (p === lp && native.current !== null),
@@ -347,6 +374,8 @@ export function useLiveRoom(session: Session, roomId: string): RoomModel & RoomA
       rerender();
     },
     sendChat: (raw) => {
+      // Reads the current room: the memoized chat keeps the first sendChat it got.
+      const lp = roomRef.current?.localParticipant;
       const text = raw.trim().slice(0, 2000);
       if (!text || !lp) return;
       void lp.publishData(encoder.encode(JSON.stringify({ text })), { reliable: true, topic: 'chat' });

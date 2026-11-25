@@ -315,6 +315,21 @@ button:disabled {
   }
 }
 
+/* Medidor de voz: células acesas pelo DOM (Room.tsx, Medidor), sem estado React. */
+.medidor > i {
+  flex: 1;
+  background: var(--color-superficie-topo);
+}
+.medidor > i[data-aceso] {
+  background: var(--color-lima);
+  outline: 1px solid var(--color-texto);
+  outline-offset: -1px;
+}
+.medidor > i[data-aceso]:last-child {
+  background: var(--color-destaque);
+  outline: none;
+}
+
 /* Skeleton: a única exceção de gradiente, junto com a grade do papel. */
 @keyframes brilho-skeleton {
   from {

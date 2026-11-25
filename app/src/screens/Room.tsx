@@ -277,7 +277,7 @@ export function TrackVideo({ track, className, muted = true }: { track?: Attacha
     track.attach(el);
     return () => void track.detach(el);
   }, [track, ativa]);
-  return <video ref={ref} className={className} autoPlay playsInline muted={muted} />;
+  return <video ref={ref} className={className} autoPlay playsInline muted={muted} disablePictureInPicture />;
 }
 
 async function toggleFullscreen(el: HTMLElement) {
@@ -431,13 +431,35 @@ function Voce({ model, nome, sala, imLive, onGoLive, onSair, onFallback }: {
   );
 }
 
-function Medidor({ level, ativo }: { level: number; ativo: boolean }) {
-  const lit = ativo ? Math.round(level * 8) : 0;
+/**
+ * Voice meter outside React state: while the person speaks and the window is visible, a
+ * requestAnimationFrame loop reads the level and flips the lit cells in the DOM. Silence = no loop.
+ */
+export function Medidor({ person, ativo, className = 'h-14 w-2.5' }: { person: Pick<Person, 'level' | 'nivel' | 'speaking'>; ativo: boolean; className?: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const { nivel, speaking, level } = person;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let aceso = -1;
+    const pintar = (v: number) => {
+      const n = Math.round(v * 8);
+      if (n === aceso) return;
+      aceso = n;
+      Array.from(el.children).forEach((c, i) => c.toggleAttribute('data-aceso', i < n));
+    };
+    if (!ativo) return pintar(0);
+    if (!nivel) return pintar(level); // demo room: fixed level
+    if (!speaking) return pintar(0);
+    let id = requestAnimationFrame(function quadro() {
+      pintar(nivel());
+      id = requestAnimationFrame(quadro);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [ativo, speaking, nivel, level]);
   return (
-    <span aria-hidden="true" className="flex h-14 w-2.5 flex-col-reverse gap-0.5">
-      {Array.from({ length: 8 }, (_, i) => (
-        <i key={i} className={`flex-1 ${i < lit ? (i === 7 ? 'bg-destaque' : 'bg-lima outline outline-1 -outline-offset-1 outline-texto') : 'bg-superficie-topo'}`} />
-      ))}
+    <span ref={ref} aria-hidden="true" className={`medidor flex flex-col-reverse gap-0.5 ${className}`}>
+      {Array.from({ length: 8 }, (_, i) => <i key={i} />)}
     </span>
   );
 }
@@ -446,7 +468,7 @@ const TEMA_CLASSE = { papel: '', noite: 'tema-noite', lima: 'tema-lima' } as con
 
 type CanalProps = { person: Person; perfil?: Pessoa; onVolume(v: number): void; onCartao(): void };
 const mesmaPessoa = (a: Person, b: Person) =>
-  a.id === b.id && a.name === b.name && a.level === b.level && a.speaking === b.speaking
+  a.id === b.id && a.name === b.name && a.speaking === b.speaking && (a.nivel ? true : a.level === b.level)
   && a.muted === b.muted && a.live === b.live && a.volume === b.volume;
 /**
  * Memoized: a speaker event re-renders only the channels whose voice data changed.
@@ -467,7 +489,7 @@ function CanalView({ person, perfil, onVolume, onCartao }: CanalProps) {
         <button type="button" className="border-0 bg-transparent p-0" aria-label={`Ver perfil de ${person.name}`} onClick={onCartao}>
           <Avatar pessoa={{ nome: person.name, avatar: perfil?.avatar ?? null }} tamanho={56} />
         </button>
-        <Medidor level={person.level} ativo={ativa} />
+        <Medidor person={person} ativo={ativa} />
         <span className={`ml-auto self-start text-right text-[12px] leading-tight font-bold ${person.muted ? 'text-perigo' : person.speaking ? 'text-texto' : 'text-texto-fraco'}`}>{status}</span>
       </div>
       <div className="flex items-center gap-2 px-3 pb-3">
@@ -516,7 +538,9 @@ const Mensagem = memo(function Mensagem({ m }: { m: ChatMessage }) {
   );
 });
 
-function Conversa({ sala, chat, onSend }: { sala: string; chat: ChatMessage[]; onSend(text: string): void }) {
+/** Memoized on the messages: voice events and stats do not redraw the chat (sendChat reads the room itself). */
+const Conversa = memo(ConversaView, (a, b) => a.sala === b.sala && a.chat === b.chat);
+function ConversaView({ sala, chat, onSend }: { sala: string; chat: ChatMessage[]; onSend(text: string): void }) {
   const [text, setText] = useState('');
   const lista = useRef<HTMLDivElement>(null);
   // Virtualized: only the visible messages are in the DOM (leveza).
