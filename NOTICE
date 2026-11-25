@@ -18,3 +18,7 @@ Supressão forte de ruído (opcional, carregada só quando ligada):
   https://github.com/shiguredo/rnnoise-wasm
 - RNNoise, da Xiph.Org Foundation e Jean-Marc Valin, licença BSD-3-Clause.
   https://github.com/xiph/rnnoise
+
+Fontes do protótipo de design (docs/design/v05/fontes/), as mesmas que o app usa via @fontsource:
+- Anton, Hanken Grotesk, JetBrains Mono e Permanent Marker, licença SIL Open Font License 1.1.
+  https://openfontlicense.org

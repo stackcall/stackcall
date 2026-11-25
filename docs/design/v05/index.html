@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="pt-BR" data-tema="claro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stackcall 0.5 · protótipo</title>
+<link rel="stylesheet" href="v05.css">
+<script>
+  // Só para o protótipo: tema (?tema=escuro ou botão) e modo captura (?print esconde a navegação do protótipo).
+  (function () {
+    var q = new URLSearchParams(location.search), h = document.documentElement;
+    var t = q.get('tema'); try { t = t || localStorage.getItem('v05_tema'); } catch (e) {}
+    h.dataset.tema = t === 'escuro' ? 'escuro' : 'claro';
+    if (q.has('print')) h.classList.add('print');
+  })();
+  function trocarTema() {
+    var h = document.documentElement; h.dataset.tema = h.dataset.tema === 'escuro' ? 'claro' : 'escuro';
+    try { localStorage.setItem('v05_tema', h.dataset.tema); } catch (e) {}
+  }
+</script>
+</head>
+<body>
+<!-- Alvos das telas (:target). Cada tela liga uma variação do mesmo DOM. -->
+<i id="sala" class="alvo"></i><i id="grade" class="alvo"></i><i id="menu-pessoa" class="alvo"></i>
+<i id="paleta" class="alvo"></i><i id="sons" class="alvo"></i><i id="clipes" class="alvo"></i>
+<i id="saguao" class="alvo"></i><i id="config-atalhos" class="alvo"></i><i id="config-clipes" class="alvo"></i>
+<i id="config-busca" class="alvo"></i><i id="quem-fala" class="alvo"></i>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-mic" viewBox="0 0 24 24"><path d="M9 3h6v10H9zM5 11v1a7 7 0 0 0 14 0v-1M12 19v3"/></symbol>
+    <symbol id="i-fone" viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3M4 15h4v6H4zM16 15h4v6h-4z"/></symbol>
+    <symbol id="i-tela" viewBox="0 0 24 24"><path d="M3 4h18v12H3zM8 20h8M12 16v4"/></symbol>
+    <symbol id="i-sair" viewBox="0 0 24 24"><path d="M14 4h6v16h-6M10 8l-4 4 4 4M6 12h10"/></symbol>
+    <symbol id="i-sons" viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></symbol>
+    <symbol id="i-replay" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.6-5.9M4 3v5h5"/><path d="M12 9v4l3 2"/></symbol>
+    <symbol id="i-mais" viewBox="0 0 24 24"><path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="3.4"/></symbol>
+    <symbol id="i-busca" viewBox="0 0 24 24"><path d="M10 4a6 6 0 1 0 0 12 6 6 0 1 0 0-12zM15 15l5 5"/></symbol>
+    <symbol id="i-pip" viewBox="0 0 24 24"><path d="M3 5h18v14H3zM12 12h6v4h-6z"/></symbol>
+    <symbol id="i-cheia" viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></symbol>
+    <symbol id="i-grade" viewBox="0 0 24 24"><path d="M3 5h8v14H3zM13 5h8v14h-8z"/></symbol>
+    <symbol id="i-uma" viewBox="0 0 24 24"><path d="M3 5h18v14H3z"/></symbol>
+    <symbol id="i-mais-z" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-menos-z" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-sino" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4zM10 21h4"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14l4-4M8 11l-3 3a3 3 0 0 0 4 4l3-3M16 13l3-3a3 3 0 0 0-4-4l-3 3"/></symbol>
+    <symbol id="i-ajustes" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4"/></symbol>
+    <symbol id="i-filme" viewBox="0 0 24 24"><path d="M3 5h18v14H3zM7 5v14M17 5v14M3 9.5h4M3 14.5h4M17 9.5h4M17 14.5h4"/></symbol>
+    <symbol id="i-antena" viewBox="0 0 24 24"><path d="M12 11v10M8.5 7.5a5 5 0 0 0 0 7M15.5 7.5a5 5 0 0 1 0 7M5.5 4.5a9 9 0 0 0 0 13M18.5 4.5a9 9 0 0 1 0 13"/></symbol>
+    <symbol id="i-escudo" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-4 8-8 9-4-1-8-4-8-9V6z"/></symbol>
+    <symbol id="i-seta" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-dir" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+    <symbol id="i-envio" viewBox="0 0 24 24"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z" fill="currentColor"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-corte" viewBox="0 0 24 24"><path d="M6 4a3 3 0 1 0 0 6 3 3 0 1 0 0-6zM6 14a3 3 0 1 0 0 6 3 3 0 1 0 0-6zM8.5 8.5L20 19M8.5 15.5L20 5"/></symbol>
+    <symbol id="i-pasta" viewBox="0 0 24 24"><path d="M3 6h7l2 2h9v11H3z"/></symbol>
+    <symbol id="i-lixo" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+    <symbol id="i-pessoa" viewBox="0 0 24 24"><path d="M12 4a4 4 0 1 0 0 8 4 4 0 1 0 0-8zM4 21c1-4 4-6 8-6s7 2 8 6"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></symbol>
+    <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></symbol>
+    <symbol id="i-mudo" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM16 9l5 6M21 9l-5 6"/></symbol>
+    <symbol id="i-mover" viewBox="0 0 24 24"><path d="M4 12h12M12 8l4 4-4 4M20 4v16"/></symbol>
+  </defs>
+</svg>
+
+<!-- ============================================================ APP (topo + conteúdo) -->
+<div class="app">
+  <header class="topo">
+    <a class="janela marca" href="#saguao" aria-label="Servidor Galera, ir para o saguão">
+      <span class="logo">STACK<em>CALL</em></span><span class="sep"></span>
+      <span class="srv"><b>Galera</b><span class="rotulo">8 membros · 7 online</span></span>
+    </a>
+    <nav class="janela salas" aria-label="Salas">
+      <a class="aba-sala ativa" href="#sala"><span class="ln1"><b>CS</b><i class="ponto ar" title="Alguém no ar"></i></span><span class="ln2 so-split">CT 3 · TR 2</span><span class="ln2 sem-split">5 · no ar</span></a>
+      <a class="aba-sala" href="#sala"><span class="ln1"><b>Lobby</b><i class="ponto voz"></i></span><span class="ln2">2 na sala</span></a>
+      <a class="aba-sala" href="#sala"><span class="ln1"><b>Cinema</b><i class="ponto"></i></span><span class="ln2">vazia</span></a>
+      <a class="aba-sala" href="#sala"><span class="ln1"><b>Ranked</b><i class="ponto"></i></span><span class="ln2">vazia</span></a>
+    </nav>
+    <a class="janela busca" href="#paleta"><svg class="ic"><use href="#i-busca"/></svg><span>Buscar sala, pessoa, ação ou ajuste</span><kbd>Ctrl K</kbd></a>
+    <a class="btn ic" href="#clipes" aria-label="Clipes" title="Clipes (Ctrl+Shift+C)"><svg class="ic"><use href="#i-filme"/></svg></a>
+    <a class="btn ic" href="#config-atalhos" aria-label="Configurações" title="Configurações (Ctrl+,)"><svg class="ic"><use href="#i-ajustes"/></svg></a>
+    <span class="av av-g" style="--c:#c9d6f5" aria-label="Seu perfil">B</span>
+  </header>
+
+  <!-- ================================================ SALA -->
+  <section class="v-sala" aria-label="Sala CS">
+    <div class="faixa-sala">
+      <h1>CS</h1>
+      <span class="rotulo sem-split">5 na sala · aquecimento · Rafa no ar</span>
+      <span class="rotulo so-split">5 na sala · de_mirage · 2º round · mapa separa CT e TR</span>
+      <a class="chip-replay" href="#config-clipes" title="Quem está com o replay ligado grava os últimos segundos da sala">
+        <svg class="ic"><use href="#i-replay"/></svg><span><b>Replay ligado:</b> <span class="sem-split">Rafa e Duda</span><span class="so-split">Duda</span></span>
+      </a>
+      <span class="faixa-acoes">
+        <a class="btn sm" href="#saguao"><svg class="ic"><use href="#i-sino"/></svg>Chamar para jogar</a>
+        <a class="btn sm" href="#sala"><svg class="ic"><use href="#i-link"/></svg>Convidar</a>
+        <a class="btn sm ic" href="#sala" aria-label="Menu da sala" title="Menu da sala: silenciar todos, sons, mapa do CS2"><svg class="ic"><use href="#i-mais"/></svg></a>
+      </span>
+    </div>
+
+    <div class="centro">
+      <!-- Palco com uma tela -->
+      <div class="janela palco-j palco-uma">
+        <div class="barra ar"><span>■ No ar · Rafa · Counter-Strike 2</span><span>1080p60 · AV1 · 3 assistindo</span></div>
+        <div class="palco">
+          <div class="cena cena-cs" style="--zoom:1"><span class="mira"></span><span class="mapa"><i></i><i></i><i></i></span><span class="hud-v">100 <small>HP</small> &nbsp;100 <small>COLETE</small></span><span class="hud-m">30 / 90</span></div>
+          <div class="palco-fraco"><b class="font-pincel">voz primeiro</b><p>Modo internet ruim ligado. O vídeo que você recebe está pausado e a sua voz tem prioridade.<br>A sua tela continua indo para quem assiste.</p><a class="btn sm" href="#sala">Desligar e voltar o vídeo</a></div>
+          <div class="ctrl-palco" role="toolbar" aria-label="Controles da tela de Rafa">
+            <a class="ctrl q" href="#sala" title="Qualidade que você recebe"><span class="rotulo">Você recebe</span><b>Original 1080p60</b><svg class="ic s"><use href="#i-dir"/></svg></a>
+            <span class="ctrl-g">
+              <a class="ctrl" href="#sala" aria-label="Diminuir zoom"><svg class="ic"><use href="#i-menos-z"/></svg></a>
+              <span class="ctrl z">100%</span>
+              <a class="ctrl" href="#sala" aria-label="Aumentar zoom"><svg class="ic"><use href="#i-mais-z"/></svg></a>
+            </span>
+            <a class="ctrl" href="#sala" aria-label="Janela flutuante" title="Janela flutuante (P)"><svg class="ic"><use href="#i-pip"/></svg></a>
+            <a class="ctrl" href="#sala" aria-label="Tela cheia" title="Tela cheia (F)"><svg class="ic"><use href="#i-cheia"/></svg></a>
+            <a class="btn sm claro" href="#sala">Parar de assistir</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Palco em grade (2 telas) -->
+      <div class="palco-grade">
+        <div class="grade-topo">
+          <span class="seg" role="group" aria-label="Arranjo das telas"><a href="#sala"><svg class="ic"><use href="#i-uma"/></svg>Uma</a><a class="on" href="#grade"><svg class="ic"><use href="#i-grade"/></svg>Grade</a></span>
+          <span class="rotulo">2 telas do CT · o som vem da tela marcada · telas do TR ficam escondidas durante a partida</span>
+        </div>
+        <div class="grade-telas">
+          <div class="janela palco-j foco">
+            <div class="barra ar"><span>■ Duda · CS2</span><span>♪ som · 1080p60</span></div>
+            <div class="palco"><div class="cena cena-cs b"><span class="mira"></span><span class="mapa"><i></i><i></i></span><span class="hud-v">74 <small>HP</small></span><span class="hud-m">12 / 60</span></div>
+              <div class="ctrl-palco mini"><a class="ctrl q" href="#grade"><span class="rotulo">Recebe</span><b>Original</b></a><a class="ctrl" href="#grade" aria-label="Janela flutuante"><svg class="ic"><use href="#i-pip"/></svg></a><a class="ctrl" href="#grade" aria-label="Tela cheia"><svg class="ic"><use href="#i-cheia"/></svg></a></div></div>
+          </div>
+          <div class="janela palco-j">
+            <div class="barra ar"><span>■ Léo · CS2</span><span>mudo · leve 720p</span></div>
+            <div class="palco"><div class="cena cena-cs c"><span class="mira"></span><span class="mapa"><i></i><i></i><i></i></span><span class="hud-v">100 <small>HP</small></span><span class="hud-m">20 / 20</span></div>
+              <div class="ctrl-palco mini"><a class="ctrl q" href="#grade"><span class="rotulo">Recebe</span><b>Leve 720p</b></a><a class="ctrl" href="#grade" aria-label="Ouvir esta tela"><svg class="ic"><use href="#i-volume"/></svg></a><a class="ctrl" href="#grade" aria-label="Tela cheia"><svg class="ic"><use href="#i-cheia"/></svg></a></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Coluna direita -->
+      <aside class="janela lateral" aria-label="Conversa e pessoas">
+        <div class="abas2"><a class="on" href="#sala">Conversa · CS</a><a href="#sala">Pessoas · 7 on</a></div>
+        <ol class="chat">
+          <li><span class="av" style="--c:#c9d6f5">L</span><div><b>Léo</b> <time>21:38</time><p>alguém viu meu headset no sofá?</p></div></li>
+          <li><span class="av" style="--c:#f3c8d8">R</span><div><b>Rafa</b> <time>21:40</time><p>liguei 1080p60, tá liso aí?</p></div></li>
+          <li class="sis"><svg class="ic s"><use href="#i-replay"/></svg><span><b>Rafa</b> salvou um clipe de 45 s</span><a href="#clipes">Ver</a></li>
+          <li><span class="av" style="--c:#ead2a8">N</span><div><b>Nanda</b> <time>21:40</time><p>lisinho. dá pra ler o placar</p></div></li>
+          <li class="sis"><svg class="ic s"><use href="#i-sons"/></svg><span><b>Duda</b> tocou “buzina”</span></li>
+          <li><span class="av" style="--c:#c9d6f5">D</span><div><b>Duda</b> <time>21:41</time><p>bora mais uma depois dessa?</p></div></li>
+          <li><span class="av" style="--c:#c9d6f5">B</span><div><b>bronze</b> <time>21:41</time><p>bora, entro de awp</p></div></li>
+        </ol>
+        <div class="msg"><span>Mensagem para CS</span><a class="btn ic sm" href="#sala" aria-label="Enviar"><svg class="ic"><use href="#i-seta"/></svg></a></div>
+      </aside>
+      <a class="lateral-fina janela" href="#sala" aria-label="Abrir conversa, 2 novas"><svg class="ic"><use href="#i-chat"/></svg><span class="vert">Conversa</span><b class="badge">2</b></a>
+    </div>
+
+    <!-- Mesa -->
+    <div class="mesa">
+      <div class="janela voce">
+        <div class="barra"><span>Você · bronze</span><span class="barra-d"><span class="sem-split">Na voz · CS</span><span class="so-split">Na voz · CT</span><span class="rede r3" title="Ping 142 ms · perda 0,1%"><i></i><i></i><i></i></span>142 ms</span></div>
+        <div class="voce-bt">
+          <a class="btn ic" href="#sala" aria-label="Microfone ligado" title="Microfone (Ctrl+Shift+M)"><svg class="ic"><use href="#i-mic"/></svg></a>
+          <a class="btn ic" href="#sala" aria-label="Som ligado" title="Som (Ctrl+Shift+D)"><svg class="ic"><use href="#i-fone"/></svg></a>
+          <a class="btn prim cresce" href="#sala"><svg class="ic"><use href="#i-tela"/></svg>Transmitir</a>
+          <a class="btn ic" href="#sons" aria-label="Sons da sala" title="Sons da sala (Ctrl+Shift+S)"><svg class="ic"><use href="#i-sons"/></svg></a>
+          <a class="btn ic replay-on" href="#config-clipes" aria-label="Salvar clipe, replay ligado" title="Salvar clipe (Alt+F10)"><svg class="ic"><use href="#i-replay"/></svg></a>
+          <a class="btn ic" href="#paleta" aria-label="Mais" title="Mais: janela quem fala, teste de rede, internet ruim"><svg class="ic"><use href="#i-mais"/></svg></a>
+          <a class="btn ic sair" href="#saguao" aria-label="Sair da sala"><svg class="ic"><use href="#i-sair"/></svg></a>
+        </div>
+        <div class="voce-pe">
+          <a class="ouvem" href="#sala"><svg class="ic s"><use href="#i-antena"/></svg><b>4</b> te ouvem · <b>0</b> veem</a>
+          <span class="rotulo">Replay 60 s</span>
+        </div>
+      </div>
+
+      <div class="canais sem-split">
+        <article class="canal noar"><header class="barra ar"><b>Rafa</b><span class="tags"><svg class="ic s" aria-label="Replay ligado"><use href="#i-replay"/></svg><span class="rede r3" title="Ping 61 ms · perda 0%"><i></i><i></i><i></i></span></span></header>
+          <div class="cc"><span class="av av-g" style="--c:#f3c8d8">R</span><div class="ci"><b>falando</b><span class="jogo">no ar · CS2</span></div><span class="nivel" style="--n:5"></span></div>
+          <div class="vol"><span class="trilho" style="--v:80%"><i></i></span><span>80%</span></div></article>
+        <article class="canal fala"><header class="barra lima"><b>Duda</b><span class="tags"><svg class="ic s" aria-label="Replay ligado"><use href="#i-replay"/></svg><span class="rede r3" title="Ping 38 ms · perda 0%"><i></i><i></i><i></i></span></span></header>
+          <div class="cc"><span class="av av-g" style="--c:#c9d6f5">D</span><div class="ci"><b>falando</b><span class="jogo">jogando CS2</span></div><span class="nivel" style="--n:7"></span></div>
+          <div class="vol"><span class="trilho" style="--v:72%"><i></i></span><span>72%</span></div></article>
+        <article class="canal ruim"><header class="barra"><b>Léo</b><span class="tags"><span class="rede r1 mal"><i></i><i></i><i></i></span></span></header>
+          <div class="cc"><span class="av av-g" style="--c:#c9d6f5">L</span><div class="ci"><b>ouvindo</b><span class="aviso-rede">rede ruim · 210 ms · 3% perda</span></div><span class="nivel" style="--n:0"></span></div>
+          <div class="vol"><span class="trilho" style="--v:64%"><i></i></span><span>64%</span></div></article>
+        <article class="canal"><header class="barra"><b>Nanda</b><span class="tags"><span class="rede r2" title="Ping 95 ms · perda 0,5%"><i></i><i></i><i></i></span></span></header>
+          <div class="cc"><span class="av av-g" style="--c:#ead2a8">N</span><div class="ci"><b class="mudo">mic desligado</b><span class="jogo">jogando CS2</span></div><span class="nivel" style="--n:0"></span></div>
+          <div class="vol"><span class="trilho" style="--v:90%"><i></i></span><span>90%</span></div></article>
+      </div>
+
+      <div class="canais so-split">
+        <div class="grupo"><span class="grupo-r ct">CT · 3</span>
+          <article class="canal noar fala-ar"><header class="barra ar"><b>Duda</b><span class="tags"><svg class="ic s" aria-label="Replay ligado"><use href="#i-replay"/></svg><span class="rede r3"><i></i><i></i><i></i></span></span></header>
+            <div class="cc"><span class="av av-g" style="--c:#c9d6f5">D</span><div class="ci"><b>falando</b><span class="jogo">no ar · CS2</span></div><span class="nivel" style="--n:6"></span></div>
+            <div class="vol"><span class="trilho" style="--v:72%"><i></i></span><span>72%</span></div></article>
+          <article class="canal noar"><header class="barra ar"><b>Léo</b><span class="tags"><span class="rede r2"><i></i><i></i><i></i></span></span></header>
+            <div class="cc"><span class="av av-g" style="--c:#c9d6f5">L</span><div class="ci"><b>ouvindo</b><span class="jogo">no ar · CS2</span></div><span class="nivel" style="--n:0"></span></div>
+            <div class="vol"><span class="trilho" style="--v:64%"><i></i></span><span>64%</span></div></article>
+        </div>
+        <div class="grupo tr"><span class="grupo-r">TR · 2 · voz separada</span>
+          <article class="canal longe"><header class="barra"><b>Rafa</b><span class="tags"><span class="rede r3"><i></i><i></i><i></i></span></span></header>
+            <div class="cc"><span class="av av-g" style="--c:#f3c8d8">R</span><div class="ci"><b>no TR</b><span class="jogo">volta no fim do round</span></div></div></article>
+          <article class="canal longe"><header class="barra"><b>Nanda</b><span class="tags"><span class="rede r2"><i></i><i></i><i></i></span></span></header>
+            <div class="cc"><span class="av av-g" style="--c:#ead2a8">N</span><div class="ci"><b>no TR</b><span class="jogo">volta no fim do round</span></div></div></article>
+        </div>
+      </div>
+    </div>
+
+    <!-- Popover: quem me ouve (só na tela #sala) -->
+    <div class="janela pop pop-ouvem" role="dialog" aria-label="Quem recebe você">
+      <div class="barra"><span>Quem recebe você</span><span>voz · tela</span></div>
+      <ul class="lista-r">
+        <li><span class="av" style="--c:#f3c8d8">R</span><b>Rafa</b><span class="ok">voz</span><span class="nao">—</span></li>
+        <li><span class="av" style="--c:#c9d6f5">D</span><b>Duda</b><span class="ok">voz</span><span class="nao">—</span></li>
+        <li><span class="av" style="--c:#c9d6f5">L</span><b>Léo</b><span class="ok">voz</span><span class="nao">—</span></li>
+        <li><span class="av" style="--c:#ead2a8">N</span><b>Nanda</b><span class="ok">voz</span><span class="nao">—</span></li>
+      </ul>
+      <p class="pop-nota">Você não está transmitindo. Quando estiver, quem assiste aparece em “tela”.</p>
+    </div>
+
+    <!-- Menu de contexto da pessoa (clique direito no canal de Duda) -->
+    <div class="janela menu-ctx" role="menu" aria-label="Duda">
+      <div class="menu-cab"><span class="av av-g" style="--c:#c9d6f5">D</span><div><b>Duda</b><span class="rotulo">CS2 · 38 ms · 0% perda</span></div></div>
+      <div class="menu-vol"><svg class="ic s"><use href="#i-volume"/></svg><span class="trilho" style="--v:72%"><i></i></span><span class="mono">72%</span></div>
+      <a role="menuitem" href="#menu-pessoa"><svg class="ic s"><use href="#i-pessoa"/></svg>Ver perfil</a>
+      <a role="menuitem" href="#menu-pessoa"><svg class="ic s"><use href="#i-tela"/></svg>Assistir tela<kbd>clique duplo</kbd></a>
+      <a role="menuitem" href="#menu-pessoa"><svg class="ic s"><use href="#i-mudo"/></svg>Silenciar para mim<kbd>M</kbd></a>
+      <a role="menuitem" href="#menu-pessoa"><svg class="ic s"><use href="#i-sons"/></svg>Não ouvir os sons de Duda</a>
+      <div class="menu-sep"><svg class="ic s"><use href="#i-escudo"/></svg>Moderação · você é admin</div>
+      <a role="menuitem" class="sub" href="#menu-pessoa"><svg class="ic s"><use href="#i-mover"/></svg>Mover para<svg class="ic s dir"><use href="#i-dir"/></svg></a>
+      <a role="menuitem" href="#menu-pessoa"><svg class="ic s"><use href="#i-mic"/></svg>Silenciar na sala</a>
+      <a role="menuitem" class="perigo" href="#menu-pessoa"><svg class="ic s"><use href="#i-sair"/></svg>Tirar da sala…</a>
+    </div>
+    <div class="janela menu-ctx sub-menu" role="menu" aria-label="Mover para">
+      <a role="menuitem" href="#menu-pessoa">Lobby<span class="rotulo">2</span></a>
+      <a role="menuitem" class="foco" href="#menu-pessoa">Cinema<span class="rotulo">vazia</span></a>
+      <a role="menuitem" href="#menu-pessoa">Ranked<span class="rotulo">vazia</span></a>
+      <a role="menuitem" href="#menu-pessoa">Saguão<span class="rotulo">fora da voz</span></a>
+    </div>
+
+    <!-- Soundboard -->
+    <div class="janela painel-sons" role="dialog" aria-label="Sons da sala CS">
+      <div class="barra"><span>Sons · CS</span><span>8 de 24 · <a class="lnk-b" href="#sala">fechar Esc</a></span></div>
+      <div class="sons-busca"><svg class="ic s"><use href="#i-busca"/></svg><span>Buscar som</span><span class="rotulo">tecla 1–8 com o painel aberto</span></div>
+      <div class="sons-grade">
+        <a class="som tocando" href="#sons" style="--p:40%"><b>buzina</b><span class="rotulo">1 · 1,2 s</span></a>
+        <a class="som" href="#sons"><b>ace!</b><span class="rotulo">2 · 2,0 s</span></a>
+        <a class="som" href="#sons"><b>boa noite</b><span class="rotulo">3 · 1,8 s</span></a>
+        <a class="som" href="#sons"><b>tchau</b><span class="rotulo">4 · 0,9 s</span></a>
+        <a class="som" href="#sons"><b>cadê o eco</b><span class="rotulo">5 · 2,4 s</span></a>
+        <a class="som" href="#sons"><b>tambor</b><span class="rotulo">6 · 1,1 s</span></a>
+        <a class="som" href="#sons"><b>palmas</b><span class="rotulo">7 · 3,0 s</span></a>
+        <a class="som espera" href="#sons"><b>vai, vai</b><span class="rotulo">8 · em 2 s</span></a>
+      </div>
+      <div class="sons-pe">
+        <span class="sons-vol"><span class="rotulo">Volume dos sons para você</span><span class="trilho" style="--v:60%"><i></i></span><span class="mono">60%</span></span>
+        <a class="btn sm" href="#sons"><svg class="ic"><use href="#i-envio"/></svg>Enviar som</a>
+      </div>
+      <p class="sons-nota">Todos na sala ouvem. Um som a cada 3 s por pessoa. Enviar: dono e admin, MP3 ou OGG até 5 s.</p>
+    </div>
+
+    <!-- Paleta Ctrl+K -->
+    <div class="veu"></div>
+    <div class="janela paleta" role="dialog" aria-label="Comandos">
+      <div class="paleta-campo"><svg class="ic"><use href="#i-busca"/></svg><span class="digitado">re</span><span class="cursor"></span><kbd>Esc</kbd></div>
+      <div class="paleta-lista">
+        <div class="grupo-p">Ações</div>
+        <a class="foco" href="#paleta"><svg class="ic s"><use href="#i-antena"/></svg><span>Modo internet ruim <em>· ligado</em></span><span class="rotulo">desligar</span><kbd>Ctrl Shift B</kbd></a>
+        <a href="#paleta"><svg class="ic s"><use href="#i-replay"/></svg><span>Desligar o replay</span><span class="rotulo">clipes</span><kbd>Alt F9</kbd></a>
+        <a href="#paleta"><svg class="ic s"><use href="#i-tela"/></svg><span>Refazer o teste de qualidade</span><span class="rotulo">transmitir</span></a>
+        <div class="grupo-p">Salas e pessoas</div>
+        <a href="#paleta"><svg class="ic s"><use href="#i-pessoa"/></svg><span>Léo <em>· <b>re</b>de ruim, 210 ms</em></span><span class="rotulo">na sala</span></a>
+        <a href="#paleta"><svg class="ic s"><use href="#i-pessoa"/></svg><span><b>Re</b>nan</span><span class="rotulo">ausente · 2 h</span></a>
+        <div class="grupo-p">Configurações</div>
+        <a href="#config-busca"><svg class="ic s"><use href="#i-ajustes"/></svg><span>Teste de <b>re</b>de</span><span class="rotulo">Voz e rede</span></a>
+        <a href="#config-busca"><svg class="ic s"><use href="#i-ajustes"/></svg><span><b>Re</b>dução de ruído</span><span class="rotulo">Voz e rede</span></a>
+      </div>
+      <div class="paleta-pe"><span><kbd>↑</kbd><kbd>↓</kbd> escolher</span><span><kbd>Enter</kbd> fazer</span><span><kbd>Tab</kbd> abrir em Configurações</span><span class="rotulo">&gt; ações · @ pessoas</span></div>
+    </div>
+  </section>
+
+  <!-- ================================================ CLIPES -->
+  <section class="v-clipes" aria-label="Clipes">
+    <div class="cl-esq">
+      <div class="cl-cab">
+        <div><span class="rotulo">/ Clipes · salvos neste PC</span><h1>Clipes</h1></div>
+        <div class="janela espaco"><div class="barra lima"><span>Espaço</span><span>limite 20 GB</span></div><div class="espaco-c"><b class="num">3,2</b><span class="mono">GB</span><span class="trilho grosso" style="--v:16%"><i></i></span><span class="rotulo">14 clipes · o mais antigo sai quando encher</span></div></div>
+      </div>
+      <div class="cl-filtro">
+        <span class="abas3"><a class="on" href="#clipes">Todos · 14</a><a href="#clipes">Meus · 9</a><a href="#clipes">Recebidos · 5</a></span>
+        <span class="rotulo">Jogo</span><a class="btn sm" href="#clipes">Todos os jogos<svg class="ic s"><use href="#i-dir"/></svg></a>
+        <span class="rotulo cl-dica">Salvar agora: <kbd>Alt F10</kbd></span>
+      </div>
+      <div class="cl-grade">
+        <a class="clip sel" href="#clipes"><span class="cena cena-cs mini"><span class="mira"></span></span><span class="dur">0:45</span><b>Clutch 1v3 no B</b><span class="rotulo">Rafa · CS2 · hoje 21:42</span></a>
+        <a class="clip" href="#clipes"><span class="cena cena-cs b mini"><span class="mira"></span></span><span class="dur">1:00</span><b>Sem título</b><span class="rotulo">você · CS2 · hoje 21:30</span></a>
+        <a class="clip" href="#clipes"><span class="cena cena-filme mini"></span><span class="dur">0:30</span><b>A cara do Léo</b><span class="rotulo">você · Cinema · ontem</span></a>
+        <a class="clip" href="#clipes"><span class="cena cena-corrida mini"></span><span class="dur">2:00</span><b>Ultrapassagem</b><span class="rotulo">Duda · Forza · ontem</span></a>
+        <a class="clip" href="#clipes"><span class="cena cena-cs c mini"><span class="mira"></span></span><span class="dur">0:45</span><b>Ace de deagle</b><span class="rotulo">você · CS2 · sáb</span></a>
+        <a class="clip" href="#clipes"><span class="cena cena-corrida b mini"></span><span class="dur">1:30</span><b>Sem título</b><span class="rotulo">você · Forza · sáb</span></a>
+        <a class="clip" href="#clipes"><span class="cena cena-filme mini"></span><span class="dur">0:30</span><b>Plot twist</b><span class="rotulo">Nanda · Cinema · sex</span></a>
+        <a class="clip" href="#clipes"><span class="cena cena-cs mini"><span class="mira"></span></span><span class="dur">1:00</span><b>Defuse no limite</b><span class="rotulo">você · CS2 · sex</span></a>
+        <a class="clip" href="#clipes"><span class="cena cena-corrida mini"></span><span class="dur">0:45</span><b>Sem título</b><span class="rotulo">Mari · Forza · qui</span></a>
+      </div>
+    </div>
+    <div class="janela cl-ver">
+      <div class="barra"><span>Clutch 1v3 no B</span><span>1080p60 · 45 s · 38 MB</span></div>
+      <div class="palco cl-palco"><div class="cena cena-cs"><span class="mira"></span><span class="mapa"><i></i><i></i></span><span class="hud-v">12 <small>HP</small></span><span class="hud-m">3 / 20</span></div><span class="cl-play"><svg class="ic"><use href="#i-play"/></svg></span></div>
+      <div class="corte">
+        <div class="corte-l"><span class="rotulo">Cortar</span><span class="mono">0:08 → 0:39 · 31 s</span></div>
+        <div class="faixas">
+          <div class="faixa-t"><span class="rotulo">Tela</span><span class="tl"><i class="sel" style="--a:18%;--b:87%"></i></span></div>
+          <div class="faixa-t"><span class="rotulo">Jogo</span><span class="tl onda"><i class="sel" style="--a:18%;--b:87%"></i></span></div>
+          <div class="faixa-t"><span class="rotulo">Rafa</span><span class="tl voz" style="--v1:22%;--v2:48%"><i class="sel" style="--a:18%;--b:87%"></i></span></div>
+          <div class="faixa-t"><span class="rotulo">Duda</span><span class="tl voz" style="--v1:55%;--v2:80%"><i class="sel" style="--a:18%;--b:87%"></i></span></div>
+          <div class="faixa-t des"><span class="rotulo">Você</span><span class="tl voz" style="--v1:30%;--v2:40%"></span><span class="rotulo">tirar</span></div>
+        </div>
+      </div>
+      <div class="cl-acoes">
+        <a class="btn prim" href="#clipes"><svg class="ic"><use href="#i-chat"/></svg>Enviar na conversa</a>
+        <a class="btn" href="#clipes"><svg class="ic"><use href="#i-corte"/></svg>Salvar corte</a>
+        <a class="btn ic" href="#clipes" aria-label="Abrir pasta"><svg class="ic"><use href="#i-pasta"/></svg></a>
+        <a class="btn ic" href="#clipes" aria-label="Apagar"><svg class="ic"><use href="#i-lixo"/></svg></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================ SAGUÃO -->
+  <section class="v-saguao" aria-label="Saguão">
+    <div class="sg-esq">
+      <div class="sg-cab"><span class="rotulo">/ Galera · fora da voz</span><h1>Escolha uma sala</h1><p>Entre numa sala para falar, assistir e conversar. Ou chame a galera para jogar.</p></div>
+      <div class="sg-salas">
+        <div class="janela sala-c"><div class="barra ar"><span>CS</span><span>no ar · 4</span></div>
+          <div class="sala-gente"><span class="av av-g" style="--c:#f3c8d8">R</span><span class="av av-g" style="--c:#c9d6f5">D</span><span class="av av-g" style="--c:#c9d6f5">L</span><span class="av av-g" style="--c:#ead2a8">N</span></div>
+          <p class="sala-jogo"><b>CS2</b> · de_mirage · Rafa no ar</p><a class="btn prim cheio" href="#sala">Entrar na sala CS</a></div>
+        <div class="janela sala-c"><div class="barra"><span>Lobby</span><span>2 na sala</span></div>
+          <div class="sala-gente"><span class="av av-g" style="--c:#d6e8c3">T</span><span class="av av-g" style="--c:#e9d5f4">M</span></div>
+          <p class="sala-jogo">só conversa</p><a class="btn cheio" href="#sala">Entrar na sala Lobby</a></div>
+        <div class="janela sala-c vazia"><div class="barra"><span>Cinema</span><span>vazia</span></div>
+          <p class="sala-vazia">Ninguém aqui. A primeira pessoa a entrar escolhe o filme.</p><a class="btn cheio" href="#sala">Entrar na sala Cinema</a></div>
+        <div class="janela sala-c vazia"><div class="barra"><span>Ranked</span><span>vazia</span></div>
+          <p class="sala-vazia">Vazia. Bom lugar para um chamado.</p><a class="btn cheio" href="#sala">Entrar na sala Ranked</a></div>
+      </div>
+      <div class="janela amigos">
+        <div class="barra"><span>Galera · 7 online</span><span>8 membros</span></div>
+        <ul>
+          <li><span class="av" style="--c:#f3c8d8">R</span><b>Rafa</b><span class="pres jogo">jogando CS2 · 1 h 12</span><span class="rotulo">na sala CS</span></li>
+          <li><span class="av" style="--c:#c9d6f5">D</span><b>Duda</b><span class="pres jogo">jogando CS2 · 40 min</span><span class="rotulo">na sala CS</span></li>
+          <li><span class="av" style="--c:#c9d6f5">L</span><b>Léo</b><span class="pres jogo">jogando CS2 · 38 min</span><span class="rotulo">na sala CS</span></li>
+          <li><span class="av" style="--c:#ead2a8">N</span><b>Nanda</b><span class="pres jogo">jogando CS2 · 35 min</span><span class="rotulo">na sala CS</span></li>
+          <li><span class="av" style="--c:#d6e8c3">T</span><b>Tiago</b><span class="pres">online</span><span class="rotulo">no Lobby</span></li>
+          <li><span class="av" style="--c:#e9d5f4">M</span><b>Mari</b><span class="pres jogo">jogando Forza Horizon 5</span><span class="rotulo">no Lobby</span></li>
+          <li><span class="av" style="--c:#f5e0b8">K</span><b>Kaio</b><span class="pres">online</span><span class="rotulo">fora da voz</span></li>
+          <li class="off"><span class="av" style="--c:#dcdcd6">R</span><b>Renan</b><span class="pres">ausente há 2 h</span><span class="rotulo">—</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="janela chamar">
+      <div class="barra"><span>Chamar para jogar</span><span>avisa no Windows</span></div>
+      <div class="chamar-c">
+        <div class="campo-l"><span class="rotulo">Jogo</span><div class="campo"><b>Counter-Strike 2</b><span class="tag-lima">detectado agora</span></div></div>
+        <div class="campo-l"><span class="rotulo">Sala</span><div class="campo"><b>CS</b><span class="rotulo">4 na sala · falta 1 para 5v5</span><svg class="ic s"><use href="#i-dir"/></svg></div></div>
+        <div class="campo-l"><span class="rotulo">Quem avisar · 3</span>
+          <ul class="avisar">
+            <li class="on"><span class="cx"><svg class="ic s"><use href="#i-check"/></svg></span><b>Tiago</b><span class="rotulo">online</span></li>
+            <li class="on"><span class="cx"><svg class="ic s"><use href="#i-check"/></svg></span><b>Kaio</b><span class="rotulo">online</span></li>
+            <li class="on"><span class="cx"><svg class="ic s"><use href="#i-check"/></svg></span><b>Renan</b><span class="rotulo">ausente · recebe depois</span></li>
+            <li><span class="cx"></span><b>Mari</b><span class="rotulo">jogando Forza</span></li>
+          </ul></div>
+        <div class="campo-l"><span class="rotulo">Recado (opcional)</span><div class="campo"><span>bora 5v5? falta um</span></div></div>
+        <div class="previa"><span class="rotulo">Eles recebem</span><div class="notif"><b>bronze chamou para jogar CS2</b><span>“bora 5v5? falta um” · sala CS · 4 lá</span><span class="notif-a"><u>Entrar</u> · Agora não</span></div></div>
+        <a class="btn prim cheio grande" href="#sala"><svg class="ic"><use href="#i-sino"/></svg>Chamar 3 pessoas</a>
+        <span class="rotulo centro-t">Um chamado a cada 10 min. Quem silenciou chamados não recebe.</span>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- ================================================ CONFIGURAÇÕES -->
+<div class="v-config">
+  <nav class="cf-nav" aria-label="Configurações">
+    <span class="rotulo">/ Configurações</span>
+    <div class="cf-busca"><svg class="ic s"><use href="#i-busca"/></svg><span class="cf-ph">Buscar ajuste</span><span class="cf-q">eco</span><kbd>Ctrl F</kbd></div>
+    <div class="cf-g">Você</div>
+    <a href="#config-atalhos">Perfil</a>
+    <a href="#config-busca">Voz e rede</a>
+    <a class="on-atalhos" href="#config-atalhos">Atalhos</a>
+    <a class="on-clipes" href="#config-clipes">Clipes e replay</a>
+    <a href="#config-atalhos">Sons e avisos</a>
+    <a href="#quem-fala">Janela quem fala</a>
+    <a href="#config-atalhos">Aparência</a>
+    <div class="cf-g">Servidor Galera <span class="tag-adm">admin</span></div>
+    <a href="#config-atalhos">Geral e convites</a>
+    <a href="#config-atalhos">Salas e mapa do CS2</a>
+    <a href="#config-atalhos">Sons da sala</a>
+    <a href="#config-atalhos">Membros e cargos</a>
+    <div class="cf-g">App</div>
+    <a href="#config-atalhos">Servidores</a>
+    <a href="#config-atalhos">Sobre e atualizações</a>
+    <a class="cf-voltar" href="#sala"><svg class="ic s"><use href="#i-sair"/></svg>Voltar para a sala <kbd>Esc</kbd></a>
+  </nav>
+
+  <main class="cf-main cf-atalhos">
+    <div class="cf-cab"><span class="rotulo">/ Você · funcionam com o jogo na frente</span><h1>Atalhos</h1></div>
+    <div class="janela linha-c">
+      <div><b>Como o microfone abre</b><p>Apertar para falar evita que o som do teclado e da casa vaze.</p></div>
+      <span class="seg"><a href="#config-atalhos">Voz livre</a><a class="on" href="#config-atalhos">Apertar para falar</a></span>
+    </div>
+    <div class="janela tab-at">
+      <div class="barra"><span>Atalho</span><span>Tecla · fora do app também</span></div>
+      <div class="at-g">Voz</div>
+      <div class="at"><b>Apertar para falar</b><span class="rotulo">solta 200 ms depois</span><span class="tecla"><kbd>Mouse 4</kbd></span><span class="glob on">global</span></div>
+      <div class="at"><b>Ligar ou desligar o microfone</b><span></span><span class="tecla"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>M</kbd></span><span class="glob on">global</span></div>
+      <div class="at"><b>Ligar ou desligar o som</b><span></span><span class="tecla"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>D</kbd></span><span class="glob on">global</span></div>
+      <div class="at gravando"><b>Modo internet ruim</b><span class="aviso-t">Aperte a nova tecla. <b>Alt+F10</b> já salva clipe: escolha outra ou troque as duas.</span><span class="tecla"><kbd class="pisca">…</kbd></span><a class="lnk" href="#config-atalhos">Cancelar</a></div>
+      <div class="at-g">Clipes e sala</div>
+      <div class="at"><b>Salvar clipe</b><span class="rotulo">últimos 60 s</span><span class="tecla"><kbd>Alt</kbd><kbd>F10</kbd></span><span class="glob on">global</span></div>
+      <div class="at"><b>Ligar ou desligar o replay</b><span></span><span class="tecla"><kbd>Alt</kbd><kbd>F9</kbd></span><span class="glob on">global</span></div>
+      <div class="at"><b>Abrir os sons da sala</b><span></span><span class="tecla"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>S</kbd></span><span class="glob">só no app</span></div>
+      <div class="at"><b>Mostrar a janela quem fala</b><span></span><span class="tecla"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>O</kbd></span><span class="glob on">global</span></div>
+      <div class="at"><b>Buscar e comandos</b><span></span><span class="tecla"><kbd>Ctrl</kbd><kbd>K</kbd></span><span class="glob">só no app</span></div>
+    </div>
+  </main>
+
+  <main class="cf-main cf-clipes">
+    <div class="cf-cab"><span class="rotulo">/ Você · gravado só neste PC</span><h1>Clipes e replay</h1></div>
+    <div class="janela linha-c">
+      <div><b>Replay</b><p>Guarda os últimos segundos o tempo todo. Uma tecla salva. Gasta memória e um pouco da placa de vídeo.</p></div>
+      <span class="chave on" role="switch" aria-checked="true"><i></i>Ligado</span>
+    </div>
+    <div class="janela linha-c">
+      <div><b>Quanto tempo guardar</b><p>Mais tempo usa mais memória: 60 s em 1080p60 ocupam cerca de 450 MB.</p></div>
+      <span class="seg"><a href="#config-clipes">30 s</a><a class="on" href="#config-clipes">60 s</a><a href="#config-clipes">90 s</a><a href="#config-clipes">120 s</a></span>
+    </div>
+    <div class="janela linha-c col">
+      <div><b>O que entra no clipe</b><p>Quem está na sala vê o aviso “replay ligado” no seu canal e no topo da sala. Esse aviso não desliga.</p></div>
+      <div class="marcas">
+        <span class="marca on"><span class="cx"><svg class="ic s"><use href="#i-check"/></svg></span>Sua tela ou o jogo</span>
+        <span class="marca on"><span class="cx"><svg class="ic s"><use href="#i-check"/></svg></span>Som do jogo</span>
+        <span class="marca on"><span class="cx"><svg class="ic s"><use href="#i-check"/></svg></span>Sua voz</span>
+        <span class="marca on"><span class="cx"><svg class="ic s"><use href="#i-check"/></svg></span>Voz de quem fala na sala</span>
+      </div>
+    </div>
+    <div class="cf-2">
+      <div class="janela linha-c col"><div><b>Pasta</b><p class="mono">D:\Clipes\Stackcall</p></div><a class="btn sm" href="#config-clipes"><svg class="ic"><use href="#i-pasta"/></svg>Trocar pasta</a></div>
+      <div class="janela linha-c col"><div><b>Limite de espaço</b><p>Quando encher, o clipe mais antigo sai. Clipe com estrela fica.</p></div><span class="seg"><a href="#config-clipes">10 GB</a><a class="on" href="#config-clipes">20 GB</a><a href="#config-clipes">50 GB</a></span></div>
+    </div>
+  </main>
+
+  <main class="cf-main cf-busca-r">
+    <div class="cf-cab"><span class="rotulo">/ Busca · 4 ajustes com “eco”</span><h1>Resultados</h1></div>
+    <div class="janela res">
+      <a href="#config-busca"><span class="rotulo">Voz e rede › Microfone</span><b>Cancelar <mark>eco</mark></b><p>Tira da sua voz o som que sai das suas caixas.</p><span class="chave on"><i></i>Ligado</span></a>
+      <a href="#config-busca"><span class="rotulo">Voz e rede › Microfone</span><b>Redução de ruído</b><p>Filtro que também corta <mark>eco</mark> curto da sala. RNNoise, roda no seu PC.</p><span class="seg mini"><span>Leve</span><span class="on">Forte</span></span></a>
+      <a href="#config-busca"><span class="rotulo">Voz e rede › Teste</span><b>Teste de rede e de microfone</b><p>Grava 5 s, devolve sua voz com <mark>eco</mark> e mede ping e perda até o servidor.</p><span class="btn sm">Testar agora</span></a>
+      <a href="#config-busca"><span class="rotulo">Voz e rede › Fone</span><b>Ouvir a própria voz</b><p>Retorno do microfone no fone. Também chamado de <mark>eco</mark> de teste.</p><span class="chave on"><i></i>Ligado</span></a>
+    </div>
+    <p class="res-nada rotulo">Busca por palavra do ajuste, da descrição ou de apelidos (“ptt”, “mute”, “gravação”).</p>
+  </main>
+</div>
+
+<!-- ================================================ JANELA QUEM FALA (sobre o jogo) -->
+<div class="v-quemfala">
+  <div class="cena cena-cs jogo-cheio"><span class="mira"></span><span class="mapa"><i></i><i></i><i></i></span><span class="hud-v">100 <small>HP</small> &nbsp;100 <small>COLETE</small></span><span class="hud-m">30 / 90</span></div>
+  <div class="qf" aria-label="Quem está falando">
+    <div class="qf-l fala"><span class="av" style="--c:#c9d6f5">D</span><b>Duda</b><span class="nv"></span></div>
+    <div class="qf-l fala"><span class="av" style="--c:#f3c8d8">R</span><b>Rafa</b><span class="nv"></span></div>
+    <div class="qf-l"><span class="av" style="--c:#c9d6f5">L</span><b>Léo</b></div>
+    <div class="qf-l mudo"><span class="av" style="--c:#ead2a8">N</span><b>Nanda</b><svg class="ic s"><use href="#i-mudo"/></svg></div>
+    <div class="qf-pe">CS · 142 ms <span class="rec"><svg class="ic s"><use href="#i-replay"/></svg>replay</span></div>
+  </div>
+  <div class="qf-legenda janela"><div class="barra"><span>Janela quem fala</span><span>sempre no topo · Ctrl+Shift+O</span></div><p>Janela separada, sem borda, por cima do jogo em janela sem borda ou em tela cheia sem borda. Não entra no jogo (nada de gancho). Arraste para qualquer canto; clique passa através.</p></div>
+</div>
+
+<!-- Navegação do protótipo (some com ?print) -->
+<nav class="proto" aria-label="Telas do protótipo">
+  <b>v0.5</b>
+  <a href="#sala">Sala</a><a href="#grade">Grade</a><a href="#menu-pessoa">Menu</a><a href="#paleta">Ctrl K</a><a href="#sons">Sons</a><a href="#clipes">Clipes</a><a href="#saguao">Saguão</a><a href="#config-atalhos">Atalhos</a><a href="#config-clipes">Cfg clipes</a><a href="#config-busca">Busca</a><a href="#quem-fala">Quem fala</a>
+  <button type="button" onclick="trocarTema()">Tema</button>
+</nav>
+</body>
+</html>
