@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { isTauri } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { demoScreen, store } from './lib/config';
 import { modoFalso, servidorFalso } from './lib/falso';
-import { ApiError, servidorReal, type Pessoa, type Sala, type Servidor, type Usuario } from './lib/servidor';
+import { ApiError, aoPerderSessao, servidorReal, type Pessoa, type Sala, type Servidor, type Usuario } from './lib/servidor';
 import { escolherServidor, esquecerServidor, ouvirDeepLinks, salvarServidor, servidorAtual } from './lib/servidores';
 import type { LinkConvite } from './lib/convite';
 import { useUpdater } from './lib/updater';
@@ -12,8 +14,14 @@ import { Novidades } from './screens/Novidades';
 import { Perfil } from './screens/Perfil';
 import { CartaoPerfil } from './components/CartaoPerfil';
 import { UpdateBanner } from './components/UpdateBanner';
+import { Faixa, type Acao } from './components/Faixa';
 
 export type Overlay = null | 'settings' | 'perfil' | { novidades: string | null } | { cartao: string };
+
+/** Focus refresh at most this often: Alt-Tab during a match must not burn the rate limit. */
+export const FOCO_MS = 12_000;
+
+type Aviso = { tipo: 'erro' | 'aviso'; texto: string; acoes?: Acao[] };
 
 type Estado =
   | { fase: 'carregando' }
@@ -33,6 +41,9 @@ export function App() {
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [sala, setSala] = useState<string | null>(() => (modoFalso() && demoScreen() !== 'saguao' ? 'cs' : null));
   const [link, setLink] = useState<LinkConvite | null>(null);
+  const [aviso, setAviso] = useState<Aviso | null>(null);
+  const salaRef = useRef(sala);
+  salaRef.current = sala;
   const tela = falso ? demoScreen() : null;
   const [overlay, setOverlay] = useState<Overlay>(
     tela === 'config' ? 'settings' : tela === 'novidades' ? { novidades: null } : tela === 'perfil' ? 'perfil' : null,
@@ -41,7 +52,8 @@ export function App() {
 
   const carregar = useCallback(async (s: Servidor) => {
     try {
-      const [u, ss, ps, info] = await Promise.all([s.eu(), s.salas(), s.pessoas(), s.info().catch(() => null)]);
+      // Presence comes from LiveKit; if it is down the rest of the app still opens.
+      const [u, ss, ps, info] = await Promise.all([s.eu(), s.salas(), s.pessoas().catch(() => []), s.info().catch(() => null)]);
       setSrv(s);
       setEu(u);
       setSalas(ss);
@@ -67,23 +79,76 @@ export function App() {
 
   useEffect(() => void iniciar(), [iniciar]);
 
+  function irParaConvite(l: LinkConvite) {
+    setAviso(null);
+    setLink(l);
+    setOverlay(null);
+    setEstado((e) => (e.fase === 'pronto' ? { fase: 'entrada', voltar: true } : { fase: 'entrada' }));
+  }
+
   // Invite links opened in the browser come back as stackcall://entrar and land here.
+  // In a call the link only asks; the call keeps running even after "Abrir" (the room stays mounted).
+  const abrirConvite = useRef((l: LinkConvite) => irParaConvite(l));
+  abrirConvite.current = (l: LinkConvite) => {
+    if (!salaRef.current) return irParaConvite(l);
+    setAviso({
+      tipo: 'aviso',
+      texto: `Convite recebido de ${new URL(l.servidor).host}. Abrir?`,
+      acoes: [{ rotulo: 'Abrir', principal: true, onClick: () => irParaConvite(l) }, { rotulo: 'Agora não', onClick: () => setAviso(null) }],
+    });
+  };
   useEffect(() => {
     let parar: (() => void) | undefined;
-    void ouvirDeepLinks((l) => {
-      setLink(l);
-      setOverlay(null);
-      setEstado((e) => (e.fase === 'pronto' ? { fase: 'entrada', voltar: true } : { fase: 'entrada' }));
-    }).then((f) => (parar = f));
-    return () => parar?.();
+    let vivo = true;
+    void ouvirDeepLinks((l) => abrirConvite.current(l)).then((f) => (vivo ? (parar = f) : f()));
+    return () => {
+      vivo = false;
+      parar?.();
+    };
   }, []);
 
-  // No polling: people and rooms refresh when the window comes back to the front.
+  // Session over (401 from any call, or the Rust event): back to the entry screen. A call in
+  // progress keeps running only if the person says so.
+  useEffect(() => {
+    const encerrar = () => {
+      setOverlay(null);
+      setEstado({ fase: 'entrada' });
+      const texto = 'Sua sessão neste aparelho acabou. Entre de novo com um convite.';
+      if (!salaRef.current) return setAviso({ tipo: 'aviso', texto });
+      setAviso({
+        tipo: 'aviso',
+        texto: `${texto} Você ainda está na voz: quer continuar?`,
+        acoes: [
+          { rotulo: 'Sair da voz', principal: true, onClick: () => { setSala(null); setAviso(null); } },
+          { rotulo: 'Continuar na voz', onClick: () => setAviso({
+            tipo: 'aviso', texto: 'Você continua na voz, sem sessão neste aparelho.',
+            acoes: [{ rotulo: 'Sair da voz', onClick: () => { setSala(null); setAviso(null); } }],
+          }) },
+        ],
+      });
+    };
+    const parar = aoPerderSessao(encerrar);
+    let pararEvento: (() => void) | undefined;
+    let vivo = true;
+    if (isTauri()) void listen('sessao-encerrada', encerrar).then((f) => (vivo ? (pararEvento = f) : f()), () => undefined);
+    return () => {
+      vivo = false;
+      parar();
+      pararEvento?.();
+    };
+  }, []);
+
+  // No polling: people and rooms refresh when the window comes back to the front, at most every FOCO_MS.
   useEffect(() => {
     if (!srv || estado.fase !== 'pronto') return;
+    let ultima = Date.now();
     const atualizar = () => {
-      void srv.pessoas().then(setPessoas, () => undefined);
-      void srv.salas().then(setSalas, () => undefined);
+      if (Date.now() - ultima < FOCO_MS) return;
+      ultima = Date.now();
+      void Promise.all([srv.pessoas().catch(() => null), srv.salas()]).then(([ps, ss]) => {
+        if (ps) setPessoas(ps);
+        setSalas(ss);
+      }, () => undefined);
     };
     window.addEventListener('focus', atualizar);
     return () => window.removeEventListener('focus', atualizar);
@@ -121,6 +186,21 @@ export function App() {
     await navigator.clipboard.writeText(c.link);
   }
 
+  async function remover(p: Pessoa | Usuario) {
+    if (!srv) return;
+    setAviso(null);
+    try {
+      await srv.remover(p.id);
+      setPessoas((ps) => ps.filter((x) => x.id !== p.id));
+    } catch (e) {
+      setAviso({
+        tipo: 'erro',
+        texto: `Não deu para remover ${p.nome}. ${e instanceof Error ? e.message : String(e)}`,
+        acoes: [{ rotulo: 'Tentar de novo', onClick: () => void remover(p) }],
+      });
+    }
+  }
+
   async function amigo(id: string, sim: boolean) {
     if (!srv) return;
     setPessoas((ps) => ps.map((p) => (p.id === id ? { ...p, amigo: sim } : p)));
@@ -132,22 +212,29 @@ export function App() {
     ? (overlay.cartao === eu?.id ? eu : pessoas.find((p) => p.id === overlay.cartao)) ?? null
     : null;
 
-  let corpo;
+  // A call survives the entry screen (invite opened, session over): the room stays mounted, hidden.
+  const comSala = !!(srv && eu && (estado.fase === 'pronto' || (estado.fase === 'entrada' && sala)));
+  let corpo = null;
   if (estado.fase === 'carregando') {
     corpo = (
-      <div className="flex h-full flex-col gap-4 px-5 pt-4" aria-busy="true" aria-label="Carregando">
-        <div className="skeleton h-[52px] w-full max-w-[720px]" />
-        <div className="skeleton h-16 w-80" />
-        <div className="skeleton flex-1" />
+      <div className="grid h-full grid-rows-[auto_minmax(0,1fr)] gap-4 px-5 pt-4 pb-5" aria-busy="true" aria-label="Carregando">
+        <div className="flex gap-3">
+          <div className="skeleton h-[52px] w-[260px]" />
+          <div className="skeleton h-[52px] w-[420px]" />
+          <div className="skeleton ml-auto size-11" />
+        </div>
+        <div className="grid grid-cols-[minmax(0,1fr)_340px] gap-4"><div className="skeleton" /><div className="skeleton" /></div>
       </div>
     );
   } else if (estado.fase === 'erro') {
     corpo = (
       <div className="flex h-full items-center justify-center p-8">
-        <div className="janela flex w-[460px] flex-col">
-          <div className="barra">Sem conexão com o servidor</div>
-          <div className="flex flex-col gap-3 p-5">
-            <p role="alert" className="m-0 text-perigo">{estado.mensagem}</p>
+        <div className="janela flex w-[520px] max-w-full flex-col">
+          <div className="barra barra-ar">Sem conexão</div>
+          <div className="flex flex-col gap-4 p-5">
+            <h1 className="text-[40px]">Servidor fora do alcance</h1>
+            <p role="alert" className="m-0">{estado.mensagem}</p>
+            <p className="m-0 text-[14px] text-texto-fraco">Confira a internet. Se ela estiver boa, o servidor pode estar reiniciando.</p>
             <div className="flex gap-2">
               <button type="button" className="btn btn-prim" onClick={() => void iniciar()}>Tentar de novo</button>
               <button type="button" className="btn" onClick={() => setEstado({ fase: 'entrada', voltar: true })}>Usar outro convite</button>
@@ -163,25 +250,14 @@ export function App() {
         servidorDe={servidorDe}
         onLink={setLink}
         onConfig={() => setOverlay('settings')}
-        onVoltar={estado.fase === 'entrada' && estado.voltar && srv ? () => setEstado({ fase: 'pronto' }) : undefined}
+        onVoltar={estado.fase === 'entrada' && estado.voltar && srv ? () => { setLink(null); setEstado({ fase: 'pronto' }); } : undefined}
         onEntrou={(s) => {
           setLink(null);
           setSala(null);
+          setAviso(null);
           if (!falso) escolherServidor(s.url);
           void carregar(s);
         }}
-      />
-    );
-  } else {
-    corpo = (
-      <RoomScreen
-        servidor={srv} nomeServidor={nomeServidor} eu={eu} salas={salas} pessoas={pessoas} sala={sala} demo={falso}
-        onSala={setSala}
-        onConfig={() => setOverlay('settings')}
-        onPerfil={() => setOverlay('perfil')}
-        onCartao={(id) => setOverlay({ cartao: id })}
-        onConvidar={convidar}
-        onAmigo={(id, sim) => void amigo(id, sim)}
       />
     );
   }
@@ -189,7 +265,25 @@ export function App() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <UpdateBanner updater={updater} inCall={!!sala} room={salas.find((s) => s.id === sala)?.nome ?? ''} onNotes={() => setOverlay({ novidades: null })} />
+      {aviso && (
+        <Faixa tipo={aviso.tipo} acoes={aviso.acoes} onFechar={aviso.acoes?.length ? undefined : () => setAviso(null)} className="mx-5 mt-3 shrink-0">
+          {aviso.texto}
+        </Faixa>
+      )}
       <div className="relative min-h-0 flex-1">
+        {comSala && srv && eu && (
+          <div hidden={!!corpo} className="h-full">
+            <RoomScreen
+              servidor={srv} nomeServidor={nomeServidor} eu={eu} salas={salas} pessoas={pessoas} sala={sala} demo={falso}
+              onSala={setSala}
+              onConfig={() => setOverlay('settings')}
+              onPerfil={() => setOverlay('perfil')}
+              onCartao={(id) => setOverlay({ cartao: id })}
+              onConvidar={convidar}
+              onAmigo={(id, sim) => void amigo(id, sim)}
+            />
+          </div>
+        )}
         {corpo}
         {overlay === 'settings' && (
           <Settings
@@ -211,8 +305,8 @@ export function App() {
             onAmigo={(sim) => void amigo(cartao.id, sim)}
             onEditar={() => setOverlay('perfil')}
             onRemover={() => {
-              void srv?.remover(cartao.id).then(() => setPessoas((ps) => ps.filter((p) => p.id !== cartao.id)));
               setOverlay(null);
+              void remover(cartao);
             }}
             onFechar={() => setOverlay(null)}
           />

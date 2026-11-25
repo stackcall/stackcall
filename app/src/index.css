@@ -237,11 +237,25 @@ button:disabled {
 @utility btn-icone {
   width: 44px;
   padding: 0;
+  &.btn-sm {
+    width: 36px;
+  }
 }
 @utility btn-lg {
   min-height: 48px;
   padding: 0 20px;
   font-size: 15px;
+}
+@utility btn-sm {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+/* Faixa de erro: texto diz o problema; a cor só reforça. */
+@utility faixa-erro {
+  border-color: var(--color-perigo);
+  background: var(--color-destaque-fraco);
+  color: var(--color-perigo);
 }
 /* Estado desligado (mic mudo, fone desligado): texto diz o estado, a cor só reforça. */
 @utility btn-off {
