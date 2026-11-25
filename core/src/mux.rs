@@ -248,11 +248,10 @@ fn write(path: &Path, mut clip: Clip) -> Result<f64> {
         let params = &mut *video.as_ref().codecpar;
         params.codec_type = AVMediaType::AVMEDIA_TYPE_VIDEO;
         params.codec_id = match clip.format.codec {
-            Codec::H264 => {
-                // QSV can change SPS/PPS when its bitrate is reconfigured.
-                params.codec_tag = u32::from_le_bytes(*b"avc3");
-                AVCodecID::AV_CODEC_ID_H264
-            }
+            // avc1 + avcC (built by movenc from the Annex B headers) opens in the Windows player;
+            // avc3 did not. shortcut: if QSV changes SPS/PPS mid-clip after a bitrate change, the
+            // in-band copies still follow; switch to avc3 only for that case if players complain.
+            Codec::H264 => AVCodecID::AV_CODEC_ID_H264,
             Codec::Av1 => AVCodecID::AV_CODEC_ID_AV1,
         };
         params.width = clip.format.width as i32;
