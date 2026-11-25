@@ -14,6 +14,7 @@ import { useDemoRoom } from '../room/demo';
 import { useLiveRoom } from '../room/useLiveRoom';
 import { RECUO_MS, useReconexao } from '../room/reconexao';
 import { GoLive } from './GoLive';
+import { ACOES, aoAtalho, aoMudarAtalhos, bipe, criarControleVoz, lerAtalhos, type AcaoId } from '../lib/atalhos';
 
 export type RoomProps = {
   servidor: Servidor;
@@ -324,6 +325,7 @@ function RoomView(props: ComSala & { model: RoomModel & RoomActions; reconexao: 
   const [fallback, setFallback] = useState(false);
   const [stageId, setStageId] = useState<string | null>(null);
   const [convite, setConvite] = useState<'' | 'gerando' | 'copiado' | { erro: string }>('');
+  const [confirmarAr, setConfirmarAr] = useState(0);
   const me = model.people.find((p) => p.isLocal);
   const imLive = !!me?.live;
   const stage = model.streams.find((s) => s.owner.id === stageId) ?? model.streams[0];
@@ -332,9 +334,17 @@ function RoomView(props: ComSala & { model: RoomModel & RoomActions; reconexao: 
   const conectada = model.state === 'connected';
   const linha = stage ? `${stage.owner.isLocal ? 'você' : stage.owner.name} no ar` : 'ninguém no ar';
 
-  // Keyboard: M mic, S sound, T transmit. Never while typing or with a dialog open.
-  const atual = useRef({ model, conectada, imLive, goLive });
-  atual.current = { model, conectada, imLive, goLive };
+  // Keyboard: M mic, S sound, T transmit (app in focus). Never while typing or with a dialog open.
+  // The same voice actions answer the global shortcuts (lib/atalhos), which beep because the game hides the app.
+  const atual = useRef({ model, conectada, imLive, goLive, stage });
+  atual.current = { model, conectada, imLive, goLive, stage };
+  const voz = useMemo(() => criarControleVoz({
+    micAberto: () => atual.current.model.micOn,
+    abrirMic: (on) => (atual.current.model.setMic ? atual.current.model.setMic(on) : on !== atual.current.model.micOn && atual.current.model.toggleMic()),
+    silenciado: () => atual.current.model.deafened,
+    alternarSilencio: () => atual.current.model.toggleDeafen(),
+  }), []);
+  useEffect(() => () => voz.parar(), [voz]);
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
       const alvo = e.target as HTMLElement | null;
@@ -342,15 +352,38 @@ function RoomView(props: ComSala & { model: RoomModel & RoomActions; reconexao: 
       if (alvo?.closest('input, textarea, select, [contenteditable="true"]') || document.querySelector('[aria-modal="true"]')) return;
       const a = atual.current;
       const k = e.key.toLowerCase();
-      if (k === 'm') a.model.toggleMic();
-      else if (k === 's') a.model.toggleDeafen();
+      if (k === 'm') voz.executar('mic', 'pressionado', false);
+      else if (k === 's') voz.executar('silenciar', 'pressionado', false);
       else if (k === 't' && a.conectada && !a.imLive && !a.goLive) setGoLive(true);
       else return;
       e.preventDefault();
     };
     window.addEventListener('keydown', tecla);
-    return () => window.removeEventListener('keydown', tecla);
-  }, []);
+    const parar = aoAtalho((id: AcaoId, estado) => {
+      if (voz.executar(id, estado) || estado !== 'pressionado') return;
+      const a = atual.current;
+      const tela = a.stage && !a.stage.owner.isLocal ? a.stage : undefined;
+      if (id === 'arEntrar' && a.conectada && !a.imLive) {
+        // First press opens with the last choice; a second press while open confirms it.
+        if (a.goLive) setConfirmarAr((n) => n + 1);
+        else setGoLive(true);
+        bipe('liga');
+      } else if (id === 'arSair' && a.imLive) {
+        a.model.stopLive();
+        bipe('desliga');
+      } else if (id === 'assistir' && tela && !tela.watching) {
+        a.model.watch(tela.owner.id);
+        bipe('liga');
+      } else if (id === 'pararAssistir' && tela?.watching) {
+        a.model.unwatch(tela.owner.id);
+        bipe('desliga');
+      }
+    });
+    return () => {
+      window.removeEventListener('keydown', tecla);
+      parar();
+    };
+  }, [voz]);
 
   async function convidar() {
     setConvite('gerando');
@@ -421,7 +454,8 @@ function RoomView(props: ComSala & { model: RoomModel & RoomActions; reconexao: 
           server={props.servidor.url}
           roomLabel={sala.nome}
           viewers={Math.max(0, model.people.length - 1)}
-          onCancel={() => { setGoLive(false); setFallback(false); }}
+          confirmar={confirmarAr}
+          onCancel={() => { setGoLive(false); setFallback(false); setConfirmarAr(0); }}
           onStart={async (track, preset, codec) => {
             await model.goLive(track, preset, codec);
             setGoLive(false);
@@ -437,18 +471,31 @@ function RoomView(props: ComSala & { model: RoomModel & RoomActions; reconexao: 
   );
 }
 
+/** Local keys (app in focus) and the global shortcuts the person configured in Settings > Atalhos. */
 function Atalhos() {
-  const itens: [string, string][] = [['M', 'liga e desliga o microfone'], ['S', 'silencia tudo'], ['T', 'transmite a tela']];
+  const [cfg, setCfg] = useState(lerAtalhos);
+  useEffect(() => aoMudarAtalhos(setCfg), []);
+  const locais: [string, string][] = [['M', 'microfone'], ['S', 'silencia tudo'], ['T', 'transmite']];
+  const globais = ACOES.flatMap((a) => (cfg.teclas[a.id] ? [[cfg.teclas[a.id]!, a.rotulo.toLowerCase()] as [string, string]] : []));
+  const item = ([k, t]: [string, string]) => (
+    <li key={k + t} className="flex items-center gap-2 text-[14px]">
+      <kbd className="inline-flex h-8 min-w-8 items-center justify-center border border-texto bg-superficie-alta px-1.5 font-mono text-[13px] font-bold">{k}</kbd>
+      <span className="text-texto-fraco">{t}</span>
+    </li>
+  );
   return (
     <section className="janela flex min-w-0 flex-col" aria-label="Atalhos do teclado">
-      <div className="barra">Atalhos<span className="ml-auto font-medium">fora da conversa</span></div>
+      <div className="barra">Atalhos<span className="ml-auto font-medium">{globais.length ? `${globais.length} globais` : 'com o app em foco'}</span></div>
       <ul className="m-0 flex flex-1 list-none flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
-        {itens.map(([k, t]) => (
-          <li key={k} className="flex items-center gap-2 text-[14px]">
-            <kbd className="inline-flex size-8 items-center justify-center border border-texto bg-superficie-alta font-mono text-[13px] font-bold">{k}</kbd>
-            <span className="text-texto-fraco">{t}</span>
-          </li>
-        ))}
+        {locais.map(item)}
+        {globais.length > 0 ? (
+          <>
+            <li aria-hidden="true" className="h-6 w-px bg-borda" />
+            {globais.map(item)}
+          </>
+        ) : (
+          <li className="text-[13px] text-texto-fraco">Atalhos com o jogo na frente: Configurações &gt; Atalhos.</li>
+        )}
       </ul>
     </section>
   );

@@ -62,6 +62,8 @@ export type RoomModel = {
 
 export type RoomActions = {
   toggleMic(): void;
+  /** Opens or closes the mic (push to talk and global shortcuts). */
+  setMic?(on: boolean): void;
   toggleDeafen(): void;
   toggleCamera(): void;
   setVolume(id: string, volume: number): void;

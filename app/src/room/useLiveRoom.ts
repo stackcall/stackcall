@@ -336,6 +336,8 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
         await room.startAudio().catch(() => undefined);
         try {
           await room.localParticipant.setMicrophoneEnabled(true);
+          // Push to talk: the track is published (permission asked, fast to open) but starts closed.
+          if (lerVoz().modo === 'ptt') await room.localParticipant.setMicrophoneEnabled(false);
           setMicError(undefined);
           if (lerVoz().forte) forte(true);
         } catch {
@@ -366,6 +368,7 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
       if (v.saida !== antes.saida) void room.switchActiveDevice('audiooutput', v.saida || 'default').catch(() => undefined);
       const mic = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.audioTrack;
       if (!mic) return;
+      if (v.modo !== antes.modo) void room.localParticipant.setMicrophoneEnabled(v.modo === 'voz').catch(() => undefined).finally(rerender);
       const trocouForte = v.forte !== antes.forte;
       if (trocouForte || v.entrada !== antes.entrada || v.eco !== antes.eco || v.ganho !== antes.ganho || v.ruido !== antes.ruido) {
         // The strong toggle also flips the browser's suppression (capturaDe), so the track restarts first.
@@ -493,6 +496,13 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
     toggleMic: () => {
       if (!lp) return;
       lp.setMicrophoneEnabled(!lp.isMicrophoneEnabled)
+        .then(() => setMicError(undefined), () => setMicError(MIC_ERROR))
+        .finally(rerender);
+    },
+    setMic: (on) => {
+      const p = roomRef.current?.localParticipant;
+      if (!p || p.isMicrophoneEnabled === on) return;
+      p.setMicrophoneEnabled(on)
         .then(() => setMicError(undefined), () => setMicError(MIC_ERROR))
         .finally(rerender);
     },
