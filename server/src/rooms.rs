@@ -27,6 +27,8 @@ struct Room {
     id: String,
     nome: String,
     ordem: i64,
+    pessoas: usize,
+    no_ar: bool,
 }
 
 impl Room {
@@ -35,6 +37,8 @@ impl Room {
             id: row.get(0)?,
             nome: row.get(1)?,
             ordem: row.get(2)?,
+            pessoas: 0,
+            no_ar: false,
         })
     }
 }
@@ -57,7 +61,7 @@ async fn list(
     State(config): State<Arc<Config>>,
     user: User,
 ) -> Result<Json<Vec<Room>>, StatusCode> {
-    db::run(config, move |conn| {
+    let mut rooms = db::run(config.clone(), move |conn| {
         user.ensure_active(conn)?;
         let mut query = conn
             .prepare("SELECT id, nome, ordem FROM salas ORDER BY ordem, id")
@@ -67,9 +71,14 @@ async fn list(
             .map_err(db::internal)?
             .collect::<rusqlite::Result<Vec<_>>>()
             .map_err(db::internal)?;
-        Ok(Json(rooms))
+        Ok(rooms)
     })
-    .await
+    .await?;
+    let online = config.livekit.online().await;
+    for room in &mut rooms {
+        (room.pessoas, room.no_ar) = online.room_status(&room.id);
+    }
+    Ok(Json(rooms))
 }
 
 async fn create(

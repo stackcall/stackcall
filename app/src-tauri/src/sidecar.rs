@@ -9,10 +9,11 @@ use tokio::{
     time::{timeout, Instant},
 };
 
+use crate::conta::Accounts;
+
 const EVENT: &str = "stackcall-stream";
 const UNAVAILABLE: &str = "O núcleo de transmissão não está disponível nesta máquina.";
-const CACHE_VERSION: u32 = 1;
-const LIVEKIT_HOST: &str = "stackcall.80-190-79-129.sslip.io";
+const CACHE_VERSION: u32 = 3;
 
 #[derive(Default)]
 pub struct Sidecar {
@@ -120,22 +121,6 @@ pub struct Publish {
     token: String,
 }
 
-fn valid_livekit_url(value: &str) -> bool {
-    if !(value.starts_with("https://") || value.starts_with("wss://"))
-        || value
-            .chars()
-            .any(|ch| ch.is_control() || ch.is_whitespace())
-    {
-        return false;
-    }
-    tauri::Url::parse(value).is_ok_and(|url| {
-        url.host_str() == Some(LIVEKIT_HOST)
-            && url.port_or_known_default() == Some(443)
-            && url.username().is_empty()
-            && url.password().is_none()
-    })
-}
-
 fn valid_capture_source(value: &str) -> bool {
     match value.split_once(':') {
         Some(("hmonitor", handle)) => handle.parse::<usize>().is_ok_and(|handle| handle > 0),
@@ -150,6 +135,7 @@ fn valid_capture_source(value: &str) -> bool {
 #[tauri::command]
 pub async fn iniciar_transmissao(
     app: AppHandle,
+    accounts: State<'_, Accounts>,
     sidecar: State<'_, Sidecar>,
     args: Publish,
 ) -> Result<(), String> {
@@ -158,7 +144,7 @@ pub async fn iniciar_transmissao(
         || !matches!(args.codec.as_str(), "h264" | "av1")
         || !matches!(args.encoder.as_str(), "nvenc" | "amf" | "qsv")
         || !(1..=100_000).contains(&args.kbps)
-        || !valid_livekit_url(&args.url)
+        || !accounts.valid_livekit_url(&args.url, &args.token)
         || !valid_capture_source(&args.source)
         || args.audio_pid == Some(0)
         || args.token.is_empty()
@@ -255,7 +241,10 @@ fn opt_out_of_eco_qos(child: &Child) {
             )
         };
         if ok == 0 {
-            eprintln!("Não foi possível desativar o EcoQoS do núcleo: {}", std::io::Error::last_os_error());
+            eprintln!(
+                "Não foi possível desativar o EcoQoS do núcleo: {}",
+                std::io::Error::last_os_error()
+            );
         }
     }
 }
@@ -362,24 +351,7 @@ pub async fn mudar_bitrate(
 
 #[cfg(test)]
 mod tests {
-    use super::{valid_capture_source, valid_livekit_url, LIVEKIT_HOST};
-
-    #[test]
-    fn accepts_only_secure_urls_of_the_configured_livekit() {
-        for scheme in ["https", "wss"] {
-            assert!(valid_livekit_url(&format!("{scheme}://{LIVEKIT_HOST}/rtc")));
-        }
-        for url in [
-            format!("ws://{LIVEKIT_HOST}/rtc"),
-            format!("wss://{LIVEKIT_HOST}:444/rtc"),
-            format!("wss://{LIVEKIT_HOST}.example.test/rtc"),
-            format!("wss://{LIVEKIT_HOST}@example.test/rtc"),
-            format!("wss://name@{LIVEKIT_HOST}/rtc"),
-            format!("wss://{LIVEKIT_HOST}/rtc\n"),
-        ] {
-            assert!(!valid_livekit_url(&url));
-        }
-    }
+    use super::valid_capture_source;
 
     #[test]
     fn accepts_only_ids_returned_by_the_capture_picker() {

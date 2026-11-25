@@ -61,6 +61,12 @@ O índice de monitor começa em zero, `window:` usa o título exato e
 `pid:` seleciona a primeira janela capturável com esse PID.
 `--encoder auto` tenta NVENC, AMF e QSV em ordem. Use Ctrl+C para parar.
 
+`publish --pause-when-alone` é experimental e vem desligado. Após o primeiro
+quadro, a codificação e o envio de vídeo pausam quando a sala fica sem
+participantes remotos e voltam com um quadro-chave quando alguém entra.
+Com participantes presentes, o SDK não informa quando o último espectador
+cancela a inscrição na faixa. A captura de áudio continua durante a pausa.
+
 Para medir atraso, abra `clock` e repita P2 com `--source 'window:Stackcall Clock'`.
 Abra a transmissão no LiveKit Meet e tire uma captura com os dois relógios
 lado a lado. Subtraia o horário da transmissão do horário da janela original.
@@ -79,8 +85,10 @@ Janelas minimizadas usam o tamanho restaurado ou o do monitor, sem miniatura.
 Se o Windows não informar nenhum tamanho utilizável, `width` e `height` são nulos.
 
 `probe` imprime um objeto com `adapters` e `trials`. Cada adaptador
-inclui `name`, `vendor_id` (decimal), `vendor`, `dedicated_bytes` e
-`shared_bytes`. Cada ensaio inclui `encoder`, `resolution`, `target_fps`
+inclui `name`, `driver_version` (versão DXGI em quatro partes ou texto vazio
+quando indisponível),
+`vendor_id` (decimal), `vendor`, `dedicated_bytes` e `shared_bytes`.
+Cada ensaio inclui `encoder`, `resolution`, `target_fps`
 e `ok`. O ensaio processa até cinco segundos de quadros sintéticos NV12
 sem espera entre quadros. Cada amostra tem um teto de 1,5 s de processamento
 antes de drenar o codificador. Assim, `fps` mede a capacidade inclusive

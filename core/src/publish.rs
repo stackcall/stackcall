@@ -45,6 +45,7 @@ struct Setup {
 struct Requests {
     kbps: AtomicU32,
     keyframe: AtomicBool,
+    video_idle: AtomicBool,
 }
 
 #[derive(Deserialize)]
@@ -223,6 +224,7 @@ pub async fn run(args: Publish) -> Result<()> {
     let duration = args.duration.map(Duration::from_secs);
     let audio_pid = args.audio_pid;
     let controlled = args.control_stdin;
+    let pause_when_alone = args.pause_when_alone;
     let token = match &args.token {
         Some(token) => token.clone(),
         None => {
@@ -256,6 +258,9 @@ pub async fn run(args: Publish) -> Result<()> {
         ).await.context("O servidor recusou a publicação da tela")?;
         let stats = Arc::new(Mutex::new(Stats::default()));
         let requests = Arc::new(Requests::default());
+        if pause_when_alone {
+            requests.video_idle.store(room.remote_participants().is_empty(), Ordering::Relaxed);
+        }
         let control = start_capture(Setup { args, source, stats: stats.clone(), requests: requests.clone(), tuning })
             .context("Não foi possível iniciar a captura")?;
         let mut audio = crate::audio::Worker::default();
@@ -289,8 +294,23 @@ pub async fn run(args: Publish) -> Result<()> {
                         Some(Command::Bitrate { .. }) => eprintln!("Bitrate fora do intervalo de 1 a 100.000 kbps."),
                     },
                     event = events.recv() => {
-                        if matches!(event, None | Some(RoomEvent::Disconnected { .. })) {
-                            anyhow::bail!("A conexão com a sala caiu.");
+                        match event {
+                            None | Some(RoomEvent::Disconnected { .. }) => {
+                                anyhow::bail!("A conexão com a sala caiu.");
+                            }
+                            Some(RoomEvent::ParticipantConnected(_) | RoomEvent::ParticipantDisconnected(_) |
+                                RoomEvent::Reconnecting | RoomEvent::Reconnected) if pause_when_alone => {
+                                // The public SDK reports joins and leaves, but no last-subscriber event.
+                                let idle = room.connection_state() == ConnectionState::Connected
+                                    && room.remote_participants().is_empty();
+                                requests.video_idle.store(idle, Ordering::Relaxed);
+                            }
+                            Some(RoomEvent::LocalTrackSubscribed { track })
+                                if pause_when_alone && track.source() == TrackSource::Screenshare => {
+                                requests.video_idle.store(false, Ordering::Relaxed);
+                                requests.keyframe.store(true, Ordering::Relaxed);
+                            }
+                            _ => {}
                         }
                     }
                     _ = timer.tick() => {
@@ -414,21 +434,27 @@ impl GraphicsCaptureApiHandler for Capture {
     }
 
     fn on_frame_arrived(&mut self, frame: &mut Frame, _: InternalCaptureControl) -> Result<()> {
+        let mut stats = self.setup.stats.lock().unwrap();
+        stats.captured += 1;
+        // Send the first frame so LiveKit can announce the track and control-stdin can report startup.
+        if stats.encoder.is_some() && self.setup.requests.video_idle.load(Ordering::Relaxed) {
+            drop(stats);
+            self.session = None;
+            self.last_slot = None;
+            return Ok(());
+        }
         let timestamp = frame.timestamp()?.Duration / 10;
         let elapsed_us = timestamp.saturating_sub(*self.first_timestamp.get_or_insert(timestamp));
         let args = &self.setup.args;
         let dimensions = (frame.width(), frame.height());
         let slot = (elapsed_us.max(0) as u128 * u128::from(args.fps) + 500_000) / 1_000_000;
-        {
-            let mut stats = self.setup.stats.lock().unwrap();
-            stats.captured += 1;
-            if let Some(last) = self.last_slot {
-                if slot <= last {
-                    return Ok(());
-                }
-                stats.dropped += (slot - last - 1) as u64;
+        if let Some(last) = self.last_slot {
+            if slot <= last {
+                return Ok(());
             }
+            stats.dropped += (slot - last - 1) as u64;
         }
+        drop(stats);
         self.last_slot = Some(slot);
         let source = &self.setup.source;
         let manual = self.setup.requests.kbps.swap(0, Ordering::Relaxed);

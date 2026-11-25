@@ -494,7 +494,7 @@ async fn removal_revokes_every_device_and_disconnects_both_livekit_identities() 
         )
         .await
         .0,
-        StatusCode::NO_CONTENT
+        StatusCode::OK
     );
     for session in [token, session(&second)] {
         assert_eq!(
@@ -525,6 +525,34 @@ async fn removal_revokes_every_device_and_disconnects_both_livekit_identities() 
 }
 
 #[tokio::test]
+async fn removal_succeeds_and_revokes_the_session_during_livekit_outage() {
+    let fixture = fixture(false).await;
+    let app = &fixture.app;
+    let owner = join(app, &fixture.owner_code, "Dono").await;
+    let member = member(app, session(&owner)).await;
+    fixture.livekit.abort();
+
+    let (status, _) = send(
+        app,
+        Method::DELETE,
+        &format!("/api/pessoas/{}", id(&member)),
+        Some(session(&owner)),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = send(
+        app,
+        Method::GET,
+        "/api/eu",
+        Some(session(&member)),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
 async fn friendship_is_personal_and_presence_comes_from_livekit() {
     let fixture = fixture(true).await;
     let app = &fixture.app;
@@ -534,7 +562,14 @@ async fn friendship_is_personal_and_presence_comes_from_livekit() {
         .online
         .lock()
         .unwrap()
-        .push(format!("{}:tela", id(&member)));
+        .extend([id(&member).to_owned(), format!("{}:tela", id(&member))]);
+    fixture
+        .config
+        .db
+        .lock()
+        .unwrap()
+        .execute("INSERT INTO salas VALUES ('room-in-use', 'Em uso', 99)", [])
+        .unwrap();
     let owner_token = session(&owner);
     let member_token = session(&member);
     make_invite(app, member_token).await;
@@ -562,6 +597,24 @@ async fn friendship_is_personal_and_presence_comes_from_livekit() {
         .unwrap();
     assert_eq!(entry["amigo"], true);
     assert_eq!(entry["online"], true);
+    assert_eq!(entry["sala"], "room-in-use");
+    let (status, rooms) = send(
+        app,
+        Method::GET,
+        "/api/salas",
+        Some(owner_token),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let live = rooms
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|room| room["id"] == "room-in-use")
+        .unwrap();
+    assert_eq!(live["pessoas"], 1);
+    assert_eq!(live["no_ar"], true);
     let (_, people) = send(
         app,
         Method::GET,
@@ -577,12 +630,35 @@ async fn friendship_is_personal_and_presence_comes_from_livekit() {
         .find(|person| person["id"] == id(&owner))
         .unwrap();
     assert_eq!(entry["amigo"], false);
+    assert!(entry["sala"].is_null());
     assert_eq!(
         send(app, Method::DELETE, &uri, Some(owner_token), Value::Null)
             .await
             .0,
         StatusCode::NO_CONTENT
     );
+}
+
+#[tokio::test]
+async fn lists_rooms_and_people_with_empty_presence_during_livekit_outage() {
+    let fixture = fixture(false).await;
+    let app = &fixture.app;
+    let owner = join(app, &fixture.owner_code, "Dono").await;
+    let owner_token = Some(session(&owner));
+    fixture.livekit.abort();
+
+    let (status, rooms) = send(app, Method::GET, "/api/salas", owner_token, Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    let rooms = rooms.as_array().unwrap();
+    assert!(!rooms.is_empty());
+    for room in rooms {
+        assert_eq!(room["pessoas"], 0);
+        assert_eq!(room["no_ar"], false);
+    }
+    let (status, people) = send(app, Method::GET, "/api/pessoas", owner_token, Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(people[0]["online"], false);
+    assert!(people[0]["sala"].is_null());
 }
 
 #[tokio::test]
@@ -746,6 +822,68 @@ async fn invitation_limits_group_ipv6_addresses_by_prefix_and_keep_other_routes_
             .unwrap()
             .status(),
         StatusCode::OK
+    );
+}
+
+#[tokio::test]
+async fn invitation_management_keeps_working_after_anonymous_limit() {
+    let fixture = fixture(false).await;
+    let app = &fixture.app;
+    let owner = join(app, &fixture.owner_code, "Dono").await;
+    let token = Some(session(&owner));
+
+    for _ in 0..9 {
+        assert_eq!(
+            send(
+                app,
+                Method::GET,
+                "/api/convites/invalido",
+                None,
+                Value::Null
+            )
+            .await
+            .0,
+            StatusCode::NOT_FOUND
+        );
+    }
+    assert_eq!(
+        send(
+            app,
+            Method::POST,
+            "/api/aparelhos/entrar",
+            None,
+            json!({"codigo": "invalido"})
+        )
+        .await
+        .0,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert_eq!(
+        send(
+            app,
+            Method::POST,
+            "/api/convites/invalid/aceitar",
+            None,
+            json!({})
+        )
+        .await
+        .0,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+
+    let invite = make_invite(app, session(&owner)).await;
+    assert_eq!(
+        send(app, Method::GET, "/api/convites", token, Value::Null)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let route = format!("/api/convites/{}", invite["id"].as_str().unwrap());
+    assert_eq!(
+        send(app, Method::DELETE, &route, token, Value::Null)
+            .await
+            .0,
+        StatusCode::NO_CONTENT
     );
 }
 

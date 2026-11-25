@@ -27,13 +27,14 @@ struct Person {
     profile: Profile,
     amigo: bool,
     online: bool,
+    sala: Option<String>,
 }
 
 async fn list(
     State(config): State<Arc<Config>>,
     user: User,
 ) -> Result<Json<Vec<Person>>, StatusCode> {
-    let online = config.livekit.online().await?;
+    let online = config.livekit.online().await;
     db::run(config, move |conn| {
         user.ensure_active(conn)?;
         let mut friends = conn
@@ -54,10 +55,14 @@ async fn list(
             .query_map([], Profile::from_row)
             .map_err(db::internal)?
             .map(|row| {
-                row.map(|profile| Person {
-                    amigo: friends.contains(&profile.id),
-                    online: online.contains(&profile.id),
-                    profile,
+                row.map(|profile| {
+                    let sala = online.room_for(&profile.id);
+                    Person {
+                        amigo: friends.contains(&profile.id),
+                        online: sala.is_some(),
+                        sala: sala.map(str::to_owned),
+                        profile,
+                    }
                 })
             })
             .collect::<rusqlite::Result<Vec<_>>>()
@@ -122,8 +127,10 @@ async fn remove_person(
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
     revoke(config.clone(), user, id.clone(), true).await?;
-    config.livekit.kick(&id).await?;
-    Ok(StatusCode::NO_CONTENT)
+    if let Err(status) = config.livekit.kick(&id).await {
+        eprintln!("Aviso: não foi possível desconectar a pessoa removida do LiveKit ({status})");
+    }
+    Ok(StatusCode::OK)
 }
 
 async fn remove_devices(
