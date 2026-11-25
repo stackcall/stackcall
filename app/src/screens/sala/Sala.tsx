@@ -9,9 +9,11 @@ import { Icone } from '../../components/Icone';
 import { useInterfaceAtiva } from '../../lib/leveza';
 import { demoScreen } from '../../lib/config';
 import { ultimoAlvo, esperaCutucar, marcarCutucada, marcarSilenciado } from '../../lib/cutucadas';
-import { nucleo, type EstadoReplay } from '../../lib/nucleo';
+import { replay as nucleoReplay, type EstadoReplay } from '../../lib/nucleo';
+import { lerPreferencias, salvarPreferencias } from '../../lib/preferencias';
+import { publicarQuemFala } from '../../lib/quemfala';
 import { registrarItensSala, type ItemPaleta } from '../../lib/paleta';
-import type { Pessoa, Sala, Usuario } from '../../lib/servidor';
+import type { AcaoModeracao, Pessoa, Sala, Usuario } from '../../lib/servidor';
 import type { Attachable, ChatMessage, Person, RoomActions, RoomModel, Stream } from '../../room/model';
 import { RECUO_MS } from '../../room/reconexao';
 import { barrasDe, nomesReplay, textoRede, type Rede } from '../../room/sala05';
@@ -41,6 +43,7 @@ type Painel =
   | { tipo: 'cutucar'; id: string; ancora: Ancora }
   | { tipo: 'ouvem'; ancora: Ancora }
   | { tipo: 'mais'; ancora: Ancora }
+  | { tipo: 'sala'; ancora: Ancora }
   | null;
 
 export function RoomView(props: ComSala & { model: RoomModel & RoomActions; reconexao: Reconexao; onRetry(): void }) {
@@ -64,11 +67,17 @@ export function RoomView(props: ComSala & { model: RoomModel & RoomActions; reco
   const conectada = model.state === 'connected';
   const gravando = model.people.filter((p) => p.replay);
 
-  useEffect(() => void nucleo.replayEstado().then(setReplay, () => setReplay(null)), []);
+  useEffect(() => void nucleoReplay.estado().then(setReplay, () => setReplay(null)), []);
   useEffect(() => {
     marcarSilenciado(model.deafened);
     return () => marcarSilenciado(false);
   }, [model.deafened]);
+  // "Quem fala" window: equal states are dropped by publicarQuemFala, so every render may call it.
+  useEffect(() => publicarQuemFala({
+    sala: sala.nome, ping: model.ping, replay: !!replay?.ligado,
+    pessoas: model.people.map((p) => ({ id: p.id, nome: p.name, cor: porId.get(p.id)?.cor ?? null, falando: p.speaking, mudo: p.muted })),
+  }));
+  useEffect(() => () => publicarQuemFala(null), []);
   // Grid: receive every screen while it is open; back to one when it closes.
   useEffect(() => {
     model.assistirTodas?.(emGrade);
@@ -91,7 +100,7 @@ export function RoomView(props: ComSala & { model: RoomModel & RoomActions; reco
 
   async function salvarClipe() {
     try {
-      const c = await nucleo.salvarClipe();
+      const c = await nucleoReplay.salvarClipe();
       bipe('liga');
       avisar(`Clipe de ${c.duracao_s} s salvo. Veja em Clipes, no topo.`);
     } catch (e) {
@@ -103,10 +112,15 @@ export function RoomView(props: ComSala & { model: RoomModel & RoomActions; reco
     atual.current.model.setRedeRuim?.(on);
     bipe(on ? 'desliga' : 'liga');
   };
-  const alternarQuemFala = () => void nucleo.alternarQuemFala().then((r) => avisar(r.visivel ? 'Janela quem fala aberta.' : 'Janela quem fala escondida.'), () => undefined);
+  // Same preference as Settings and the global shortcut; the main window shows or hides the window.
+  const alternarQuemFala = () => {
+    const mostrar = !lerPreferencias().quemFalaMostrar;
+    salvarPreferencias({ quemFalaMostrar: mostrar });
+    avisar(mostrar ? 'Janela quem fala aberta.' : 'Janela quem fala escondida.');
+  };
   async function cutucarDeNovo() {
     const alvo = ultimoAlvo();
-    if (!alvo || !servidor.cutucar || esperaCutucar(alvo) > 0) return;
+    if (!alvo || esperaCutucar(alvo) > 0) return;
     await servidor.cutucar(alvo, '').then(() => { marcarCutucada(alvo); bipe('liga'); }, () => bipe('desliga'));
   }
 
@@ -144,7 +158,6 @@ export function RoomView(props: ComSala & { model: RoomModel & RoomActions; reco
         bipe('desliga');
       } else if (id === 'clipe') void salvarClipe();
       else if (id === 'redeRuim') alternarRedeRuim();
-      else if (id === 'quemFala') alternarQuemFala();
       else if (id === 'cutucarUltimo') void cutucarDeNovo();
     });
     return () => {
@@ -186,12 +199,11 @@ export function RoomView(props: ComSala & { model: RoomModel & RoomActions; reco
     }
   }
 
-  async function moderar(acao: Parameters<NonNullable<typeof servidor.moderar>>[1], nome: string) {
-    if (!servidor.moderar) return avisar('Este servidor ainda não tem moderação.', true);
+  async function moderar(acao: AcaoModeracao, nome: string) {
     try {
       await servidor.moderar(sala.id, acao);
       props.onPresenceChange?.();
-      avisar(acao.acao === 'mover' ? `${nome} foi movido.` : acao.acao === 'retirar' ? `${nome} saiu da sala.` : `${nome} foi silenciado na sala.`);
+      avisar(acao.acao === 'mover' ? `${nome} foi movido.` : acao.acao === 'retirar' ? `${nome} saiu da sala.` : 'Todos os microfones da sala foram desligados. Cada um pode religar o seu.');
     } catch (e) {
       avisar(`Não deu para moderar. ${e instanceof Error ? e.message : String(e)}`, true);
     }
@@ -234,7 +246,7 @@ export function RoomView(props: ComSala & { model: RoomModel & RoomActions; reco
               <Icone nome="link" tamanho={16} />{convite === 'gerando' ? 'Gerando…' : 'Convidar'}
             </button>
             <button type="button" className="btn btn-sm btn-icone" aria-label="Menu da sala" aria-haspopup="menu" title="Menu da sala"
-              onClick={(e) => setPainel({ tipo: 'mais', ancora: { x: e.currentTarget.getBoundingClientRect().right - 260, y: e.currentTarget.getBoundingClientRect().bottom + 4 } })}>
+              onClick={(e) => setPainel({ tipo: 'sala', ancora: { x: e.currentTarget.getBoundingClientRect().right - 260, y: e.currentTarget.getBoundingClientRect().bottom + 4 } })}>
               <Icone nome="pontos" tamanho={16} />
             </button>
           </span>
@@ -294,7 +306,6 @@ export function RoomView(props: ComSala & { model: RoomModel & RoomActions; reco
           onCutucar={() => abrirCutucar(alvoMenu.id, painel.ancora)}
           onSilenciarParaMim={() => silenciarParaMim(alvoMenu)}
           onMover={(destinoId) => void moderar({ acao: 'mover', usuarioId: alvoMenu.id, destinoId }, alvoMenu.name)}
-          onSilenciarSala={() => void moderar({ acao: 'silenciar', usuarioId: alvoMenu.id }, alvoMenu.name)}
           onTirar={() => void moderar({ acao: 'retirar', usuarioId: alvoMenu.id }, alvoMenu.name)} />
       )}
       {painel?.tipo === 'cutucar' && alvoMenu && (
@@ -303,6 +314,21 @@ export function RoomView(props: ComSala & { model: RoomModel & RoomActions; reco
       )}
       {painel?.tipo === 'ouvem' && (
         <QuemRecebe ancora={painel.ancora} model={model} imLive={imLive} onFechar={() => setPainel(null)} />
+      )}
+      {painel?.tipo === 'sala' && (
+        <Popover ancora={painel.ancora} onFechar={() => setPainel(null)} rotulo="Menu da sala" role="menu" className="w-[260px] py-1">
+          <div onKeyDown={navegarMenu}>
+            {[
+              ...(eu.papel === 'dono' || eu.papel === 'admin' ? [{ t: 'Silenciar todos', f: () => void moderar({ acao: 'silenciar' }, sala.nome), i: 'mic-off' as const }] : []),
+              { t: 'Sair da sala', f: () => onSala(null), i: 'sair' as const },
+            ].map((o) => (
+              <button key={o.t} type="button" role="menuitem" onClick={() => { setPainel(null); o.f(); }}
+                className="flex h-[34px] w-full items-center gap-2.5 border-0 bg-transparent px-3 text-left text-[14px] hover:bg-texto hover:text-superficie focus-visible:bg-texto focus-visible:text-superficie focus-visible:outline-none">
+                <Icone nome={o.i} tamanho={16} />{o.t}
+              </button>
+            ))}
+          </div>
+        </Popover>
       )}
       {painel?.tipo === 'mais' && (
         <Popover ancora={painel.ancora} onFechar={() => setPainel(null)} rotulo="Mais" role="menu" className="w-[260px] py-1">

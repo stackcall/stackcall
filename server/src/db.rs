@@ -12,13 +12,19 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/004.sql"),
     include_str!("../migrations/005.sql"),
     include_str!("../migrations/006.sql"),
+    include_str!("../migrations/007.sql"),
+    include_str!("../migrations/008.sql"),
 ];
 
 pub fn open(path: impl AsRef<Path>) -> rusqlite::Result<Connection> {
     let mut db = Connection::open(path)?;
     db.busy_timeout(Duration::from_secs(5))?;
     db.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")?;
+    migrate(&mut db)?;
+    Ok(db)
+}
 
+fn migrate(db: &mut Connection) -> rusqlite::Result<()> {
     let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let version: usize = tx.pragma_query_value(None, "user_version", |row| row.get(0))?;
     let pending = MIGRATIONS
@@ -28,8 +34,7 @@ pub fn open(path: impl AsRef<Path>) -> rusqlite::Result<Connection> {
         tx.execute_batch(migration)?;
     }
     tx.pragma_update(None, "user_version", MIGRATIONS.len())?;
-    tx.commit()?;
-    Ok(db)
+    tx.commit()
 }
 
 pub fn internal(_: impl std::fmt::Debug) -> StatusCode {
@@ -76,6 +81,33 @@ pub fn settings(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn removes_stored_sounds_when_upgrading_from_version_six() {
+        let mut db = super::Connection::open_in_memory().unwrap();
+        for migration in &super::MIGRATIONS[..6] {
+            db.execute_batch(migration).unwrap();
+        }
+        db.pragma_update(None, "user_version", 6).unwrap();
+        db.execute(
+            "INSERT INTO sons VALUES ('som', 'Sino', '🔔', 'audio/ogg', 20, X'4F676753')",
+            [],
+        )
+        .unwrap();
+
+        super::migrate(&mut db).unwrap();
+
+        let (sounds, rooms): (bool, bool) = db
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM sqlite_schema WHERE name = 'sons'),
+                        EXISTS (SELECT 1 FROM sqlite_schema WHERE name = 'salas')",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert!(!sounds);
+        assert!(rooms);
+    }
+
     #[test]
     fn creates_the_schema_with_foreign_keys_enabled() {
         let db = super::open(":memory:").unwrap();

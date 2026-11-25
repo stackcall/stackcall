@@ -1,18 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { esperaCutucar, fraseCutucada, marcarCutucada, novasCutucadas } from './cutucadas';
-import type { Cutucadas } from './preferencias';
+import { fraseCutucada } from './cutucar';
+import { cutucadasPendentes, esperaCutucar, marcarCutucada } from './cutucadas';
 import type { Pessoa } from './servidor';
 
-const prefs = (receberDe: Cutucadas['receberDe']): Cutucadas => ({ receberDe, voz: true, volume: 0.8, mesmoSilenciado: true, avisoWindows: false });
-const pessoa = (id: string, amigo: boolean, cutucadas: Pessoa['cutucadas']): Pessoa => ({
-  id, nome: id, papel: 'membro', avatar: null, banner: null, bio: '', tema: 'papel', cor: null,
-  online: true, amigo, sala: null, cutucadas,
+const pessoa = (id: string, p: Partial<Pessoa> = {}): Pessoa => ({
+  id, nome: id.toUpperCase(), papel: 'membro', avatar: null, banner: null, bio: '', tema: 'papel', cor: null,
+  online: true, amigo: false, sala: null, jogo: null, ...p,
 });
 
 describe('cutucar (item 6)', () => {
   it('builds the sentence the other person hears', () => {
-    expect(fraseCutucada('Rafa', '  bora jogar ')).toBe('Rafa te cutucou: bora jogar');
-    expect(fraseCutucada('Rafa', '   ')).toBe('Rafa te cutucou');
+    expect(fraseCutucada({ de: 'Rafa', recado: '  bora jogar ' })).toBe('Rafa te cutucou: bora jogar');
+    expect(fraseCutucada({ de: 'Rafa', recado: '   ' })).toBe('Rafa te cutucou');
   });
 
   it('limits one poke per person every 30 s', () => {
@@ -24,17 +23,16 @@ describe('cutucar (item 6)', () => {
     expect(esperaCutucar('y', 1_000)).toBe(0);
   });
 
-  it('announces each poke once and drops expired ones', () => {
-    const vistas = new Set<string>();
-    const lista = [pessoa('rafa', false, [{ id: 'k1', recado: 'oi', salaId: 'cs', expiraEm: 200 }, { id: 'k0', recado: 'velha', salaId: null, expiraEm: 50 }])];
-    expect(novasCutucadas(lista, vistas, prefs('todos'), 100).map((r) => r.id)).toEqual(['k1']);
-    expect(novasCutucadas(lista, vistas, prefs('todos'), 100)).toEqual([]);
-  });
-
-  it('filters by "receber de"', () => {
-    const lista = [pessoa('amiga', true, [{ id: 'a', recado: '', salaId: null, expiraEm: 0 }]), pessoa('outro', false, [{ id: 'b', recado: '', salaId: null, expiraEm: 0 }])];
-    expect(novasCutucadas(lista, new Set(), prefs('amigos'), 1).map((r) => r.id)).toEqual(['a']);
-    expect(novasCutucadas(lista, new Set(), prefs('ninguem'), 1)).toEqual([]);
-    expect(novasCutucadas(lista, new Set(), prefs('todos'), 1).map((r) => r.de.id)).toEqual(['amiga', 'outro']);
+  it('reads the pokes on my own profile with the sender name and room', () => {
+    const salas = [{ id: 'lobby', nome: 'Lobby', ordem: 1, pessoas: 1, noAr: false }];
+    const lista = [
+      pessoa('bia', { sala: 'lobby' }),
+      pessoa('eu', { cutucadas: [{ id: 'k1', de: 'bia', recado: 'oi', criadoEm: 1 }, { id: 'k2', de: 'sumiu', recado: '', criadoEm: 2 }] }),
+    ];
+    expect(cutucadasPendentes(lista, 'eu', salas)).toEqual([
+      { id: 'k1', de: 'BIA', deId: 'bia', recado: 'oi', salaId: 'lobby', salaNome: 'Lobby' },
+      { id: 'k2', de: 'Alguém', deId: 'sumiu', recado: '', salaId: null, salaNome: null },
+    ]);
+    expect(cutucadasPendentes(lista, 'bia', salas)).toEqual([]);
   });
 });

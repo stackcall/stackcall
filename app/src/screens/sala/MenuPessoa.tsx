@@ -14,7 +14,6 @@ export type AcoesMenuPessoa = {
   onCutucar(): void;
   onSilenciarParaMim(): void;
   onMover(destinoId: string): void;
-  onSilenciarSala(): void;
   onTirar(): void;
 };
 
@@ -88,7 +87,6 @@ export function MenuPessoa({ ancora, person, perfil, eu, salas, salaAtual, esper
               </div>
             )}
             </div>
-            {item('mic-off', 'Silenciar na sala', fazer(a.onSilenciarSala))}
             {sub === 'tirar' ? (
               <div role="alertdialog" aria-label={`Tirar ${person.name} da sala`} className="mx-2 my-1 flex flex-col gap-2 border border-perigo p-2.5">
                 <span className="text-[13px]">Tirar <b>{person.name}</b> da sala? A pessoa continua no grupo e pode voltar.</span>

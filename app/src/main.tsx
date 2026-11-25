@@ -13,17 +13,27 @@ import { aplicarTema, mostrarJanela } from './lib/tema';
 import { iniciarLeveza } from './lib/leveza';
 import { iniciarAtalhos } from './lib/atalhos';
 import { App } from './App';
+import { JanelaQuemFala } from './screens/QuemFala';
+import { sincronizarJanelaQuemFala } from './lib/nucleo';
+import { aoMudarPreferencias, lerPreferencias } from './lib/preferencias';
 
 aplicarTema();
 // Dev only: ?tema=escuro for review screenshots without touching the saved choice.
 const temaDev = import.meta.env.DEV ? new URLSearchParams(location.search).get('tema') : null;
 if (temaDev === 'claro' || temaDev === 'escuro') aplicarTema(temaDev);
-iniciarLeveza();
-iniciarAtalhos();
+// The core opens the "quem fala" window on index.html?janela=quemfala: only the list, no app.
+const janelaQuemFala = new URLSearchParams(location.search).get('janela') === 'quemfala';
+if (janelaQuemFala) {
+  document.documentElement.dataset.janela = 'quemfala';
+} else {
+  iniciarLeveza();
+  iniciarAtalhos();
+  sincronizarJanelaQuemFala(lerPreferencias, aoMudarPreferencias);
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    {janelaQuemFala ? <JanelaQuemFala demo={import.meta.env.DEV && new URLSearchParams(location.search).has('demo')} /> : <App />}
   </StrictMode>,
 );
 mostrarJanela();

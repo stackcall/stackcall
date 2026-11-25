@@ -70,7 +70,7 @@ A barra do topo perde o seletor Claro/Escuro e o medidor de ping solto da 0.4. O
 | 7c | Galeria de clipes | Ícone de filme no topo | "Ver" na conversa; paleta | Corte por faixa: tela, jogo e a voz de cada pessoa separada. Dá para tirar uma voz do clipe antes de enviar. |
 | 8 | Qualidade de quem assiste | Controle "Você recebe: Original 1080p60" no palco | Menu da pessoa › Assistir tela | Opções: Original, Leve 720p, Automático. |
 | 9 | Janela quem fala | Configurações › Janela quem fala | Menu ⋯ da janela Você (mostrar ou esconder); tecla, se o usuário definir uma | Janela separada do Tauri, sem borda, sempre no topo, o clique passa através. Nada de gancho no jogo. Configurável: mostrar ou esconder; só quem fala ou todos da sala (quem fala acende em lima); opacidade de 20 a 100%; tamanho pequeno, médio ou grande; canto (seis posições) ou arrastar com o mouse. Padrão: todos da sala, 80%, médio, esquerda no meio (longe do minimapa e do placar). Prévia ao vivo na própria página. |
-| 10 | Sala do mapa no CS2 | Automático quando o GSI avisa a partida; liga em Configurações › Salas e mapa do CS2 (admin) | Aba da sala mostra "CT 3 · TR 2" | Mesa agrupa CT e TR. O outro lado aparece com borda tracejada e "volta no fim do round". **As telas do outro lado ficam escondidas durante a partida** (anti-trapaça entre amigos). |
+| 10 | Sala do mapa no CS2 | Automático quando o GSI avisa a partida; liga em Configurações › Você › Mapa do CS2 | Aba da sala mostra "CT 3 · TR 2" | Mesa agrupa CT e TR. O outro lado aparece com borda tracejada e "volta no fim do round". **As telas do outro lado ficam escondidas durante a partida** (anti-trapaça entre amigos). |
 | 11 | Modo internet ruim | Menu ⋯ da janela Você | Paleta; sugestão automática quando a sua perda passa de 5%; tecla, se o usuário definir uma | O palco mostra "voz primeiro" e o botão para desligar. A sua tela continua indo para quem assiste. |
 | 12 | Quem me ouve | Rodapé da janela Você: "4 te ouvem · 0 veem" | — | Lista por pessoa com voz e tela. **"Silenciar para mim" de outra pessoa não aparece aqui**: o volume zero continua recebendo, para ninguém descobrir que foi silenciado. Só aparecem motivos técnicos (conectando, modo internet ruim dela). |
 | 13 | Atalhos e apertar para falar | Configurações › Atalhos | Paleta "atalhos" | Nenhum vem pronto. Cada linha mostra "sem atalho", uma sugestão escrita e o botão Definir. Ao gravar, o app tenta registrar a tecla; se outro programa já usa, avisa na hora ("Ctrl+Shift+O já é usado por outro programa"). Apertar para falar só funciona depois de o usuário escolher a tecla; até lá a página avisa. |
@@ -135,21 +135,21 @@ Três grupos, na ordem de quem mais mexe:
 
 | Grupo | Páginas |
 |---|---|
-| **Você** | Perfil · Voz e rede · Atalhos · Clipes e replay · Cutucadas · Sons e avisos · Janela quem fala · Aparência |
-| **Servidor Galera** (só dono e admin; mostra o cargo) | Geral e convites (servidor dorme) · Salas e mapa do CS2 · Membros e cargos |
+| **Você** | Perfil · Voz e rede · Atalhos · Clipes e replay · Cutucadas · Sons e avisos · Janela quem fala · Mapa do CS2 · Aparência |
+| **Servidor Galera** (só dono e admin; mostra o cargo) | Geral e convites · Salas · Membros e cargos |
 | **App** | Servidores · Sobre e atualizações |
 
 De onde veio cada página atual:
 
 | 0.4 | 0.5 |
 |---|---|
-| Servidor | Servidor Galera › Geral e convites |
+| Servidor | Servidor Galera › Geral e convites (convites), › Salas, › Membros e cargos; "Este aparelho" foi para App › Servidores, porque vale para todo mundo |
 | Servidores | App › Servidores |
 | Voz e tema | Você › Voz e rede (voz) e Você › Aparência (tema) |
 | Sobre e atualizações | App › Sobre e atualizações |
 | Perfil (tela separada) | Você › Perfil (o atalho pelo avatar continua) |
 
-**Busca** no topo da lateral. Procura no nome do ajuste, na descrição e em apelidos ("ptt" acha Apertar para falar; "mute" acha microfone; "gravação" acha replay). O resultado mostra o caminho ("Voz e rede › Microfone") e o próprio controle, para mudar ali mesmo sem abrir a página.
+**Busca** no topo da lateral. Procura no nome do ajuste, na descrição e em apelidos ("ptt" acha Apertar para falar; "mute" acha microfone; "gravação" acha replay). O resultado mostra o caminho ("Voz e rede › Microfone"). Na implementação da 0.5, clicar no resultado abre a página e contorna a linha do ajuste por 2,5 s; o controle dentro do resultado ficou para depois (cada ajuste precisaria de um controle duplicado). Enter abre o primeiro resultado; Esc limpa a busca.
 
 **Você › Cutucadas**: receber cutucadas de (todos do grupo, só amigos, ninguém) · ler o recado em voz alta (ligado ou desligado) · volume da voz, separado do volume da sala, com botão Testar · tocar mesmo com o som silenciado (ligado por padrão) · aviso do Windows (ligado por padrão). Rodapé: "Quem cutuca espera 30 s para cutucar a mesma pessoa de novo."
 
@@ -194,6 +194,71 @@ Nenhum atalho vem de fábrica. A página Atalhos lista as ações abaixo, cada u
 
 A sugestão é só texto: o app não grava a tecla sozinho. Ao definir, o app tenta registrar a tecla global (plugin `global-shortcut` do Tauri). Se o registro falhar porque outro programa já usa, a linha mostra o aviso e pede outra tecla. A sugestão de Alt+F10 avisa que o app da NVIDIA também usa essa tecla.
 
+## 7b. Implementação no app (25/11/2026)
+
+### Chaves de preferência
+
+Tudo que vale para este PC e não tinha chave antes fica num JSON só, `stackcall.preferencias`, em `app/src/lib/preferencias.ts` (`lerPreferencias`, `salvarPreferencias`, `aoMudarPreferencias`, `usePreferencias`). Valor inválido volta ao padrão campo a campo. A mudança chega na hora à janela que salvou e às outras janelas do app pelo evento `storage`. Voz (`stackcall.voz`), tema (`stackcall.tema`) e atalhos (`stackcall.atalhos`) continuam com as chaves que já tinham.
+
+| Chave | Valores | Padrão | Quem lê |
+|---|---|---|---|
+| `presencaJogo` | booleano | `true` | detecção do jogo (`lib/jogo.ts`) |
+| `replayLigado` | booleano | `false` | sala (replay sempre ligado) |
+| `replaySegundos` | `30`, `60`, `120` | `60` | sala e núcleo |
+| `replayQualidade` | `transmissao`, `720p` | `transmissao` | núcleo |
+| `replayPasta` | texto até 260; vazio = `Vídeos\Stackcall` | `""` | núcleo |
+| `cutucarVoz` | booleano | `true` | `lib/cutucar.ts` |
+| `cutucarVolume` | 0 a 100 | `70` | `lib/cutucar.ts` |
+| `cutucarMesmoSilenciado` | booleano | `true` | `lib/cutucar.ts` (a sala informa se está silenciada) |
+| `cutucarAvisoWindows` | booleano | `true` | `lib/cutucar.ts` |
+| `somEntradaSaida` | booleano | `true` | sala |
+| `somEntradaSaidaVolume` | 0 a 100 | `60` | sala (`tocarSom('entrou' \| 'saiu', volume / 100)`) |
+| `quemFalaMostrar` | booleano | `false` | janela principal (`sincronizarJanelaQuemFala`) e atalho |
+| `quemFalaConteudo` | `todos`, `falando` | `todos` | janela quem fala |
+| `quemFalaOpacidade` | 20 a 100 | `80` | janela quem fala |
+| `quemFalaTamanho` | `p`, `m`, `g` | `m` | janela quem fala e núcleo |
+| `quemFalaPosicao` | `sup-esq`, `sup-dir`, `meio-esq`, `meio-dir`, `inf-esq`, `inf-dir`, `livre` | `meio-esq` | núcleo |
+| `cs2SalaMapa` | booleano | `false` | sala (troca para a sub-sala do time) |
+| `redeRuim` | booleano | `false` | sala, paleta e atalho (modo internet ruim: para de receber vídeo, voz primeiro) |
+
+"Receber cutucadas de" não é chave local: vale para todos os aparelhos e fica no servidor.
+
+### Para a thread da sala
+
+- Publique o estado da janela quem fala com `publicarQuemFala({ sala, ping, replay, pessoas: [{ id, nome, cor, falando, mudo }] })` (`lib/quemfala.ts`). Pode chamar a cada render: estados iguais são descartados. Fora da voz, `publicarQuemFala(null)`.
+- Cutucada recebida: chame `receberCutucada(c, { silenciado })` (`lib/cutucar.ts`). Ela lê em voz alta e avisa no Windows conforme as preferências e avisa quem estiver ouvindo `aoReceberCutucada`. A faixa é `components/FaixaCutucada.tsx`; o saguão já a usa.
+- O saguão saiu de `screens/Room.tsx` para `screens/Saguao.tsx`, com a barra do topo em `components/Topo.tsx` (mesma marcação da barra da sala, com botões opcionais de busca e clipes). O `App` mostra o saguão fora da voz e a `RoomScreen` só dentro de uma sala. O `Saguao` interno de `Room.tsx` ficou sem uso e pode sair na branch da sala.
+- Atalho novo `quemFala` em `lib/atalhos.ts`, tratado fora da sala (liga e desliga `quemFalaMostrar`).
+
+### Contrato provisório com o núcleo
+
+O `docs/api-v05-app.md` da branch `feat/v05-nucleo` não existia quando a interface foi feita. O app chama estes comandos (`lib/nucleo.ts`); comando ausente devolve o valor de reserva e a tela segue funcionando:
+
+| Comando | Argumentos | Resposta | Reserva |
+|---|---|---|---|
+| `jogo_detectado` | — | nome do jogo na frente ou `null` | `null` |
+| `cs2_gsi_estado` | — | `{ instalado, caminho }` | `null` ("o núcleo ainda não instala") |
+| `cs2_gsi_instalar` | — | `{ instalado, caminho }`; erro em texto | erro |
+| `escolher_pasta` | — | caminho ou `null` | `null` |
+| `quem_fala_disponivel` | — | booleano | `false` |
+| `quem_fala_janela` | `{ janela: { mostrar, posicao, tamanho, largura } }` | — | nada |
+| `quem_fala_arrastar` | `{ ligado }` | — | nada |
+
+A janela quem fala abre `index.html?janela=quemfala`: sem borda, fundo transparente, sempre no topo, clique atravessando, sem foco. O estado chega pelos eventos Tauri `quem-fala:estado` (a janela pede o último com `quem-fala:pedir` ao abrir).
+
+### Rota proposta ao servidor
+
+`docs/api-v05.md` ainda não tem rota para "Receber cutucadas de". O app usa `GET /api/eu/cutucadas` → `{"receber":"todos"|"amigos"|"ninguem"}` e `PUT /api/eu/cutucadas` com o mesmo corpo (`204`). Enquanto a rota não existir, a página mostra o erro do servidor com "Tentar de novo" e as outras opções continuam valendo.
+
+### Desvios do desenho, registrados
+
+1. "Salas e mapa do CS2" virou duas páginas: **Servidor › Salas** (criar, renomear, apagar, só admin) e **Você › Mapa do CS2** (ligar a sala do mapa e instalar o GSI). Motivo: o GSI é lido pelo app de cada PC e a API não tem chave de servidor para isso; um membro também precisa instalar.
+2. "Servidor dorme" não tem tela: o contrato só expõe o efeito (`503 livekit_acordando`), não o estado nem a configuração.
+3. Membros e cargos mostra o cargo, mas não troca: não há rota para mudar cargo.
+4. O saguão diz "jogando CS2 · 40 min" contando desde quando este PC viu o jogo pela primeira vez; a API só manda o nome.
+5. "Silenciar na sala" saiu do menu da pessoa. A rota `POST /api/salas/{sala}/moderacao/silenciar` desliga o microfone de todos e não recebe pessoa; ficou como "Silenciar todos" no menu da sala (⋯), para dono e admin.
+6. `stackcall.ouve.v1`: `docs/api-v05.md` pede só quem tem "volume acima de zero", mas a decisão 2 diz que o "silenciar para mim" não aparece para quem foi silenciado. O app segue a decisão 2 e publica quem está assinado, com qualquer volume. Falta alinhar o texto da API.
+
 ## 8. Decisões registradas
 
 1. Replay ligado é estado de "no ar": usa vermelho e não tem como esconder o aviso.
@@ -207,6 +272,7 @@ A sugestão é só texto: o app não grava a tecla sozinho. Ao definir, o app te
 9. Soundboard fora da 0.5 (revisão do Filippe em 25/11/2026).
 10. Nenhum atalho de fábrica; só sugestão escrita.
 11. "Chamar para jogar" saiu. No lugar entra "Cutucar", uma pessoa por vez, com recado lido em voz alta mesmo com o som silenciado.
+12. A sala do mapa do CS2 é escolha de cada PC (Você › Mapa do CS2), não do servidor.
 
 ## 9. Protótipo
 
@@ -215,15 +281,3 @@ A sugestão é só texto: o app não grava a tecla sozinho. Ao definir, o app te
 - HTML e CSS puros. As telas trocam por `:target`. O único script lê o tema e o modo captura.
 - Fontes locais em `v05/fontes/` (as mesmas do app, licença OFL, via @fontsource).
 - As cenas de jogo são formas chapadas em CSS, só para dar escala. Nomes e números são fictícios.
-
-## 10. Preferências da sala (chaves no app)
-
-Ficam no `localStorage` de cada PC, lidas por `app/src/lib/preferencias.ts`. A sala usa; as páginas de Configurações (outra thread) editam as mesmas chaves. Entre parênteses, o valor de fábrica.
-
-| Chave | Campos | Para quê |
-|---|---|---|
-| `stackcall.sons` | `entrada` (true), `volume` 0 a 1 (0,5) | Som curto quando alguém entra ou sai da sala |
-| `stackcall.cutucadas` | `receberDe`: `todos`, `amigos` ou `ninguem` (`todos`); `voz` (true); `volume` 0 a 1 (0,8); `mesmoSilenciado` (true); `avisoWindows` (true) | Como a cutucada chega: voz pt-BR ou som curto, mesmo com o som do Stackcall silenciado, e aviso do Windows |
-| `stackcall.rede` | `ruim` (false) | Modo internet ruim: para de receber vídeo e prioriza a voz |
-
-Quem muda uma chave usa `salvarPreferencia`; quem lê e precisa reagir usa `aoMudarPreferencia`.

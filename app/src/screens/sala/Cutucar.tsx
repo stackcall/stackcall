@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Icone } from '../../components/Icone';
-import { esperaCutucar, fraseCutucada, lembrarUltimo, LIMITE_RECADO, marcarCutucada, SUGESTOES } from '../../lib/cutucadas';
+import { fraseCutucada } from '../../lib/cutucar';
+import { esperaCutucar, lembrarUltimo, LIMITE_RECADO, marcarCutucada, SUGESTOES } from '../../lib/cutucadas';
 import { ApiError, type Servidor } from '../../lib/servidor';
 import { Popover, type Ancora } from './Popover';
 
@@ -19,7 +20,6 @@ export function Cutucar({ ancora, alvo, eu, servidor, somDesligado, onFechar, on
   async function enviar(e?: FormEvent) {
     e?.preventDefault();
     if (estado === 'enviando' || espera > 0) return;
-    if (!servidor.cutucar) return setEstado({ erro: 'Este servidor ainda não aceita cutucadas.' });
     setEstado('enviando');
     try {
       await servidor.cutucar(alvo.id, recado.trim());
@@ -57,7 +57,7 @@ export function Cutucar({ ancora, alvo, eu, servidor, somDesligado, onFechar, on
           </div>
           <p className="m-0 flex items-start gap-2 text-[13px] text-texto-fraco">
             <Icone nome="volume" tamanho={16} />
-            <span>{alvo.nome} vai ouvir: <b className="text-texto">“{fraseCutucada(eu, recado)}”</b></span>
+            <span>{alvo.nome} vai ouvir: <b className="text-texto">“{fraseCutucada({ de: eu, recado })}”</b></span>
           </p>
           {typeof estado === 'object' && <p role="alert" className="m-0 text-[13px] font-bold text-perigo">{estado.erro}</p>}
         </div>

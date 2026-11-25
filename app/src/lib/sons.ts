@@ -9,14 +9,16 @@ export const TONS: Record<Som, number[]> = {
   liga: [660, 990],
   desliga: [660, 440],
   silenciou: [330, 330],
+  // Someone entered or left the room (Settings > Sons e avisos).
   entrou: [523, 784],
   saiu: [784, 523],
+  // Poke received on a PC with no Portuguese voice.
   cutucada: [880, 660, 880],
 };
 
 let ctx: AudioContext | null = null;
 
-/** `volume` 0..1 scales the quiet default (0.08 peak). */
+/** `volume` 0 to 1 scales the quiet default. */
 export function tocarSom(som: Som, volume = 1) {
   if (typeof AudioContext === 'undefined') return;
   try {

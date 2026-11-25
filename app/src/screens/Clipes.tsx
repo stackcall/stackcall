@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Faixa } from '../components/Faixa';
 import { Icone } from '../components/Icone';
-import { nucleo, type Clipe, type ListaClipes } from '../lib/nucleo';
+import { replay as nucleo, type Clipe, type ListaClipes } from '../lib/nucleo';
 
 const gb = (b: number) => (b / 1e9).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
 const dur = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;

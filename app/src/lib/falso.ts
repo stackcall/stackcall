@@ -1,4 +1,4 @@
-import { ApiError, type Convite, type Pessoa, type Sala, type Servidor, type Usuario } from './servidor';
+import { ApiError, type Convite, type Pessoa, type ReceberCutucadas, type Sala, type Servidor, type Usuario } from './servidor';
 
 /**
  * Fake server for development and tests (`?demo=1` or VITE_SERVIDOR_FALSO=1 in dev).
@@ -11,7 +11,7 @@ const espera = (ms = 250) => (import.meta.env.MODE === 'test' ? Promise.resolve(
 
 const pessoa = (id: string, nome: string, p: Partial<Pessoa> = {}): Pessoa => ({
   id, nome, papel: 'membro', avatar: null, banner: null, bio: '', tema: 'papel', cor: null,
-  online: true, amigo: false, sala: 'cs', ...p,
+  online: true, amigo: false, sala: 'cs', jogo: null, ...p,
 });
 
 export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
@@ -20,27 +20,31 @@ export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
   // ?grupo=pequeno: the real common case (one room, nobody in voice, one friend offline).
   const pequeno = new URLSearchParams(location.search).get('grupo') === 'pequeno';
   const pessoas: Pessoa[] = pequeno ? [pessoa('caio', 'Caio', { online: false, sala: null, amigo: true })] : [
-    pessoa('rafa', 'Rafa', { amigo: true, bio: 'clutch ou nada', tema: 'noite', cor: '#ff5a5f', jogo: 'CS2' }),
-    pessoa('duda', 'Duda', { amigo: true, tema: 'lima', bio: 'mira de rifle, coração de pistol', jogo: 'CS2' }),
-    pessoa('leo', 'Léo', { sala: 'cs' }),
-    pessoa('nanda', 'Nanda', { papel: 'admin' }),
+    pessoa('rafa', 'Rafa', { amigo: true, bio: 'clutch ou nada', tema: 'noite', cor: '#ff5a5f', jogo: 'Counter-Strike 2' }),
+    pessoa('duda', 'Duda', { amigo: true, tema: 'lima', bio: 'mira de rifle, coração de pistol', jogo: 'Counter-Strike 2' }),
+    pessoa('leo', 'Léo', { sala: 'cs', jogo: 'Counter-Strike 2' }),
+    pessoa('nanda', 'Nanda', { papel: 'admin', jogo: 'Counter-Strike 2' }),
     pessoa('bia', 'Bia', { sala: 'lobby', amigo: true }),
-    pessoa('gus', 'Gus', { sala: 'lobby' }),
+    pessoa('gus', 'Gus', { sala: 'lobby', jogo: 'Forza Horizon 5' }),
     pessoa('tati', 'Tati', { sala: null }),
     pessoa('caio', 'Caio', { online: false, sala: null }),
   ];
   const cutucou = new Map<string, number>();
-  // ?cutucada=1: Rafa poked me (to review the incoming strip and the voice).
-  if (new URLSearchParams(location.search).has('cutucada')) {
-    const rafa = pessoas.find((p) => p.id === 'rafa');
-    if (rafa) rafa.cutucadas = [{ id: 'k-demo', recado: 'a sala tá pronta', salaId: 'lobby', expiraEm: 4_000_000_000 }];
-  }
+  // ?cutucada=1: Bia (in the Lobby) poked me. Like the porteiro, my own profile carries it once.
+  let pendentes = new URLSearchParams(location.search).has('cutucada') ? [{ id: 'k-demo', de: 'bia', recado: 'a sala tá pronta', criadoEm: 0 }] : [];
+  const comPendentes = (lista: Pessoa[]) => {
+    if (!pendentes.length) return lista;
+    const minhas = pendentes;
+    pendentes = [];
+    return [...lista, { ...eu, online: true, amigo: false, sala: null, jogo: null, cutucadas: minhas }];
+  };
   let salas: Sala[] = pequeno ? [{ id: 'geral', nome: 'Geral', ordem: 1, pessoas: 0, noAr: false }] : [
     { id: 'cs', nome: 'CS', ordem: 1, pessoas: 5, noAr: true },
     { id: 'lobby', nome: 'Lobby', ordem: 2, pessoas: 2, noAr: false },
     { id: 'cinema', nome: 'Cinema', ordem: 3, pessoas: 0, noAr: false },
     { id: 'ranked', nome: 'Ranked', ordem: 4, pessoas: 0, noAr: false },
   ];
+  let receber: ReceberCutucadas = 'todos';
   let convites: Convite[] = [{ id: 'c1', link: null, expiraEm: '2026-12-01T21:00:00Z', usos: 0, usosMax: 1 }];
   const exigeSessao = () => {
     if (!sessao) throw new ApiError(401, 'Sua sessão neste aparelho acabou. Peça um convite novo.');
@@ -72,7 +76,7 @@ export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
       eu = tipo === 'avatar' ? { ...eu, avatar: link } : { ...eu, banner: link };
       return eu;
     },
-    pessoas: async () => (await espera(), exigeSessao(), pessoas.map((p) => ({ ...p }))),
+    pessoas: async () => (await espera(), exigeSessao(), comPendentes(pessoas.map((p) => ({ ...p })))),
     amigo: async (id, sim) => {
       const p = pessoas.find((x) => x.id === id);
       if (p) p.amigo = sim;
@@ -103,18 +107,20 @@ export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
       return c;
     },
     revogarConvite: async (id) => void (convites = convites.filter((c) => c.id !== id)),
-    cutucar: async (usuarioId, recado) => {
+    jogo: async () => undefined,
+    cutucadas: async () => (await espera(), receber),
+    salvarCutucadas: async (r) => void (receber = r),
+    cutucar: async (para) => {
       await espera();
-      if (Date.now() - (cutucou.get(usuarioId) ?? 0) < 30_000) throw new ApiError(429, 'Espere 30 s para cutucar essa pessoa de novo.');
-      cutucou.set(usuarioId, Date.now());
-      return { id: `k${Date.now()}`, recado, salaId: null, expiraEm: Math.floor(Date.now() / 1000) + 120 };
+      if (Date.now() - (cutucou.get(para) ?? 0) < 30_000) throw new ApiError(429, 'Espere 30 s para cutucar essa pessoa de novo.');
+      cutucou.set(para, Date.now());
     },
     moderar: async (_salaId, a) => {
       await espera();
+      if (a.acao === 'silenciar') return;
       const p = pessoas.find((x) => x.id === a.usuarioId);
       if (!p) throw new ApiError(404, 'Não encontrado.');
-      if (a.acao === 'mover') p.sala = a.destinoId;
-      if (a.acao === 'retirar') p.sala = null;
+      p.sala = a.acao === 'mover' ? a.destinoId : null;
     },
   };
 }

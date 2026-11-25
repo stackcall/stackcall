@@ -17,7 +17,11 @@ import { Perfil } from './screens/Perfil';
 import { CartaoPerfil } from './components/CartaoPerfil';
 import { UpdateBanner } from './components/UpdateBanner';
 import { Faixa, type Acao } from './components/Faixa';
-import { Camada05, type SecaoConfig } from './components/Camada05';
+import { Camada05 } from './components/Camada05';
+import { Saguao } from './screens/Saguao';
+import { aoReceberCutucada, type Cutucada } from './lib/cutucar';
+import { iniciarDeteccaoJogo } from './lib/jogo';
+import type { PaginaId } from './lib/buscaConfig';
 
 export type Overlay = null | 'settings' | 'perfil' | { novidades: string | null } | { cartao: string };
 
@@ -58,7 +62,11 @@ export function App() {
     tela === 'config' ? 'settings' : tela === 'novidades' ? { novidades: null } : tela === 'perfil' ? 'perfil' : null,
   );
   const updater = useUpdater(!!sala, falso);
-  const [secaoConfig, setSecaoConfig] = useState<SecaoConfig>();
+  const [paginaConfig, setPaginaConfig] = useState<PaginaId>();
+  // Demo lobby shows a poke received, as in the prototype; real ones come from aoReceberCutucada.
+  const [cutucada, setCutucada] = useState<Cutucada | null>(() => (falso && tela === 'saguao' && new URLSearchParams(location.search).get('grupo') !== 'pequeno'
+    ? { id: 'demo', de: 'Rafa', recado: 'a sala tá pronta', salaId: 'cs', salaNome: 'CS' } : null));
+  useEffect(() => aoReceberCutucada(setCutucada), []);
 
   const carregar = useCallback(async (s: Servidor) => {
     try {
@@ -169,6 +177,12 @@ export function App() {
     };
   }, [srv, estado.fase, avisarPresenca]);
   useEffect(() => agendaPresenca.current?.visibilidade(visivel), [visivel]);
+
+  // Game in the presence: the core is asked every 30 s while the preference is on.
+  useEffect(() => {
+    if (!srv || estado.fase !== 'pronto' || falso) return;
+    return iniciarDeteccaoJogo(srv);
+  }, [srv, estado.fase, falso]);
 
   // Opens "Novidades" once after an update.
   useEffect(() => {
@@ -287,7 +301,23 @@ export function App() {
         </Faixa>
       )}
       <div className="relative min-h-0 flex-1">
-        {comSala && srv && eu && (
+        {comSala && srv && eu && !sala && (
+          <div hidden={!!corpo} className="h-full">
+            <Saguao
+              nomeServidor={nomeServidor} eu={eu} salas={salas} pessoas={pessoas} cutucada={cutucada}
+              onSala={(id) => {
+                if (cutucada?.salaId === id) setCutucada(null);
+                escolherSala(id);
+              }}
+              onConfig={() => setOverlay('settings')}
+              onPerfil={() => setOverlay('perfil')}
+              onCartao={(id) => setOverlay({ cartao: id })}
+              onConvidar={convidar}
+              onFecharCutucada={() => setCutucada(null)}
+            />
+          </div>
+        )}
+        {comSala && srv && eu && sala && (
           <div hidden={!!corpo} className="h-full">
             <RoomScreen
               servidor={srv} nomeServidor={nomeServidor} eu={eu} salas={salas} pessoas={pessoas} sala={sala} demo={falso}
@@ -298,18 +328,19 @@ export function App() {
               onCartao={(id) => setOverlay({ cartao: id })}
               onConvidar={convidar}
               onAmigo={(id, sim) => void amigo(id, sim)}
+              cutucada={cutucada} onFecharCutucada={() => setCutucada(null)}
             />
           </div>
         )}
         {corpo}
         <Camada05 servidor={estado.fase === 'pronto' ? srv : null} eu={eu} pessoas={pessoas} salas={salas} sala={sala}
           onSala={escolherSala} onCartao={(id) => setOverlay({ cartao: id })}
-          onConfig={(secao) => { setSecaoConfig(secao); setOverlay('settings'); }} />
+          onConfig={(pagina) => { setPaginaConfig(pagina); setOverlay('settings'); }} />
         {overlay === 'settings' && (
           <Settings
-            secaoInicial={secaoConfig}
             updater={updater} inCall={!!sala} servidor={estado.fase === 'pronto' ? srv : null} eu={eu} salas={salas} pessoas={pessoas}
-            onClose={() => { setOverlay(null); setSecaoConfig(undefined); }} onNotes={() => setOverlay({ novidades: null })}
+            onClose={() => { setOverlay(null); setPaginaConfig(undefined); }} onNotes={() => setOverlay({ novidades: null })} onPerfil={() => setOverlay('perfil')}
+            pagina={paginaConfig ?? (falso ? (new URLSearchParams(location.search).get('pagina') as PaginaId | null) ?? undefined : undefined)}
             onSalas={setSalas} onPessoas={setPessoas} onSair={() => void sairDoAparelho()} onTrocar={trocarServidor}
             onColarConvite={() => { setOverlay(null); setLink(null); setEstado({ fase: 'entrada', voltar: !!srv }); }}
           />

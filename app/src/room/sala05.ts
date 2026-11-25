@@ -74,7 +74,7 @@ export function nomesReplay(nomes: string[]): string {
   return `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}`;
 }
 
-export type OpcaoMenu = 'volume' | 'perfil' | 'assistir' | 'cutucar' | 'silenciarParaMim' | 'mover' | 'silenciarSala' | 'tirar';
+export type OpcaoMenu = 'volume' | 'perfil' | 'assistir' | 'cutucar' | 'silenciarParaMim' | 'mover' | 'tirar';
 /**
  * Items of the person's menu, in the design order. Moderation only for the owner and admins, and
  * never on the owner (the porteiro refuses it too); watching only when that person is on the air.
@@ -82,5 +82,6 @@ export type OpcaoMenu = 'volume' | 'perfil' | 'assistir' | 'cutucar' | 'silencia
 export function opcoesMenuPessoa(o: { meuPapel: 'dono' | 'admin' | 'membro'; papelDela?: 'dono' | 'admin' | 'membro'; noAr: boolean }): OpcaoMenu[] {
   const base: OpcaoMenu[] = ['volume', 'perfil', ...(o.noAr ? ['assistir' as const] : []), 'cutucar', 'silenciarParaMim'];
   const modera = (o.meuPapel === 'dono' || o.meuPapel === 'admin') && o.papelDela !== 'dono' && !(o.meuPapel === 'admin' && o.papelDela === 'admin');
-  return modera ? [...base, 'mover', 'silenciarSala', 'tirar'] : base;
+  // Silencing is room-wide in the porteiro (POST …/moderacao/silenciar has no person), so it lives in the room menu.
+  return modera ? [...base, 'mover', 'tirar'] : base;
 }

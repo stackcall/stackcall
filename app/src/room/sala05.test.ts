@@ -36,7 +36,7 @@ describe('menu da pessoa (item 5)', () => {
   const base = ['volume', 'perfil', 'cutucar', 'silenciarParaMim'];
   it('shows moderation only to the owner and admins', () => {
     expect(opcoesMenuPessoa({ meuPapel: 'membro', papelDela: 'membro', noAr: false })).toEqual(base);
-    expect(opcoesMenuPessoa({ meuPapel: 'dono', papelDela: 'admin', noAr: false })).toEqual([...base, 'mover', 'silenciarSala', 'tirar']);
+    expect(opcoesMenuPessoa({ meuPapel: 'dono', papelDela: 'admin', noAr: false })).toEqual([...base, 'mover', 'tirar']);
     expect(opcoesMenuPessoa({ meuPapel: 'admin', papelDela: 'membro', noAr: false })).toContain('tirar');
   });
   it('never moderates the owner, and an admin does not moderate an admin', () => {

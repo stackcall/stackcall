@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { lerRede, salvarRede } from '../lib/preferencias';
+import { lerPreferencias, salvarPreferencias } from '../lib/preferencias';
 import { horaDe, type ChatMessage, type Person, type RoomActions, type RoomModel, type Stream } from './model';
 
 const person = (id: string, name: string, p: Partial<Person>): Person => ({
@@ -17,7 +17,7 @@ export function useDemoRoom(room: string, me: { id: string; name: string }): Roo
   const [deafened, setDeafened] = useState(false);
   const [watching, setWatching] = useState<Set<string>>(() => new Set(grade ? ['duda'] : ['rafa']));
   const [todas, setTodas] = useState(false);
-  const [redeRuim, setRedeRuimEstado] = useState(() => lerRede().ruim);
+  const [redeRuim, setRedeRuimEstado] = useState(() => lerPreferencias().redeRuim);
   const [qualidade, setQualidadeEstado] = useState<Record<string, 'original' | 'leve'>>(grade ? { leo: 'leve' } : {});
   const [somTela, setSomTelaEstado] = useState<string | null>(null);
   const [volumes, setVolumes] = useState<Record<string, number>>({ rafa: 0.8, duda: 0.72, leo: 0.64, nanda: 0.9 });
@@ -65,7 +65,7 @@ export function useDemoRoom(room: string, me: { id: string; name: string }): Roo
     goLive: async () => undefined,
     stopLive: () => undefined,
     setRedeRuim: (on) => {
-      salvarRede(on);
+      salvarPreferencias({ redeRuim: on });
       setRedeRuimEstado(on);
     },
     setQualidade: (id, q) => setQualidadeEstado((s) => ({ ...s, [id]: q })),

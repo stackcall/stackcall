@@ -1,7 +1,7 @@
 use crate::{
     Config,
     auth::{self, Profile, User},
-    calls, db, moderation, sleep,
+    db, moderation, pokes, sleep,
 };
 use axum::{
     Json, Router,
@@ -30,7 +30,8 @@ struct Person {
     online: bool,
     sala: Option<String>,
     jogo: Option<String>,
-    chamados: Vec<calls::Call>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cutucadas: Option<Vec<pokes::Poke>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     mudanca_sala: Option<moderation::RoomMove>,
 }
@@ -42,46 +43,48 @@ async fn list(
     let online = sleep::presence(&config).await;
     db::run(config, move |conn| {
         user.ensure_active(conn)?;
-        let mut calls = calls::for_recipient(conn, &user.id)?;
-        let mut friends = conn
-            .prepare("SELECT amigo_id FROM amizades WHERE usuario_id = ?1")
-            .map_err(db::internal)?;
-        let friends = friends
-            .query_map([&user.id], |row| row.get(0))
-            .map_err(db::internal)?
-            .collect::<rusqlite::Result<HashSet<String>>>()
-            .map_err(db::internal)?;
-        let mut users = conn
-            .prepare(&format!(
-                "SELECT {}, CASE WHEN jogo_expira_em > unixepoch() THEN jogo END
-                 FROM usuarios WHERE removido_em IS NULL ORDER BY nome, id",
-                auth::PROFILE_FIELDS,
-            ))
-            .map_err(db::internal)?;
-        let mut people = users
-            .query_map([], |row| Ok((Profile::from_row(row)?, row.get(9)?)))
-            .map_err(db::internal)?
-            .map(|row| {
-                row.map(|(profile, jogo)| {
-                    let sala = online.room_for(&profile.id);
-                    Person {
-                        amigo: friends.contains(&profile.id),
-                        online: sala.is_some(),
-                        sala: sala.map(str::to_owned),
-                        jogo,
-                        chamados: calls.remove(&profile.id).unwrap_or_default(),
-                        profile,
-                        mudanca_sala: None,
-                    }
+        let mut people = {
+            let mut friends = conn
+                .prepare("SELECT amigo_id FROM amizades WHERE usuario_id = ?1")
+                .map_err(db::internal)?;
+            let friends = friends
+                .query_map([&user.id], |row| row.get(0))
+                .map_err(db::internal)?
+                .collect::<rusqlite::Result<HashSet<String>>>()
+                .map_err(db::internal)?;
+            let mut users = conn
+                .prepare(&format!(
+                    "SELECT {}, CASE WHEN jogo_expira_em > unixepoch() THEN jogo END
+                     FROM usuarios WHERE removido_em IS NULL ORDER BY nome, id",
+                    auth::PROFILE_FIELDS,
+                ))
+                .map_err(db::internal)?;
+            users
+                .query_map([], |row| Ok((Profile::from_row(row)?, row.get(9)?)))
+                .map_err(db::internal)?
+                .map(|row| {
+                    row.map(|(profile, jogo)| {
+                        let sala = online.room_for(&profile.id);
+                        Person {
+                            amigo: friends.contains(&profile.id),
+                            online: sala.is_some(),
+                            sala: sala.map(str::to_owned),
+                            jogo,
+                            cutucadas: None,
+                            profile,
+                            mudanca_sala: None,
+                        }
+                    })
                 })
-            })
-            .collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(db::internal)?;
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(db::internal)?
+        };
         if let Some(own) = people
             .iter_mut()
             .find(|person| person.profile.id == user.id)
         {
             own.mudanca_sala = moderation::pending_move(conn, &user.id)?;
+            own.cutucadas = Some(pokes::take(conn, &user.id)?);
         }
         Ok(Json(people))
     })

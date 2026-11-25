@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { tocarSom, type Som } from './sons';
 import { lerVoz } from './voz';
+import { lerPreferencias, salvarPreferencias } from './preferencias';
 
 /**
  * Global shortcuts (they work with the game in front). The Rust side listens to the keys:
@@ -10,23 +11,25 @@ import { lerVoz } from './voz';
  * `atalhos_gravar` returns the next combination (null on Esc). Nothing comes on by default,
  * so a game key is never taken without the person choosing it.
  */
-export type AcaoId = 'mic' | 'silenciar' | 'falar' | 'arEntrar' | 'arSair' | 'assistir' | 'pararAssistir' | 'mostrar'
-  | 'clipe' | 'redeRuim' | 'quemFala' | 'cutucarUltimo';
+export type AcaoId = 'mic' | 'silenciar' | 'falar' | 'arEntrar' | 'arSair' | 'assistir' | 'pararAssistir' | 'mostrar' | 'quemFala'
+  | 'clipe' | 'redeRuim' | 'cutucarUltimo';
 export type Estado = 'pressionado' | 'solto';
+/** `sugestao` is only text on the page (empty = none); nothing is recorded by default. */
 export type Acao = { id: AcaoId; rotulo: string; ajuda: string; sugestao: string; segurar?: boolean };
 
 export const ACOES: Acao[] = [
   { id: 'mic', rotulo: 'Ligar e desligar o microfone', ajuda: 'Um toque liga, outro desliga.', sugestao: 'Ctrl+Shift+M' },
   { id: 'silenciar', rotulo: 'Silenciar tudo', ajuda: 'Desliga o microfone e o som da sala. Outro toque devolve os dois.', sugestao: 'Ctrl+Shift+D' },
-  { id: 'falar', rotulo: 'Apertar para falar', ajuda: 'Segure para falar. Vale no modo "Apertar para falar" (Voz e tema).', sugestao: 'Mouse4', segurar: true },
+  { id: 'falar', rotulo: 'Apertar para falar', ajuda: 'Segure para falar. Vale no modo "Apertar para falar" (Voz e rede).', sugestao: 'Mouse4', segurar: true },
   { id: 'arEntrar', rotulo: 'Entrar no ar', ajuda: 'Abre Entrar no ar com a última escolha. Se ela já está guardada, o segundo toque confirma.', sugestao: 'Ctrl+Shift+L' },
   { id: 'arSair', rotulo: 'Sair do ar', ajuda: 'Para a sua transmissão.', sugestao: 'Ctrl+Shift+K' },
   { id: 'assistir', rotulo: 'Assistir a tela no ar', ajuda: 'Começa a receber a tela que está no palco.', sugestao: 'Ctrl+Shift+W' },
   { id: 'pararAssistir', rotulo: 'Parar de assistir', ajuda: 'Para de receber a tela (economiza internet no jogo).', sugestao: 'Ctrl+Shift+E' },
   { id: 'mostrar', rotulo: 'Abrir o Stackcall', ajuda: 'Traz a janela para a frente.', sugestao: 'Ctrl+Shift+S' },
+  // No suggestion: every short combination was taken by something on some PC (Ctrl+Shift+O included).
+  { id: 'quemFala', rotulo: 'Mostrar ou esconder a janela quem fala', ajuda: 'Liga e desliga a janela por cima do jogo.', sugestao: '' },
   { id: 'clipe', rotulo: 'Salvar clipe', ajuda: 'Guarda os últimos segundos do replay. O app da NVIDIA também usa Alt+F10.', sugestao: 'Alt+F10' },
   { id: 'redeRuim', rotulo: 'Modo internet ruim', ajuda: 'Para de receber vídeo e dá prioridade à voz. Outro toque volta.', sugestao: 'Ctrl+Shift+B' },
-  { id: 'quemFala', rotulo: 'Mostrar ou esconder a janela quem fala', ajuda: 'Sem sugestão boa que não colida com jogo.', sugestao: '—' },
   { id: 'cutucarUltimo', rotulo: 'Cutucar o último de novo', ajuda: 'Cutuca a última pessoa que você cutucou, sem recado.', sugestao: 'Ctrl+Shift+P' },
 ];
 
@@ -136,6 +139,13 @@ export function aoAtalho(f: (id: AcaoId, estado: Estado) => void) {
 export function dispararAtalho(id: AcaoId, estado: Estado) {
   if (id === 'mostrar') {
     if (estado === 'pressionado') void mostrarApp();
+    return;
+  }
+  if (id === 'quemFala') {
+    if (estado !== 'pressionado') return;
+    const mostrar = !lerPreferencias().quemFalaMostrar;
+    salvarPreferencias({ quemFalaMostrar: mostrar });
+    bipe(mostrar ? 'liga' : 'desliga');
     return;
   }
   ouvintes.forEach((f) => f(id, estado));

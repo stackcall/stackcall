@@ -6,7 +6,7 @@ import {
   type DisconnectReason,
 } from 'livekit-client';
 import { ATRIBUTO_REPLAY } from '../lib/nucleo';
-import { lerRede, lerSons, salvarRede } from '../lib/preferencias';
+import { lerPreferencias, salvarPreferencias } from '../lib/preferencias';
 import { tocarSom } from '../lib/sons';
 import { ATRIBUTO_OUVE, ATRIBUTO_REDE, ouveLista, quemRecebe, redeDe } from './sala05';
 import { interfaceAtiva, useInterfaceAtiva } from '../lib/leveza';
@@ -66,7 +66,7 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
   const checkPauseRef = useRef<(() => void) | null>(null);
   const live = useRef<{ track: MediaStreamTrack; info: string } | null>(null);
   const native = useRef<NativeStream | null>(null);
-  const redeRuimRef = useRef(lerRede().ruim);
+  const redeRuimRef = useRef(lerPreferencias().redeRuim);
   const qualidadeRef = useRef<Record<string, 'original' | 'leve'>>({});
   const somTelaRef = useRef<string | null>(null);
   const publicarOuveRef = useRef<() => void>(() => undefined);
@@ -379,8 +379,8 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
 
     // Join and leave sound (Settings > Sons e avisos); not for the people already there when I arrive.
     function somEntrada(som: 'entrou' | 'saiu') {
-      const s = lerSons();
-      if (s.entrada && !deafRef.current && performance.now() - conectadoEm > 1500) tocarSom(som, s.volume);
+      const p = lerPreferencias();
+      if (p.somEntradaSaida && !deafRef.current && performance.now() - conectadoEm > 1500) tocarSom(som, p.somEntradaSaidaVolume / 100);
     }
     // "Quem me ouve": publish whose microphone I receive, grouping changes that come close together.
     let ouveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -689,7 +689,7 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
     clearStreamError: () => setStreamError(undefined),
     setRedeRuim: (on) => {
       redeRuimRef.current = on;
-      salvarRede(on);
+      salvarPreferencias({ redeRuim: on });
       room?.remoteParticipants.forEach((p) => p.trackPublications.forEach((pub) => {
         if (pub.source === Track.Source.ScreenShare && pub.isSubscribed) pub.setEnabled(videoPermitido());
       }));

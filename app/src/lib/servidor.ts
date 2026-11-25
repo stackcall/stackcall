@@ -19,19 +19,21 @@ export type Usuario = {
   tema: TemaPerfil;
   cor: string | null;
 };
+/** `jogo`: game in the presence (docs/api-v05.md), null when none or older servers. */
 export type Pessoa = Usuario & {
   online: boolean;
   amigo: boolean;
   sala: string | null;
-  /** 0.5: game detected on that person's PC (docs/api-v05.md), null when none. */
-  jogo?: string | null;
-  /** 0.5: pokes this person sent to me, still valid (deduplicate by id). */
-  cutucadas?: Cutucada[];
+  jogo: string | null;
+  /** Only on my own profile: pokes waiting for me, consumed by this read (docs/api-v05.md, Cutucar). */
+  cutucadas?: CutucadaPendente[];
 };
-/** POST /api/cutucar answer and the items of `cutucadas` in the presence. */
-export type Cutucada = { id: string; recado: string; salaId: string | null; expiraEm: number };
-/** Room moderation (docs/api-v05.md): owner and admins only. */
-export type AcaoModeracao = { acao: 'mover'; usuarioId: string; destinoId: string } | { acao: 'silenciar'; usuarioId: string } | { acao: 'retirar'; usuarioId: string };
+/** Who may poke this person. Proposed route GET/PUT /api/eu/cutucadas (docs/design/v05-interface.md). */
+export type ReceberCutucadas = 'todos' | 'amigos' | 'ninguem';
+/** Item of `cutucadas` in my own profile: `de` is the sender's id, `criadoEm` Unix seconds. */
+export type CutucadaPendente = { id: string; de: string; recado: string; criadoEm: number };
+/** Room moderation (docs/api-v05.md): owner and admins only. `silenciar` acts on the whole room. */
+export type AcaoModeracao = { acao: 'mover'; usuarioId: string; destinoId: string } | { acao: 'silenciar' } | { acao: 'retirar'; usuarioId: string };
 export type Sala = { id: string; nome: string; ordem: number; pessoas: number; noAr: boolean };
 export type Convite = { id: string; link: string | null; expiraEm: string; usos: number; usosMax: number };
 export type InfoServidor = { nome: string; versao: string };
@@ -101,9 +103,13 @@ export interface Servidor {
   convites(): Promise<Convite[]>;
   criarConvite(): Promise<Convite>;
   revogarConvite(id: string): Promise<void>;
-  /** 0.5, optional so older fakes keep compiling. 429 = the 30 s limit for that person. */
-  cutucar?(usuarioId: string, recado: string): Promise<Cutucada>;
-  moderar?(salaId: string, acao: AcaoModeracao): Promise<void>;
+  /** PUT /api/eu/jogo; "" clears. */
+  jogo(nome: string): Promise<void>;
+  cutucadas(): Promise<ReceberCutucadas>;
+  salvarCutucadas(receber: ReceberCutucadas): Promise<void>;
+  /** POST /api/cutucar. 429 = the 30 s limit for that person, 403 = their preference refused. */
+  cutucar(para: string, recado: string): Promise<void>;
+  moderar(salaId: string, acao: AcaoModeracao): Promise<void>;
 }
 
 const nomeAparelho = () => (navigator.userAgent.includes('Windows') ? 'PC com Windows' : 'Computador');
@@ -137,11 +143,11 @@ export function lerUsuario(o: Record<string, unknown>, base?: string): Usuario {
     cor: opt(o.cor),
   };
 }
-const lerCutucada = (o: Record<string, unknown>): Cutucada => ({
+const lerCutucada = (o: Record<string, unknown>): CutucadaPendente => ({
   id: str(o.id),
-  recado: str(o.recado ?? o.mensagem).slice(0, 80),
-  salaId: opt(o.sala_id ?? o.salaId),
-  expiraEm: Number(o.expira_em ?? o.expiraEm) || 0,
+  de: str(o.de),
+  recado: str(o.recado).slice(0, 80),
+  criadoEm: Number(o.criado_em) || 0,
 });
 const lerPessoa = (o: Record<string, unknown>, base?: string): Pessoa => ({
   ...lerUsuario(o, base),
@@ -149,8 +155,9 @@ const lerPessoa = (o: Record<string, unknown>, base?: string): Pessoa => ({
   amigo: !!o.amigo,
   sala: opt(o.sala ?? o.sala_id),
   jogo: opt(o.jogo),
-  cutucadas: Array.isArray(o.cutucadas) ? (o.cutucadas as Record<string, unknown>[]).map(lerCutucada).filter((c) => c.id) : [],
+  cutucadas: Array.isArray(o.cutucadas) ? (o.cutucadas as Record<string, unknown>[]).map(lerCutucada).filter((c) => c.id && c.de) : undefined,
 });
+const receberDe = (v: unknown): ReceberCutucadas => (v === 'amigos' || v === 'ninguem' ? v : 'todos');
 const lerSala = (o: Record<string, unknown>): Sala => ({
   id: str(o.id),
   nome: str(o.nome),
@@ -237,10 +244,12 @@ export function servidorReal(url: string): Servidor {
     // The porteiro reads a JSON body here (axum answers 415 without one), so send an empty object.
     criarConvite: async () => lerConvite(await chamar('POST', '/api/convites', {})),
     revogarConvite: async (id) => void (await chamar('DELETE', `/api/convites/${c(id)}`)),
-    // Assumed contract (the route was still being written): body { usuario_id, recado } -> 201 Cutucada.
-    cutucar: async (usuarioId, recado) => lerCutucada(await chamar('POST', '/api/cutucar', { usuario_id: usuarioId, recado })),
+    jogo: async (nome) => void (await chamar('PUT', '/api/eu/jogo', { jogo: nome })),
+    cutucadas: async () => receberDe((await chamar('GET', '/api/eu/cutucadas')).receber),
+    salvarCutucadas: async (receber) => void (await chamar('PUT', '/api/eu/cutucadas', { receber })),
+    cutucar: async (para, recado) => void (await chamar('POST', '/api/cutucar', { para, recado })),
     moderar: async (salaId, a) => void (await chamar('POST', `/api/salas/${c(salaId)}/moderacao/${a.acao}`,
-      a.acao === 'mover' ? { usuario_id: a.usuarioId, destino_id: a.destinoId } : { usuario_id: a.usuarioId })),
+      a.acao === 'mover' ? { usuario_id: a.usuarioId, destino_id: a.destinoId } : a.acao === 'retirar' ? { usuario_id: a.usuarioId } : {})),
   };
 }
 

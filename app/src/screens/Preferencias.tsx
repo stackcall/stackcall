@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTema } from '../lib/tema';
+import { Cabecalho, Linha, Segmento } from '../components/Controles';
+import { TesteRede } from './config/TesteRede';
 import { lerAtalhos } from '../lib/atalhos';
 import { aoMudarVoz, capturaDe, lerVoz, salvarVoz, type Voz } from '../lib/voz';
 
@@ -16,8 +18,8 @@ async function listarAparelhos() {
   return { entradas: de('audioinput'), saidas: de('audiooutput') };
 }
 
-export function SecaoPreferencias() {
-  const [tema, setTema] = useTema();
+/** Settings > Você > Voz e rede: voice mode, devices, voice processing and the network test. */
+export function SecaoPreferencias({ servidorUrl, destaque }: { servidorUrl: string | null; destaque?: string }) {
   const [voz, setVoz] = useState<Voz>(lerVoz);
   // The room can turn the strong suppression off by itself when it fails: follow it.
   useEffect(() => aoMudarVoz(setVoz), []);
@@ -34,23 +36,9 @@ export function SecaoPreferencias() {
 
   return (
     <>
-      <header className="flex flex-col gap-1.5">
-        <h1 className="text-[56px]">Voz e tema</h1>
-        <p className="m-0 text-texto-fraco">Vale para este PC. Muda na hora, sem sair da sala.</p>
-      </header>
+      <Cabecalho rotulo="Você · vale para este PC" titulo="Voz e rede">Muda na hora, sem sair da sala.</Cabecalho>
 
-      <section className="janela flex flex-col">
-        <div className="barra">Tema</div>
-        <div className="flex flex-wrap items-center gap-4 p-4">
-          <div className="abas" role="group" aria-label="Tema">
-            <button type="button" aria-pressed={tema === 'claro'} onClick={() => setTema('claro')}>Claro</button>
-            <button type="button" aria-pressed={tema === 'escuro'} onClick={() => setTema('escuro')}>Escuro</button>
-          </div>
-          <span className="text-[14px] text-texto-fraco">O claro é o padrão. A barra de título do Windows acompanha.</span>
-        </div>
-      </section>
-
-      <section className="janela flex flex-col" aria-label="Modo de voz">
+      <section data-ajuste="voz-modo" className={`janela flex flex-col ${destaque === 'voz-modo' ? 'outline-2 outline-offset-2 outline-destaque' : ''}`} aria-label="Modo de voz">
         <div className="barra">Modo de voz</div>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3 p-4">
           <div className="abas" role="group" aria-label="Modo de voz">
@@ -77,7 +65,7 @@ export function SecaoPreferencias() {
       </section>
 
       <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4 max-[1180px]:grid-cols-1">
-        <section className="janela flex flex-col">
+        <section data-ajuste="voz-aparelhos" className={`janela flex flex-col ${destaque === 'voz-aparelhos' ? 'outline-2 outline-offset-2 outline-destaque' : ''}`}>
           <div className="barra">Aparelhos</div>
           <div className="flex flex-col gap-4 p-4">
             {aparelhos === null ? (
@@ -95,7 +83,7 @@ export function SecaoPreferencias() {
           </div>
         </section>
 
-        <section className="janela flex flex-col">
+        <section data-ajuste="voz-ruido voz-eco voz-ganho" className={`janela flex flex-col ${destaque && ['voz-ruido', 'voz-eco', 'voz-ganho'].includes(destaque) ? 'outline-2 outline-offset-2 outline-destaque' : ''}`}>
           <div className="barra">Tratamento da voz</div>
           <div className="flex flex-col p-4">
             <Opcao id="voz-ruido" rotulo="Supressão de ruído" ajuda={voz.forte
@@ -111,6 +99,21 @@ export function SecaoPreferencias() {
           </div>
         </section>
       </div>
+
+      <TesteRede servidorUrl={servidorUrl} destaque={destaque === 'voz-rede'} />
+    </>
+  );
+}
+
+/** Settings > Você > Aparência. */
+export function SecaoAparencia({ destaque }: { destaque?: string }) {
+  const [tema, setTema] = useTema();
+  return (
+    <>
+      <Cabecalho rotulo="Você · vale para este PC" titulo="Aparência" />
+      <Linha ajuste="tema" titulo="Tema" descricao="O claro é o padrão. A barra de título do Windows acompanha." destaque={destaque === 'tema'}>
+        <Segmento rotulo="Tema" valor={tema} opcoes={[['claro', 'Claro'], ['escuro', 'Escuro']]} onMudar={setTema} />
+      </Linha>
     </>
   );
 }

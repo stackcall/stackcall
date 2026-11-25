@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
 import { CATEGORIES, countOf, formatDate, loadChangelog, type Version } from '../lib/changelog';
 import type { useUpdater } from '../lib/updater';
@@ -6,14 +6,16 @@ import { updateButtonLabel } from '../components/UpdateBanner';
 import { Avatar } from '../components/Avatar';
 import { Icone } from '../components/Icone';
 import { Faixa } from '../components/Faixa';
+import { Cabecalho } from '../components/Controles';
 import { testMachine } from '../lib/sidecar';
 import type { Convite, Pessoa, Sala, Servidor, Usuario } from '../lib/servidor';
 import { escolherServidor, lerServidores, servidorAtual } from '../lib/servidores';
-import { SecaoPreferencias } from './Preferencias';
+import { buscarAjustes, caminhoDe, GRUPOS, paginasVisiveis, type Ajuste, type PaginaId } from '../lib/buscaConfig';
+import { SecaoAparencia, SecaoPreferencias } from './Preferencias';
 import { SecaoAtalhos } from './Atalhos';
+import { PaginaClipes, PaginaCs2, PaginaCutucadas, PaginaPerfil, PaginaQuemFala, PaginaSons } from './config/Paginas';
 
 type Updater = ReturnType<typeof useUpdater>;
-type Secao = 'servidor' | 'servidores' | 'voz' | 'atalhos' | 'sobre';
 
 const CATEGORY_LABEL: Record<(typeof CATEGORIES)[number], [string, string]> = {
   Novidades: ['novidade', 'novidades'],
@@ -33,16 +35,17 @@ const hhmm = (d: Date) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minut
 const data = (iso: string) => (iso ? new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) : '—');
 
 type Props = {
-  /** Page to open (the command palette sends the person straight to the right setting). */
-  secaoInicial?: Secao;
   updater: Updater;
   inCall: boolean;
   servidor: Servidor | null;
   eu: Usuario | null;
   salas: Sala[];
   pessoas: Pessoa[];
+  /** First page to open (for example from the lobby or the room). */
+  pagina?: PaginaId;
   onClose(): void;
   onNotes(): void;
+  onPerfil(): void;
   onSalas(s: Sala[]): void;
   onPessoas(p: Pessoa[]): void;
   onSair(): void;
@@ -50,39 +53,135 @@ type Props = {
   onColarConvite(): void;
 };
 
+/**
+ * Settings (docs/design/v05-interface.md, section 5): Você, Servidor (owner and admins) and
+ * App, with a search over every setting. A result opens its page and outlines the row.
+ */
 export function Settings(props: Props) {
-  const [secao, setSecao] = useState<Secao>(props.secaoInicial && (props.servidor || !['servidor', 'servidores'].includes(props.secaoInicial))
-    ? props.secaoInicial : props.servidor ? 'servidor' : 'sobre');
+  const admin = props.eu?.papel === 'dono' || props.eu?.papel === 'admin';
+  const comServidor = !!(props.servidor && props.eu);
+  const visiveis = paginasVisiveis(comServidor, admin);
+  // The server may still be loading: keep the wish and fall back below until the page is visible.
+  const [pagina, setPagina] = useState<PaginaId>(props.pagina ?? 'perfil');
+  const [busca, setBusca] = useState('');
+  const [destaque, setDestaque] = useState<string>();
+  const principal = useRef<HTMLElement>(null);
+  const atual = visiveis.some((p) => p.id === pagina) ? pagina : visiveis[0].id;
+
   useEffect(() => {
     // Esc while a shortcut is being recorded cancels the recording, not the whole screen.
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && !document.querySelector('[data-gravando]') && props.onClose();
     window.addEventListener('keydown', esc);
     return () => window.removeEventListener('keydown', esc);
   }, [props.onClose]);
-  const itens: [Secao, string][] = [
-    ...(props.servidor ? ([['servidor', 'Servidor'], ['servidores', 'Servidores']] as [Secao, string][]) : []),
-    ['voz', 'Voz e tema'],
-    ['atalhos', 'Atalhos'],
-    ['sobre', 'Sobre e atualizações'],
-  ];
+
+  useEffect(() => {
+    if (!destaque) return;
+    principal.current?.querySelector(`[data-ajuste~="${destaque}"]`)?.scrollIntoView({ block: 'center' });
+    const t = setTimeout(() => setDestaque(undefined), 2500);
+    return () => clearTimeout(t);
+  }, [destaque, atual]);
+
+  const abrir = (id: PaginaId, ajuste?: string) => {
+    setPagina(id);
+    setBusca('');
+    setDestaque(ajuste);
+    principal.current?.scrollTo?.({ top: 0 });
+  };
+  const resultados = busca.trim() ? buscarAjustes(busca, visiveis.map((p) => p.id)) : null;
+  const nomeServidor = props.servidor ? new URL(props.servidor.url).host : '';
+
   return (
-    <div role="dialog" aria-modal="true" aria-label="Configurações" className="absolute inset-0 z-20 grid grid-cols-[260px_minmax(0,1fr)] bg-fundo">
-      <nav aria-label="Seções" className="flex flex-col gap-2 border-r border-texto bg-superficie p-4">
-        <h2 className="px-1 pb-2 text-[28px]">Configurações</h2>
-        {itens.map(([id, rotulo]) => (
-          <button key={id} type="button" aria-current={secao === id ? 'page' : undefined} onClick={() => setSecao(id)}
-            className={`btn justify-start ${secao === id ? 'bg-texto text-superficie' : ''}`}>{rotulo}</button>
-        ))}
-        <button type="button" onClick={props.onClose} className="btn btn-fant mt-auto">Voltar</button>
+    <div role="dialog" aria-modal="true" aria-label="Configurações" className="absolute inset-0 z-20 grid grid-cols-[272px_minmax(0,1fr)] bg-fundo">
+      <nav aria-label="Seções" className="flex min-h-0 flex-col gap-px overflow-y-auto border-r border-texto bg-superficie px-3.5 pt-4 pb-3">
+        <span className="rotulo px-1">/ Configurações</span>
+        <label className={`my-2 flex h-10 shrink-0 items-center gap-2 border px-2.5 text-texto-fraco ${busca ? 'border-2 border-destaque' : 'border-texto'}`}>
+          <Icone nome="busca" tamanho={15} />
+          <input type="search" value={busca} placeholder="Buscar ajuste" aria-label="Buscar ajuste" autoComplete="off" spellCheck={false}
+            onChange={(e) => setBusca(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' && busca) {
+                e.stopPropagation();
+                setBusca('');
+              }
+              if (e.key === 'Enter' && resultados?.[0]) abrir(resultados[0].pagina, resultados[0].id);
+            }}
+            className="min-w-0 flex-1 border-0 bg-transparent text-[14px] text-texto outline-none placeholder:text-texto-fraco" />
+        </label>
+        {GRUPOS.map((g) => {
+          const itens = visiveis.filter((p) => p.grupo === g.id);
+          if (!itens.length) return null;
+          return (
+            <div key={g.id} className="flex flex-col gap-px" role="group" aria-label={g.rotulo}>
+              <span className="mt-2.5 flex items-center gap-1.5 px-2.5 py-1 font-mono text-[10.5px] font-bold tracking-[0.06em] text-texto-fraco uppercase">
+                {g.id === 'servidor' && props.eu ? <>Servidor <span className="max-w-[120px] truncate normal-case">{nomeServidor}</span><span className="border border-current px-1 py-px text-[9.5px]">{props.eu.papel}</span></> : g.rotulo}
+              </span>
+              {itens.map((p) => (
+                <button key={p.id} type="button" aria-current={!resultados && atual === p.id ? 'page' : undefined} onClick={() => abrir(p.id)}
+                  className={`flex min-h-[32px] items-center border-0 px-2.5 text-left text-[14px] ${!resultados && atual === p.id ? 'bg-texto font-bold text-superficie' : 'bg-transparent font-medium text-texto hover:bg-superficie-alta'}`}>
+                  {p.rotulo}
+                </button>
+              ))}
+            </div>
+          );
+        })}
+        <button type="button" onClick={props.onClose} className="btn btn-fant mt-auto shrink-0 justify-start gap-2 border-t border-t-borda">
+          <Icone nome="sair" tamanho={16} />Voltar
+        </button>
       </nav>
-      <main className="flex min-w-0 flex-col gap-5 overflow-y-auto px-10 py-7">
-        {secao === 'servidor' && props.servidor && props.eu && <SecaoServidor {...props} servidor={props.servidor} eu={props.eu} />}
-        {secao === 'servidores' && <SecaoServidores atual={props.servidor?.url ?? null} onTrocar={props.onTrocar} onColarConvite={props.onColarConvite} />}
-        {secao === 'voz' && <SecaoPreferencias />}
-        {secao === 'atalhos' && <SecaoAtalhos />}
-        {secao === 'sobre' && <SecaoSobre updater={props.updater} inCall={props.inCall} onNotes={props.onNotes} />}
+      <main ref={principal} className="flex min-w-0 flex-col gap-3 overflow-y-auto px-8 pt-6 pb-8">
+        <div className="flex w-full max-w-[1040px] flex-col gap-3">
+          {resultados ? <Resultados busca={busca} lista={resultados} onAbrir={(a) => abrir(a.pagina, a.id)} /> : (
+            <>
+              {atual === 'perfil' && <PaginaPerfil eu={props.eu} destaque={destaque} onEditar={props.onPerfil} />}
+              {atual === 'voz' && <SecaoPreferencias servidorUrl={props.servidor?.url ?? null} destaque={destaque} />}
+              {atual === 'atalhos' && <SecaoAtalhos />}
+              {atual === 'clipes' && <PaginaClipes destaque={destaque} />}
+              {atual === 'cutucadas' && <PaginaCutucadas servidor={props.servidor} eu={props.eu} destaque={destaque} />}
+              {atual === 'sons' && <PaginaSons destaque={destaque} />}
+              {atual === 'quemfala' && <PaginaQuemFala destaque={destaque} />}
+              {atual === 'cs2' && <PaginaCs2 destaque={destaque} />}
+              {atual === 'aparencia' && <SecaoAparencia destaque={destaque} />}
+              {atual === 'geral' && props.servidor && props.eu && <PaginaGeral servidor={props.servidor} eu={props.eu} />}
+              {atual === 'salas' && props.servidor && <PaginaSalas servidor={props.servidor} salas={props.salas} onSalas={props.onSalas} />}
+              {atual === 'membros' && props.servidor && props.eu && <PaginaMembros servidor={props.servidor} eu={props.eu} pessoas={props.pessoas} onPessoas={props.onPessoas} />}
+              {atual === 'servidores' && (
+                <SecaoServidores atual={props.servidor?.url ?? null} servidor={props.servidor} eu={props.eu}
+                  onTrocar={props.onTrocar} onColarConvite={props.onColarConvite} onSair={props.onSair} />
+              )}
+              {atual === 'sobre' && <SecaoSobre updater={props.updater} inCall={props.inCall} onNotes={props.onNotes} />}
+            </>
+          )}
+        </div>
       </main>
     </div>
+  );
+}
+
+function Resultados({ busca, lista, onAbrir }: { busca: string; lista: Ajuste[]; onAbrir(a: Ajuste): void }) {
+  return (
+    <>
+      <Cabecalho rotulo={`Busca · ${lista.length === 1 ? '1 ajuste' : `${lista.length} ajustes`} com “${busca.trim()}”`} titulo="Resultados" />
+      {lista.length ? (
+        <ul className="janela m-0 flex list-none flex-col p-0" aria-label="Resultados da busca">
+          {lista.map((a) => (
+            <li key={a.id} className="border-t border-borda first:border-t-0">
+              <button type="button" onClick={() => onAbrir(a)} className="flex w-full items-center gap-6 border-0 bg-transparent px-4 py-3.5 text-left text-texto hover:bg-superficie-alta">
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="rotulo">{caminhoDe(a)}</span>
+                  <b className="text-[15px]">{a.titulo}</b>
+                  <span className="text-[13.5px] text-texto-fraco">{a.descricao}</span>
+                </span>
+                <span className="rotulo shrink-0">Abrir ›</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="janela p-4 text-texto-fraco">Nenhum ajuste com “{busca.trim()}”. Tente outra palavra, como “microfone” ou “tela”.</div>
+      )}
+      <p className="m-0 font-mono text-[11.5px] text-texto-fraco">Busca no nome do ajuste, na descrição e em apelidos (“ptt”, “mute”, “gravação”).</p>
+    </>
   );
 }
 
@@ -91,52 +190,70 @@ function Erro({ texto, onTentar }: { texto?: string; onTentar?(): void }) {
   return texto ? <Faixa acoes={onTentar ? [{ rotulo: 'Tentar de novo', onClick: onTentar }] : []}>{texto}</Faixa> : null;
 }
 
-function SecaoServidor({ servidor, eu, salas, pessoas, onSalas, onPessoas, onSair }: Props & { servidor: Servidor; eu: Usuario }) {
-  const admin = eu.papel === 'dono' || eu.papel === 'admin';
-  const [aparelho, setAparelho] = useState<string>();
-  const [erro, setErro] = useState<string>();
+/** Servidor > Geral e convites. */
+function PaginaGeral({ servidor, eu }: { servidor: Servidor; eu: Usuario }) {
   const host = new URL(servidor.url).host;
   return (
     <>
-      <header className="flex flex-col gap-1.5">
-        <span className="rotulo">/ Servidor · {host}</span>
-        <h1 className="text-[56px]">Servidor</h1>
-        <p className="m-0 text-texto-fraco">Você entrou como <b className="text-texto">{eu.nome}</b> ({eu.papel}). Um servidor é um grupo: só entra quem recebe convite.</p>
-      </header>
-
-      <section className="janela flex flex-col">
-        <div className="barra">Este aparelho</div>
-        <div className="flex flex-wrap items-center gap-3 p-4">
-          <button type="button" className="btn" onClick={async () => {
-            setErro(undefined);
-            try {
-              const link = await servidor.linkAparelho();
-              setAparelho(link);
-              await navigator.clipboard.writeText(link).catch(() => undefined);
-            } catch (e) {
-              setErro(e instanceof Error ? e.message : String(e));
-            }
-          }}>Entrar em outro aparelho</button>
-          <button type="button" className="btn text-perigo" onClick={onSair}>Sair deste aparelho</button>
-          {aparelho && (
-            <p role="status" className="m-0 basis-full text-[14px]">
-              Link copiado. Abra no outro PC em até 10 minutos; ele vale uma vez: <code className="font-mono break-all">{aparelho}</code>
-            </p>
-          )}
-          <Erro texto={erro} />
-        </div>
-      </section>
-
-      {admin ? (
-        <>
-          <Convites servidor={servidor} />
-          <Salas servidor={servidor} salas={salas} onSalas={onSalas} />
-          <Membros servidor={servidor} eu={eu} pessoas={pessoas} onPessoas={onPessoas} />
-        </>
-      ) : (
-        <p className="m-0 text-texto-fraco">Convites, salas e pessoas ficam com o dono e os admins.</p>
-      )}
+      <Cabecalho rotulo={`Servidor · ${host}`} titulo="Geral e convites">
+        Você entrou como <b className="text-texto">{eu.nome}</b> ({eu.papel}). Um servidor é um grupo: só entra quem recebe convite.
+      </Cabecalho>
+      <div data-ajuste="servidor-nome convites"><Convites servidor={servidor} /></div>
     </>
+  );
+}
+
+/** Servidor > Salas. */
+function PaginaSalas({ servidor, salas, onSalas }: { servidor: Servidor; salas: Sala[]; onSalas(s: Sala[]): void }) {
+  return (
+    <>
+      <Cabecalho rotulo={`Servidor · ${salas.length === 1 ? '1 sala' : `${salas.length} salas`}`} titulo="Salas">
+        As salas fixas do grupo. As sub-salas CT e TR do CS2 aparecem e somem sozinhas durante a partida.
+      </Cabecalho>
+      <div data-ajuste="salas-lista"><Salas servidor={servidor} salas={salas} onSalas={onSalas} /></div>
+    </>
+  );
+}
+
+/** Servidor > Membros e cargos. */
+function PaginaMembros(p: { servidor: Servidor; eu: Usuario; pessoas: Pessoa[]; onPessoas(p: Pessoa[]): void }) {
+  return (
+    <>
+      <Cabecalho rotulo={`Servidor · ${p.pessoas.length} membros`} titulo="Membros e cargos">
+        O dono e os admins convidam, cuidam das salas e moderam. O cargo de cada pessoa aparece ao lado do nome.
+      </Cabecalho>
+      <div data-ajuste="membros-lista"><Membros {...p} /></div>
+    </>
+  );
+}
+
+/** "Este aparelho": another PC or leaving this one. Shown under Servidores for everyone. */
+function EsteAparelho({ servidor, onSair }: { servidor: Servidor; onSair(): void }) {
+  const [aparelho, setAparelho] = useState<string>();
+  const [erro, setErro] = useState<string>();
+  return (
+    <section data-ajuste="aparelho" className="janela flex flex-col">
+      <div className="barra">Este aparelho<span className="ml-auto font-medium">{new URL(servidor.url).host}</span></div>
+      <div className="flex flex-wrap items-center gap-3 p-4">
+        <button type="button" className="btn" onClick={async () => {
+          setErro(undefined);
+          try {
+            const link = await servidor.linkAparelho();
+            setAparelho(link);
+            await navigator.clipboard.writeText(link).catch(() => undefined);
+          } catch (e) {
+            setErro(e instanceof Error ? e.message : String(e));
+          }
+        }}>Entrar em outro aparelho</button>
+        <button type="button" className="btn text-perigo" onClick={onSair}>Sair deste aparelho</button>
+        {aparelho && (
+          <p role="status" className="m-0 basis-full text-[14px]">
+            Link copiado. Abra no outro PC em até 10 minutos; ele vale uma vez: <code className="font-mono break-all">{aparelho}</code>
+          </p>
+        )}
+        <Erro texto={erro} />
+      </div>
+    </section>
   );
 }
 
@@ -292,17 +409,17 @@ function Membros({ servidor, eu, pessoas, onPessoas }: { servidor: Servidor; eu:
   );
 }
 
-function SecaoServidores({ atual, onTrocar, onColarConvite }: { atual: string | null; onTrocar(url: string): void; onColarConvite(): void }) {
+function SecaoServidores({ atual, servidor, eu, onTrocar, onColarConvite, onSair }: {
+  atual: string | null; servidor: Servidor | null; eu: Usuario | null; onTrocar(url: string): void; onColarConvite(): void; onSair(): void;
+}) {
   const lista = lerServidores();
   const ativo = atual ?? servidorAtual();
   return (
     <>
-      <header className="flex flex-col gap-1.5">
-        <span className="rotulo">/ Servidores · {lista.length}</span>
-        <h1 className="text-[56px]">Servidores</h1>
-        <p className="m-0 text-texto-fraco">Cada servidor é uma turma. Para entrar em outro, cole o convite que essa turma mandou.</p>
-      </header>
-      <section className="janela flex flex-col">
+      <Cabecalho rotulo={`App · ${lista.length === 1 ? '1 servidor' : `${lista.length} servidores`}`} titulo="Servidores">
+        Cada servidor é uma turma. Para entrar em outro, cole o convite que essa turma mandou.
+      </Cabecalho>
+      <section data-ajuste="servidores-lista" className="janela flex flex-col">
         <div className="barra">Seus servidores</div>
         <ul className="m-0 flex list-none flex-col p-4">
           {lista.length === 0 && <li className="text-texto-fraco">Nenhum servidor salvo neste PC.</li>}
@@ -322,6 +439,7 @@ function SecaoServidores({ atual, onTrocar, onColarConvite }: { atual: string | 
           <button type="button" className="btn btn-prim" onClick={onColarConvite}><Icone nome="mais" />Adicionar servidor com convite</button>
         </div>
       </section>
+      {servidor && eu && <EsteAparelho servidor={servidor} onSair={onSair} />}
     </>
   );
 }
@@ -336,11 +454,8 @@ function SecaoSobre({ updater, inCall, onNotes }: { updater: Updater; inCall: bo
 
   return (
     <>
-      <header className="flex flex-col gap-1.5">
-        <span className="rotulo">/ Stackcall · canal estável</span>
-        <h1 className="text-[56px]">Sobre e atualizações</h1>
-      </header>
-      <div className="grid grid-cols-2 gap-4">
+      <Cabecalho rotulo="App · canal estável" titulo="Sobre e atualizações" />
+      <div data-ajuste="atualizacoes" className="grid grid-cols-2 gap-4">
         <section className="janela flex flex-col">
           <div className="barra barra-lima">Instalado</div>
           <div className="flex flex-col gap-3 p-4">
@@ -398,7 +513,7 @@ function SecaoSobre({ updater, inCall, onNotes }: { updater: Updater; inCall: bo
       </label>
 
       {isTauri() && (
-        <section className="janela flex items-center gap-4 px-4 py-3">
+        <section data-ajuste="teste-placa" className="janela flex items-center gap-4 px-4 py-3">
           <button type="button" disabled={testing} className="btn" onClick={async () => {
             setTesting(true);
             setTestResult('');

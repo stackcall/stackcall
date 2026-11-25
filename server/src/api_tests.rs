@@ -157,7 +157,6 @@ async fn fixture_with_sleep(members_can_invite: bool, idle: Option<Duration>) ->
         public_url: "https://example.test/".parse().unwrap(),
         members_can_invite,
         image_jobs: Arc::new(tokio::sync::Semaphore::new(1)),
-        sound_jobs: Arc::new(tokio::sync::Semaphore::new(1)),
         db: Mutex::new(db),
         livekit: livekit::LiveKit::new(
             "test_key".into(),
@@ -430,118 +429,83 @@ async fn cs2_rooms_have_stable_team_ids_and_are_listed_only_while_occupied() {
     );
 }
 
-#[tokio::test]
-async fn soundboard_rejects_invalid_uploads_and_serves_private_files() {
-    let fixture = fixture(false).await;
-    let app = &fixture.app;
-    let owner = join(app, &fixture.owner_code, "Dono").await;
-    let member = member(app, session(&owner)).await;
-    let upload = |viewer: String, uri: &'static str, bytes: Vec<u8>| async move {
-        result(
-            app,
-            request(
-                Method::POST,
-                uri,
-                Some(&viewer),
-                Body::from(bytes),
-                "192.0.2.200:1234".parse().unwrap(),
-            ),
-        )
-        .await
-    };
-    let uri = "/api/soundboard?nome=Sino&emoji=%F0%9F%94%94";
-    let opus = audio::silent_opus(40);
-    assert_eq!(
-        upload(session(&member).into(), uri, opus.clone()).await.0,
-        StatusCode::FORBIDDEN
-    );
-    assert_eq!(
-        upload(
-            session(&owner).into(),
-            "/api/soundboard?nome=Sino&emoji=x",
-            opus.clone()
-        )
-        .await
-        .0,
-        StatusCode::BAD_REQUEST
-    );
-    assert_eq!(
-        upload(session(&owner).into(), uri, vec![0; audio::MAX_BYTES + 1])
-            .await
-            .0,
-        StatusCode::PAYLOAD_TOO_LARGE
-    );
-    assert_eq!(
-        upload(session(&owner).into(), uri, b"OggSfake".to_vec())
-            .await
-            .0,
-        StatusCode::UNSUPPORTED_MEDIA_TYPE
-    );
-    assert_eq!(
-        upload(session(&owner).into(), uri, audio::silent_opus(251))
-            .await
-            .0,
-        StatusCode::UNPROCESSABLE_ENTITY
-    );
-    let (status, item) = upload(session(&owner).into(), uri, opus.clone()).await;
-    assert_eq!(status, StatusCode::CREATED);
-    assert_eq!(item["duracao_ms"], 800);
-    fixture.config.db.lock().unwrap().execute(
-        "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 23)
-         INSERT INTO sons SELECT printf('fixture-%02d', n), 'Sino', '🔔', 'audio/ogg', 800, ?1 FROM seq",
-        [&opus],
-    ).unwrap();
-    assert_eq!(
-        upload(session(&owner).into(), uri, opus.clone()).await.0,
-        StatusCode::CONFLICT
-    );
-    let (_, list) = send(
+async fn poke(app: &Router, sender: &Value, recipient: &str, note: &str) -> StatusCode {
+    send(
+        app,
+        Method::POST,
+        "/api/cutucar",
+        Some(session(sender)),
+        json!({"para":recipient,"recado":note}),
+    )
+    .await
+    .0
+}
+
+async fn received_pokes(app: &Router, recipient: &Value) -> Vec<Value> {
+    let (status, profiles) = send(
         app,
         Method::GET,
-        "/api/soundboard",
-        Some(session(&member)),
+        "/api/pessoas",
+        Some(session(recipient)),
         Value::Null,
     )
     .await;
-    assert_eq!(list.as_array().unwrap().len(), 24);
-    let url = item["url"].as_str().unwrap();
-    let download = |token| {
-        request(
-            Method::GET,
-            url,
-            token,
-            Body::empty(),
-            "192.0.2.200:1234".parse().unwrap(),
+    assert_eq!(status, StatusCode::OK);
+    let profiles = profiles.as_array().unwrap();
+    assert!(
+        profiles
+            .iter()
+            .filter(|person| person["id"] != id(recipient))
+            .all(|person| person.get("cutucadas").is_none())
+    );
+    profiles
+        .iter()
+        .find(|person| person["id"] == id(recipient))
+        .unwrap()["cutucadas"]
+        .as_array()
+        .unwrap()
+        .clone()
+}
+
+#[tokio::test]
+async fn poke_preferences_follow_the_recipients_friend_list_and_apply_at_delivery() {
+    let fixture = fixture(false).await;
+    let app = &fixture.app;
+    let owner = join(app, &fixture.owner_code, "Dono").await;
+    let recipient = member(app, session(&owner)).await;
+    let stranger = member(app, session(&owner)).await;
+    let settings = "/api/eu/cutucadas";
+    let set = |value: &'static str| {
+        send(
+            app,
+            Method::PUT,
+            settings,
+            Some(session(&recipient)),
+            json!({"receber":value}),
         )
     };
     assert_eq!(
-        app.clone().oneshot(download(None)).await.unwrap().status(),
-        StatusCode::UNAUTHORIZED
+        send(
+            app,
+            Method::GET,
+            settings,
+            Some(session(&recipient)),
+            Value::Null
+        )
+        .await,
+        (StatusCode::OK, json!({"receber":"todos"}))
     );
-    let response = app
-        .clone()
-        .oneshot(download(Some(session(&member))))
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(response.headers()[header::CONTENT_TYPE], "audio/ogg");
+    assert_eq!(set("invalid").await.0, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(set("amigos").await.0, StatusCode::NO_CONTENT);
     assert_eq!(
-        response.headers()[header::CACHE_CONTROL],
-        "private, max-age=86400, immutable"
+        poke(app, &owner, id(&recipient), "").await,
+        StatusCode::FORBIDDEN
     );
-    assert_eq!(
-        to_bytes(response.into_body(), audio::MAX_BYTES)
-            .await
-            .unwrap()
-            .as_ref(),
-        &opus
-    );
-    let remove = format!("/api/soundboard/{}", item["id"].as_str().unwrap());
     assert_eq!(
         send(
             app,
-            Method::DELETE,
-            &remove,
+            Method::POST,
+            &format!("/api/amigos/{}", id(&recipient)),
             Some(session(&owner)),
             Value::Null
         )
@@ -550,88 +514,202 @@ async fn soundboard_rejects_invalid_uploads_and_serves_private_files() {
         StatusCode::NO_CONTENT
     );
     assert_eq!(
-        app.clone()
-            .oneshot(download(Some(session(&member))))
-            .await
-            .unwrap()
-            .status(),
+        poke(app, &owner, id(&recipient), "").await,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        send(
+            app,
+            Method::POST,
+            &format!("/api/amigos/{}", id(&owner)),
+            Some(session(&recipient)),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        poke(app, &owner, id(&recipient), "antes do bloqueio").await,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(set("ninguem").await.0, StatusCode::NO_CONTENT);
+    assert_eq!(
+        poke(app, &owner, id(&recipient), "").await,
+        StatusCode::FORBIDDEN
+    );
+    assert!(received_pokes(app, &recipient).await.is_empty());
+    assert_eq!(set("todos").await.0, StatusCode::NO_CONTENT);
+    assert_eq!(
+        send(
+            app,
+            Method::GET,
+            settings,
+            Some(session(&recipient)),
+            Value::Null
+        )
+        .await,
+        (StatusCode::OK, json!({"receber":"todos"}))
+    );
+    assert_eq!(
+        poke(app, &stranger, id(&recipient), "  Oi!  ").await,
+        StatusCode::NO_CONTENT
+    );
+    assert!(received_pokes(app, &owner).await.is_empty());
+    let received = received_pokes(app, &recipient).await;
+    assert_eq!(received.len(), 1);
+    assert_eq!(received[0]["de"], id(&stranger));
+    assert_eq!(received[0]["recado"], "Oi!");
+    assert_eq!(
+        poke(app, &owner, &auth::id(), "").await,
         StatusCode::NOT_FOUND
     );
-}
-
-#[tokio::test]
-async fn calls_reach_only_friends_online_at_send_time_and_are_rate_limited() {
-    let fixture = fixture(false).await;
-    let app = &fixture.app;
-    let owner = join(app, &fixture.owner_code, "Dono").await;
-    let online = member(app, session(&owner)).await;
-    let offline = member(app, session(&owner)).await;
-    let stranger = member(app, session(&owner)).await;
-    fixture
-        .config
-        .db
-        .lock()
-        .unwrap()
-        .execute("INSERT INTO salas VALUES ('room-in-use', 'Em uso', 99)", [])
-        .unwrap();
-    for friend in [&online, &offline] {
-        assert_eq!(
-            send(
-                app,
-                Method::POST,
-                &format!("/api/amigos/{}", id(friend)),
-                Some(session(&owner)),
-                Value::Null
-            )
-            .await
-            .0,
-            StatusCode::NO_CONTENT
-        );
-    }
-    *fixture.online.lock().unwrap() = vec![id(&online).into(), id(&stranger).into()];
-    let call = || {
+    assert_eq!(
+        poke(app, &owner, id(&owner), "").await,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        poke(app, &owner, id(&recipient), "linha\n").await,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        poke(app, &owner, id(&recipient), &"á".repeat(81)).await,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
         send(
             app,
             Method::POST,
             "/api/chamar",
             Some(session(&owner)),
-            json!({"sala_id":"room-in-use","mensagem":" Bora? "}),
+            json!({})
         )
-    };
-    let (first, second) = tokio::join!(call(), call());
-    let mut results = [first.0, second.0];
-    results.sort();
-    assert_eq!(
-        results,
-        [StatusCode::CREATED, StatusCode::TOO_MANY_REQUESTS]
+        .await
+        .0,
+        StatusCode::NOT_FOUND
     );
-    fixture.online.lock().unwrap().push(id(&offline).into());
-    let calls = |viewer: String| async move {
-        let (_, people) = send(app, Method::GET, "/api/pessoas", Some(&viewer), Value::Null).await;
-        people
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|p| p["papel"] == "dono")
-            .unwrap()["chamados"]
-            .clone()
-    };
-    let visible = calls(session(&online).into()).await;
-    assert_eq!(visible[0]["sala_id"], "room-in-use");
-    assert_eq!(visible[0]["mensagem"], "Bora?");
-    assert_eq!(calls(session(&online).into()).await, visible);
-    for viewer in [&owner, &offline, &stranger] {
-        assert_eq!(calls(session(viewer).into()).await, json!([]));
+}
+
+#[tokio::test]
+async fn pokes_enforce_pair_and_sender_limits_across_concurrent_requests() {
+    let fixture = fixture(false).await;
+    let app = &fixture.app;
+    let owner = join(app, &fixture.owner_code, "Dono").await;
+    let other_sender = member(app, session(&owner)).await;
+    let recipients: Vec<_> = (0..10).map(|_| auth::id()).collect();
+    {
+        let db = fixture.config.db.lock().unwrap();
+        for recipient in &recipients {
+            db.execute(
+                "INSERT INTO usuarios (id, nome, papel, criado_em)
+                 VALUES (?1, 'Destinatário', 'membro', 0)",
+                [recipient],
+            )
+            .unwrap();
+        }
     }
+    let first = &recipients[0];
+    let (one, two) = tokio::join!(poke(app, &owner, first, ""), poke(app, &owner, first, ""));
+    let mut statuses = [one, two];
+    statuses.sort();
+    assert_eq!(
+        statuses,
+        [StatusCode::NO_CONTENT, StatusCode::TOO_MANY_REQUESTS]
+    );
+
     fixture
         .config
         .db
         .lock()
         .unwrap()
-        .execute("UPDATE chamados SET criado_em = unixepoch() - 120", [])
+        .execute(
+            "UPDATE cutucadas SET criado_em = unixepoch('subsec') - 30",
+            [],
+        )
         .unwrap();
-    assert_eq!(calls(session(&online).into()).await, json!([]));
-    assert_eq!(call().await.0, StatusCode::CREATED);
+    assert_eq!(poke(app, &owner, first, "").await, StatusCode::NO_CONTENT);
+    for recipient in &recipients[1..9] {
+        assert_eq!(
+            poke(app, &owner, recipient, "").await,
+            StatusCode::NO_CONTENT
+        );
+    }
+    let last = &recipients[9];
+    assert_eq!(
+        poke(app, &owner, last, "").await,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert_eq!(
+        poke(app, &other_sender, last, "").await,
+        StatusCode::NO_CONTENT
+    );
+
+    fixture
+        .config
+        .db
+        .lock()
+        .unwrap()
+        .execute(
+            "UPDATE cutucadas SET criado_em = unixepoch('subsec') - 60
+         WHERE id = (SELECT id FROM cutucadas WHERE remetente_id = ?1 ORDER BY criado_em LIMIT 1)",
+            [id(&owner)],
+        )
+        .unwrap();
+    assert_eq!(poke(app, &owner, last, "").await, StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn presence_delivers_a_poke_once_and_ignores_expired_pokes() {
+    let fixture = fixture(false).await;
+    let app = &fixture.app;
+    let owner = join(app, &fixture.owner_code, "Dono").await;
+    let recipient = member(app, session(&owner)).await;
+    let note = "🖐".repeat(80);
+    assert_eq!(
+        poke(app, &owner, id(&recipient), &note).await,
+        StatusCode::NO_CONTENT
+    );
+    let (one, two) = tokio::join!(
+        received_pokes(app, &recipient),
+        received_pokes(app, &recipient)
+    );
+    let received: Vec<_> = one.into_iter().chain(two).collect();
+    assert_eq!(received.len(), 1);
+    assert_eq!(received[0]["de"], id(&owner));
+    assert_eq!(received[0]["recado"], note);
+    assert!(auth::is_hex(received[0]["id"].as_str().unwrap(), 32));
+    assert!(received[0]["criado_em"].as_i64().unwrap() > 0);
+    assert!(received_pokes(app, &recipient).await.is_empty());
+    assert_eq!(
+        poke(app, &owner, id(&recipient), "").await,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+
+    fixture
+        .config
+        .db
+        .lock()
+        .unwrap()
+        .execute(
+            "UPDATE cutucadas SET criado_em = unixepoch('subsec') - 120",
+            [],
+        )
+        .unwrap();
+    assert_eq!(
+        poke(app, &owner, id(&recipient), "").await,
+        StatusCode::NO_CONTENT
+    );
+    fixture
+        .config
+        .db
+        .lock()
+        .unwrap()
+        .execute(
+            "UPDATE cutucadas SET criado_em = unixepoch('subsec') - 120 WHERE entregue = 0",
+            [],
+        )
+        .unwrap();
+    assert!(received_pokes(app, &recipient).await.is_empty());
 }
 
 #[tokio::test]

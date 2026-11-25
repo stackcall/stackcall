@@ -35,6 +35,8 @@ const CAMINHOS = {
   pasta: 'M3 6h7l2 2h9v11H3z',
   lixo: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',
   play: 'M7 4l13 8-13 8z',
+  voz: 'M4 9h4l5-4v14l-5-4H4zM16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11',
+  rede: 'M5 19v-3M10 19v-7M15 19v-11M20 19V5',
 } as const;
 
 export type NomeIcone = keyof typeof CAMINHOS;

@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { lerRede, salvarRede } from '../../lib/preferencias';
+import { lerPreferencias, salvarPreferencias } from '../../lib/preferencias';
 import type { Usuario } from '../../lib/servidor';
 import type { Person } from '../../room/model';
 import { MenuPessoa } from './MenuPessoa';
@@ -13,7 +13,7 @@ const usuario =(papel: Usuario['papel']): Usuario => ({ id: 'eu', nome: 'Eu', pa
 const leo: Person = { id: 'leo', name: 'Léo', isLocal: false, speaking: false, muted: false, level: 0, volume: 0.6, live: false, rede: { qualidade: 'ruim', ms: 210, perda: 0.03 } };
 
 function abrir(papel: Usuario['papel']) {
-  const acoes = { onVolume: vi.fn(), onPerfil: vi.fn(), onAssistir: vi.fn(), onCutucar: vi.fn(), onSilenciarParaMim: vi.fn(), onMover: vi.fn(), onSilenciarSala: vi.fn(), onTirar: vi.fn(), onFechar: vi.fn() };
+  const acoes = { onVolume: vi.fn(), onPerfil: vi.fn(), onAssistir: vi.fn(), onCutucar: vi.fn(), onSilenciarParaMim: vi.fn(), onMover: vi.fn(), onTirar: vi.fn(), onFechar: vi.fn() };
   render(<MenuPessoa {...acoes} ancora={{ x: 10, y: 10 }} person={leo} eu={usuario(papel)} salas={[{ id: 'cs', nome: 'CS', ordem: 1, pessoas: 3, noAr: false }, { id: 'lobby', nome: 'Lobby', ordem: 2, pessoas: 0, noAr: false }]}
     salaAtual="cs" esperaCutucar={0} silenciadoParaMim={false} />);
   return acoes;
@@ -55,9 +55,9 @@ describe('menu da pessoa (item 5)', () => {
 
 describe('modo internet ruim (item 8)', () => {
   it('is remembered between sessions', () => {
-    salvarRede(true);
-    expect(lerRede().ruim).toBe(true);
-    salvarRede(false);
-    expect(lerRede().ruim).toBe(false);
+    salvarPreferencias({ redeRuim: true });
+    expect(lerPreferencias().redeRuim).toBe(true);
+    salvarPreferencias({ redeRuim: false });
+    expect(lerPreferencias().redeRuim).toBe(false);
   });
 });

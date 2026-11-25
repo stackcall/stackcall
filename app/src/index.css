@@ -158,6 +158,11 @@ button:disabled {
 }
 }
 
+/* Janela "quem fala": transparente por cima do jogo (src/screens/QuemFala.tsx). */
+html[data-janela='quemfala'] body {
+  background: transparent;
+}
+
 /* Rótulo de metadado: mono, caixa alta. Só quando carrega dado. */
 @utility rotulo {
   font-family: var(--font-mono);
