@@ -1,7 +1,7 @@
 use crate::{
     Config,
     auth::{self, User},
-    db, rooms,
+    db, rooms, sleep,
 };
 use axum::{Json, Router, extract::State, http::StatusCode, routing::post};
 use rusqlite::{Connection, TransactionBehavior, params};
@@ -70,7 +70,7 @@ async fn create(
         return Err(StatusCode::BAD_REQUEST);
     }
     let message = Some(message.trim().to_owned()).filter(|message| !message.is_empty());
-    let online = config.livekit.try_online().await?;
+    let online = sleep::try_presence(&config).await?;
     db::run(config, move |conn| {
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db::internal)?;
         user.ensure_active(&tx)?;

@@ -43,3 +43,7 @@ O app toca localmente e publica um pacote de dados confiável do LiveKit no tóp
 4. Ao sair do time ou da partida, volte à sala pai pelo fluxo normal. A sub-sala some da lista quando fica vazia e o LiveKit a fecha após o prazo de saída (20 s, verificado periodicamente pelo SFU). A sala pai e os dados do grupo continuam disponíveis.
 
 O time informado escolhe o destino. A detecção do GSI é feita pelo app e não serve como autorização para entrar na sub-sala.
+
+## LiveKit em suspensão
+
+Ao pedir um token de sala ou de sub-sala com o recurso habilitado, o app pode receber `503` com `{"erro":"livekit_acordando"}` e `Retry-After: 1`. Mostre “Acordando o servidor de voz…” e repita o mesmo POST a cada 1 s, com prazo total de 20 s e cancelamento se a pessoa desistir. Com `200`, prossiga com a conexão. Se o prazo vencer, mostre a falha e permita nova tentativa. Presença, lista de salas e saúde seguem disponíveis enquanto a voz dorme.

@@ -61,3 +61,11 @@ docker compose -p stackcall -f infra/docker-compose.yml --env-file ~/.config/sta
 ```
 
 Remova o `import` do Caddyfile, valide e recarregue o Caddy com os comandos acima. Remova o arquivo `/etc/caddy/stackcall.caddy`. Remova apenas as regras de firewall criadas para o Stackcall, por exemplo `sudo ufw delete allow 7881/tcp`, `sudo ufw delete allow 7882/udp` e `sudo ufw delete allow 3478/udp`. Preserve o acesso HTTPS compartilhado. Se a retirada for definitiva, remova o arquivo de credenciais privado e arquive os arquivos de atualização antes de retirar o diretório.
+
+## Suspensão opcional do LiveKit
+
+O padrão é `LIVEKIT_IDLE_MINUTES=0`. Para ativar, defina um número de 1 a 10080 no `.env` privado, por exemplo `LIVEKIT_IDLE_MINUTES=10`, e rode `infra/instalar.sh` novamente. Para uma instalação manual, acrescente `-f infra/docker-compose.sleep.yml` aos seus comandos Compose, mantendo o mesmo nome de projeto. Use a convenção padrão do Compose para nomes de contêiner, com hífens e uma única instância de `livekit`. Para desativar manualmente, volte a `0`, execute `rm --force --stop livekit-control` com o arquivo adicional e volte a subir sem esse arquivo. O instalador faz a troca automaticamente.
+
+O controlador usa uma rede interna sem porta publicada. Só aceita `POST /start` e `POST /stop`. O proxy reescreve ambos para operações fixas sobre o único contêiner do LiveKit. O porteiro não recebe o socket Docker. O controlador recebe o socket e deve ser tratado como privilegiado, pois um comprometimento do processo daria acesso ao Docker do host. O modo requer o socket Unix padrão do Docker, `/var/run/docker.sock`.
+
+O porteiro consulta a ocupação do SFU a cada 5 s e só para após observar o período configurado sem participantes, incluindo as telas. A primeira entrada por token inicia o contêiner. Uma conexão com token já emitido pode concorrer com a parada e precisar voltar ao fluxo de entrada do app. O tempo de subida depende do host e aparece como espera de até 20 s no app.

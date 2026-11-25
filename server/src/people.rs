@@ -1,7 +1,7 @@
 use crate::{
     Config,
     auth::{self, Profile, User},
-    calls, db, moderation,
+    calls, db, moderation, sleep,
 };
 use axum::{
     Json, Router,
@@ -39,7 +39,7 @@ async fn list(
     State(config): State<Arc<Config>>,
     user: User,
 ) -> Result<Json<Vec<Person>>, StatusCode> {
-    let online = config.livekit.online().await;
+    let online = sleep::presence(&config).await;
     db::run(config, move |conn| {
         user.ensure_active(conn)?;
         let mut calls = calls::for_recipient(conn, &user.id)?;

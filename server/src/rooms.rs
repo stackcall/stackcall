@@ -1,14 +1,13 @@
 use crate::{
     Config,
     auth::{self, User},
-    db,
-    livekit::Tokens,
-    valid_name,
+    db, sleep, valid_name,
 };
 use axum::{
     Json, Router,
     extract::{Path, State},
-    http::StatusCode,
+    http::{StatusCode, header},
+    response::{IntoResponse, Response},
     routing::{get, patch, post},
 };
 use rusqlite::{OptionalExtension, Row, params};
@@ -125,7 +124,7 @@ async fn list(
         Ok(rooms)
     })
     .await?;
-    let online = config.livekit.online().await;
+    let online = sleep::presence(&config).await;
     let mut visible = Vec::new();
     for mut room in rooms {
         (room.pessoas, room.no_ar) = online.room_status(&room.id);
@@ -221,7 +220,7 @@ async fn token(
     State(config): State<Arc<Config>>,
     user: User,
     Path(id): Path<String>,
-) -> Result<Json<Tokens>, StatusCode> {
+) -> Result<Response, StatusCode> {
     issue_token(config, user, id).await
 }
 
@@ -235,19 +234,15 @@ async fn team_token(
     user: User,
     Path(id): Path<String>,
     Json(input): Json<TeamInput>,
-) -> Result<Json<Tokens>, StatusCode> {
+) -> Result<Response, StatusCode> {
     if id.contains(':') {
         return Err(StatusCode::NOT_FOUND);
     }
     issue_token(config, user, input.time.room_id(&id)).await
 }
 
-async fn issue_token(
-    config: Arc<Config>,
-    user: User,
-    id: String,
-) -> Result<Json<Tokens>, StatusCode> {
-    db::run(config.clone(), move |conn| {
+async fn issue_token(config: Arc<Config>, user: User, id: String) -> Result<Response, StatusCode> {
+    let (user, name, room) = db::run(config.clone(), move |conn| {
         user.ensure_active(conn)?;
         let name: String = conn
             .query_row(
@@ -259,7 +254,17 @@ async fn issue_token(
             .optional()
             .map_err(db::internal)?
             .ok_or(StatusCode::NOT_FOUND)?;
-        config.livekit.tokens(&user.id, &name, id).map(Json)
+        Ok((user.id, name, id))
     })
-    .await
+    .await?;
+    if !sleep::token_ready(&config).await {
+        return Ok((
+            StatusCode::SERVICE_UNAVAILABLE,
+            [(header::RETRY_AFTER, "1")],
+            Json(serde_json::json!({"erro": "livekit_acordando"})),
+        )
+            .into_response());
+    }
+    let tokens = config.livekit.tokens(&user, &name, room)?;
+    Ok(Json(tokens).into_response())
 }

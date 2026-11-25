@@ -13,6 +13,7 @@ struct Fixture {
     owner_code: String,
     online: Arc<Mutex<Vec<String>>>,
     subrooms: Arc<Mutex<HashMap<String, Vec<String>>>>,
+    commands: Arc<Mutex<Vec<&'static str>>>,
     kicked: Arc<Mutex<Vec<String>>>,
     livekit: tokio::task::JoinHandle<()>,
 }
@@ -24,19 +25,42 @@ impl Drop for Fixture {
 }
 
 async fn fixture(members_can_invite: bool) -> Fixture {
+    fixture_with_sleep(members_can_invite, None).await
+}
+
+async fn fixture_with_sleep(members_can_invite: bool, idle: Option<Duration>) -> Fixture {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let internal_url = format!("http://{}", listener.local_addr().unwrap())
+    let internal_url: Url = format!("http://{}", listener.local_addr().unwrap())
         .parse()
         .unwrap();
     let online = Arc::new(Mutex::new(Vec::<String>::new()));
     let subrooms = Arc::new(Mutex::new(HashMap::<String, Vec<String>>::new()));
+    let commands = Arc::new(Mutex::new(Vec::new()));
     let kicked = Arc::new(Mutex::new(Vec::<String>::new()));
     let livekit = tokio::spawn({
         let online = online.clone();
         let subrooms = subrooms.clone();
+        let commands = commands.clone();
         let kicked = kicked.clone();
         async move {
             let api = Router::new()
+                .route(
+                    "/start",
+                    post({
+                        let commands = commands.clone();
+                        move || async move {
+                            commands.lock().unwrap().push("start");
+                            StatusCode::NO_CONTENT
+                        }
+                    }),
+                )
+                .route(
+                    "/stop",
+                    post(move || async move {
+                        commands.lock().unwrap().push("stop");
+                        StatusCode::NO_CONTENT
+                    }),
+                )
                 .route(
                     "/twirp/livekit.RoomService/ListRooms",
                     post({
@@ -128,6 +152,7 @@ async fn fixture(members_can_invite: bool) -> Fixture {
     let owner_code = invites::bootstrap(&mut db).unwrap().unwrap();
     assert!(invites::bootstrap(&mut db).unwrap().is_none());
     let config = Arc::new(Config {
+        sleep: idle.map(|idle| sleep::Sleep::new(idle, internal_url.clone()).unwrap()),
         server_name: "Galera teste".into(),
         public_url: "https://example.test/".parse().unwrap(),
         members_can_invite,
@@ -152,6 +177,7 @@ async fn fixture(members_can_invite: bool) -> Fixture {
         owner_code,
         online,
         subrooms,
+        commands,
         kicked,
         livekit,
     }
@@ -231,6 +257,74 @@ async fn make_invite(app: &Router, owner: &str) -> Value {
 async fn member(app: &Router, owner: &str) -> Value {
     let invite = make_invite(app, owner).await;
     join(app, invite["codigo"].as_str().unwrap(), "Membro").await
+}
+
+#[tokio::test]
+async fn livekit_sleeps_only_after_idle_and_starts_on_an_authenticated_token_request() {
+    let fixture = fixture_with_sleep(false, Some(Duration::from_millis(20))).await;
+    let app = &fixture.app;
+    let owner = join(app, &fixture.owner_code, "Dono").await;
+    let sleep = fixture.config.sleep.as_ref().unwrap();
+    let livekit = &fixture.config.livekit;
+    fixture
+        .config
+        .db
+        .lock()
+        .unwrap()
+        .execute("INSERT INTO salas VALUES ('room-in-use', 'Em uso', 99)", [])
+        .unwrap();
+    sleep.check_idle(livekit).await;
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    fixture
+        .online
+        .lock()
+        .unwrap()
+        .push(format!("{}:tela", id(&owner)));
+    sleep.check_idle(livekit).await;
+    assert!(fixture.commands.lock().unwrap().is_empty());
+    fixture.online.lock().unwrap().clear();
+    sleep.check_idle(livekit).await;
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    sleep.check_idle(livekit).await;
+    assert_eq!(*fixture.commands.lock().unwrap(), ["stop"]);
+
+    let uri = "/api/salas/room-in-use/token";
+    assert_eq!(
+        send(app, Method::POST, uri, None, Value::Null).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        send(
+            app,
+            Method::GET,
+            "/api/salas",
+            Some(session(&owner)),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(*fixture.commands.lock().unwrap(), ["stop"]);
+    let token = || send(app, Method::POST, uri, Some(session(&owner)), Value::Null);
+    assert_eq!(
+        token().await,
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            json!({"erro":"livekit_acordando"})
+        )
+    );
+    let mut response = (StatusCode::SERVICE_UNAVAILABLE, Value::Null);
+    for _ in 0..10 {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        response = token().await;
+        if response.0 == StatusCode::OK {
+            break;
+        }
+    }
+    assert_eq!(response.0, StatusCode::OK);
+    assert!(response.1["token"].is_string());
+    assert_eq!(*fixture.commands.lock().unwrap(), ["stop", "start"]);
 }
 
 #[tokio::test]

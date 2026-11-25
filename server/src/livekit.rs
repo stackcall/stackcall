@@ -61,6 +61,10 @@ struct Track {
 pub struct Presence(BTreeMap<String, HashSet<String>>);
 
 impl Presence {
+    pub fn occupied(&self) -> bool {
+        self.0.values().any(|room| !room.is_empty())
+    }
+
     pub fn room_status(&self, id: &str) -> (usize, bool) {
         let Some(identities) = self.0.get(id) else {
             return (0, false);
@@ -186,13 +190,8 @@ impl LiveKit {
         Ok(rooms.rooms.unwrap_or_default())
     }
 
-    pub async fn online(&self) -> Presence {
-        self.try_online()
-            .await
-            .inspect_err(|status| {
-                eprintln!("Aviso: presença do LiveKit indisponível ({status})");
-            })
-            .unwrap_or_default()
+    pub async fn ready(&self) -> bool {
+        self.active_rooms().await.is_ok()
     }
 
     pub async fn try_online(&self) -> Result<Presence, StatusCode> {

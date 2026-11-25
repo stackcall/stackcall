@@ -1,0 +1,32 @@
+services:
+  porteiro:
+    environment:
+      LIVEKIT_IDLE_MINUTES: ${LIVEKIT_IDLE_MINUTES:-0}
+      LIVEKIT_CONTROL_URL: http://livekit-control:8080
+    networks:
+      - livekit-control
+    depends_on:
+      - livekit-control
+
+  livekit-control:
+    # Caddy 2.11 Alpine, same pinned image as the public proxy.
+    image: caddy@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+    environment:
+      LIVEKIT_CONTAINER: ${COMPOSE_PROJECT_NAME:?use um nome de projeto Compose}-livekit-1
+    networks:
+      - livekit-control
+    volumes:
+      - ./caddy/livekit-control.caddy:/etc/caddy/Caddyfile:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    user: "0:0"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    pids_limit: 64
+    mem_limit: 64m
+    restart: unless-stopped
+
+networks:
+  livekit-control:
+    internal: true
