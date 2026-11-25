@@ -4,6 +4,7 @@ Stackcall é o app de voz e transmissão de tela do nosso grupo. Você precisa d
 
 - Entrar é só abrir o link de convite que alguém do grupo mandou: sem senha e sem digitar servidor.
 - Salas de voz com volume por pessoa, lista de amigos e perfil com foto, banner e tema.
+- Voz com escolha de microfone e saída e supressão de ruído forte opcional, para teclado e cliques.
 - Transmissão de tela com o som do jogo, de 720p até 4K, de acordo com a sua placa de vídeo.
 - Tema claro ou escuro e modo jogo, que deixa o app quase parado enquanto você joga.
 - Atualização com um clique, dentro do próprio app.
