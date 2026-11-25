@@ -39,7 +39,8 @@ test('shows higher native presets locked by the height of a 1080p source', () =>
 test('only unlocks 720p30 at 5 Mbps and reports the chosen codec requirement', () => {
   const cards = evaluatePresets({ ...base, uploadMbps: 5, trials: nativeTrials });
   expect(cards.filter((c) => !c.locked).map((c) => c.id)).toEqual(['720p30']);
-  expect(cards[1].reason).toMatch(/\(5,0 Mbps\).*pede cerca de 5,1 Mbps/);
+  expect(cards[1].reason).toMatch(/\(5,0 Mb\/s\).*pede cerca de 5,1 Mb\/s/);
+  expect(cards[1].short).toBe('Pede 6,4 Mb/s · seu upload 5,0');
 });
 
 test('locks by source size and by encoder', () => {
@@ -63,4 +64,15 @@ test('unlocks native 4K only when throughput, encoder load and upload pass', () 
   expect(card({ uploadMbps: null }).locked).toBe(true);
   expect(card({ trials: [{ ...trial, fps: 56 }] }).locked).toBe(true);
   expect(card({ trials: [{ ...trial, encoder_load_percent: 81 }] }).locked).toBe(true);
+});
+
+test('RTX-class GPU with good upload unlocks 4K30 on a 4K screen and keeps the reason of each lock', () => {
+  const trials: Trial[] = (['720p', '1080p', '1440p', '4k'] as const).flatMap((resolution) => [30, 60].map((target_fps) => ({
+    encoder: 'av1_nvenc', resolution, target_fps, ok: true, fps: target_fps, encoder_load_percent: resolution === '4k' && target_fps === 60 ? 92 : 50,
+  })));
+  const cards = evaluatePresets({ ...base, sourceHeight: 2160, sourceWidth: 3840, uploadMbps: 30, trials });
+  expect(cards.find((c) => c.id === '4k30')?.locked).toBe(false);
+  expect(cards.find((c) => c.id === '4k60')?.short).toBe('Placa acima de 80% de carga');
+  expect(evaluatePresets({ ...base, sourceHeight: 2160, sourceWidth: 3840, uploadMbps: 15, trials }).find((c) => c.id === '4k30')?.short)
+    .toBe('Pede 20,1 Mb/s · seu upload 15,0');
 });
