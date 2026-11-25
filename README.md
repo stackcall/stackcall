@@ -33,6 +33,8 @@ npm ci
 npm run tauri dev
 ```
 
+Com o app aberto, rode `.\scripts\medir-leveza.ps1 -Situacao parado` a partir da raiz para medir CPU e memória por 60 segundos. O CSV e o resumo ficam em `docs/medidas/`.
+
 ### Porteiro
 
 Na raiz, configure o par de chaves do seu LiveKit, a URL pública e o convite de desenvolvimento no ambiente da sessão. Para um LiveKit rodando na mesma máquina, use `ws://localhost:7880` como URL.
@@ -46,6 +48,22 @@ cargo run -p porteiro
 ```
 
 O porteiro escuta em `127.0.0.1:8100` por padrão. Para subir a infraestrutura junto, consulte o [guia de infraestrutura](infra/README.md).
+
+## Hospedar seu próprio servidor
+
+Use uma VPS Linux com pelo menos 2 GB de RAM, Docker com Compose, Git, curl e OpenSSL. Se usar um domínio próprio, aponte o DNS para a VPS antes de instalar. Libere **443/tcp, 7881/tcp, 7882/udp e 3478/udp**.
+
+Leia o [script de instalação](infra/instalar.sh) antes de rodar.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/stackcall/stackcall/main/infra/instalar.sh | bash
+```
+
+Informe o domínio ou pressione Enter para usar `<ip-publico>.sslip.io`. Guarde em privado o convite do dono que aparece quando o servidor responde.
+
+- Para hospedar em **rede local**, rode `bash infra/instalar.sh --local` no checkout do Linux. No Windows com Docker Desktop em modo Linux, leia [instalar.ps1](infra/instalar.ps1) e rode `.\infra\instalar.ps1`. Ambos servem HTTP no IPv4 da rede e usam as portas 8100/tcp, 7881/tcp e 7882/udp.
+- Para fazer **backup**, pare o porteiro e copie `stackcall.sqlite3` do volume `stackcall-selfhost_porteiro-data`, junto de `stackcall.sqlite3-wal` se existir. Guarde também o `.env` privado, por padrão em `~/.config/stackcall/` no Linux ou `%LOCALAPPDATA%\Stackcall\selfhost\` no Windows. Reinicie o porteiro após a cópia.
+- Para **atualizar**, acrescente `-s -- --atualizar` ao `bash` do comando acima ou rode `.\infra\instalar.ps1 -Atualizar` no Windows. Os contêineres são recriados com o mesmo banco e as mesmas credenciais.
 
 ## Soltar uma versão
 

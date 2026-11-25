@@ -1,0 +1,21 @@
+header {
+	X-Content-Type-Options "nosniff"
+	X-Frame-Options "DENY"
+	Referrer-Policy "no-referrer"
+}
+
+@livekit path /rtc /rtc/*
+handle @livekit {
+	@sdk path /rtc/rtc /rtc/rtc/*
+	uri @sdk strip_prefix /rtc
+	reverse_proxy livekit:7880
+}
+
+@porteiro path /api/* /c/* /media/*
+handle @porteiro {
+	reverse_proxy porteiro:8100
+}
+
+handle {
+	respond 404
+}

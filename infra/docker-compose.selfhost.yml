@@ -1,0 +1,87 @@
+services:
+  livekit:
+    # LiveKit Server v1.13.11
+    image: livekit/livekit-server@sha256:25cd902de7cacbd5f1f779f6a6ac1eae20ba8f56b0935934ce6b0ab80d1e3d20
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?configure LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET:?configure LIVEKIT_API_SECRET}"
+      LIVEKIT_CONFIG: |
+        port: 7880
+        bind_addresses: ["0.0.0.0"]
+        rtc:
+          tcp_port: 7881
+          udp_port: 7882
+          use_external_ip: ${LIVEKIT_EXTERNAL_IP:?configure LIVEKIT_EXTERNAL_IP}
+          node_ip: "${LIVEKIT_NODE_IP:-}"
+        turn:
+          enabled: ${LIVEKIT_EXTERNAL_IP:?configure LIVEKIT_EXTERNAL_IP}
+          udp_port: 3478
+          domain: "${STACKCALL_DOMAIN:-}"
+    ports:
+      - "${STACKCALL_BIND_IP:?configure STACKCALL_BIND_IP}:7881:7881/tcp"
+      - "${STACKCALL_BIND_IP:?configure STACKCALL_BIND_IP}:7882:7882/udp"
+    networks:
+      - porteiro
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    pids_limit: 256
+    mem_limit: 512m
+    restart: unless-stopped
+
+  porteiro:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    environment:
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?configure LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?configure LIVEKIT_API_SECRET}
+      LIVEKIT_INTERNAL_URL: http://livekit:7880
+      LIVEKIT_PUBLIC_URL: ${LIVEKIT_PUBLIC_URL:?configure LIVEKIT_PUBLIC_URL}
+      SERVIDOR_URL: ${SERVIDOR_URL:?configure SERVIDOR_URL}
+      PORTEIRO_ADDR: 0.0.0.0:8100
+      PORTEIRO_DB: /data/stackcall.sqlite3
+      PORTEIRO_TRUSTED_PROXY: 172.31.241.2
+    volumes:
+      - porteiro-data:/data
+    networks:
+      - porteiro
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    pids_limit: 64
+    mem_limit: 128m
+    restart: unless-stopped
+
+  caddy:
+    # Caddy 2.11 Alpine
+    image: caddy@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
+    environment:
+      SERVIDOR_URL: ${SERVIDOR_URL:?configure SERVIDOR_URL}
+    ports:
+      - "${STACKCALL_BIND_IP:?configure STACKCALL_BIND_IP}:${CADDY_PORT:?configure CADDY_PORT}:${CADDY_PORT:?configure CADDY_PORT}/tcp"
+    volumes:
+      - ./caddy/${CADDY_SITE:?configure CADDY_SITE}:/etc/caddy/Caddyfile:ro
+      - ./caddy/selfhost-routes.caddy:/etc/caddy/selfhost-routes.caddy:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      porteiro:
+        ipv4_address: 172.31.241.2
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    pids_limit: 64
+    mem_limit: 64m
+    restart: unless-stopped
+
+networks:
+  porteiro:
+    ipam:
+      config:
+        - subnet: 172.31.241.0/29
+
+volumes:
+  porteiro-data:
+  caddy-data:
+  caddy-config:
