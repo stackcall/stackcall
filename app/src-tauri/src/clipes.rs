@@ -179,9 +179,56 @@ pub async fn clipes_apagar(app: AppHandle, nome: String) -> Result<(), String> {
     .map_err(|error| error.to_string())?
 }
 
+/// Gives a saved clip a readable name ("ACE mirage R8 ..."). Both names stay inside the gallery;
+/// an existing file is never replaced.
+#[tauri::command]
+pub async fn clipes_renomear(app: AppHandle, nome: String, novo: String) -> Result<(), String> {
+    let dir = crate::sidecar::replay_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || rename(&dir, &nome, &novo))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn rename(dir: &Path, name: &str, new_name: &str) -> Result<(), String> {
+    let root = gallery_root(dir).map_err(|error| error.to_string())?;
+    let (path, _) = clip_path(&root, name).map_err(|error| error.to_string())?;
+    let valid = !new_name.is_empty()
+        && new_name.chars().count() <= 120
+        && !new_name
+            .chars()
+            .any(|c| c.is_control() || r#"/\:*?"<>|"#.contains(c))
+        && Path::new(new_name)
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("mp4"))
+        && !new_name.starts_with('.');
+    if !valid {
+        return Err(invalid_path().to_string());
+    }
+    let target = root.join(new_name);
+    if fs::symlink_metadata(&target).is_ok() {
+        return Err("Já existe um clipe com esse nome.".into());
+    }
+    fs::rename(path, target).map_err(|error| error.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn renames_only_inside_the_gallery() {
+        let videos = tempfile::tempdir().unwrap();
+        let dir = videos.path().join("Stackcall");
+        fs::create_dir(&dir).unwrap();
+        fs::write(dir.join("clip.mp4"), b"clip").unwrap();
+        fs::write(dir.join("outro.mp4"), b"clip").unwrap();
+        assert!(rename(&dir, "clip.mp4", "../fora.mp4").is_err());
+        assert!(rename(&dir, "clip.mp4", "a.txt").is_err());
+        assert!(rename(&dir, "clip.mp4", "outro.mp4").is_err());
+        rename(&dir, "clip.mp4", "ACE mirage R8 26-11 21h05.mp4").unwrap();
+        assert!(dir.join("ACE mirage R8 26-11 21h05.mp4").is_file());
+        assert!(!dir.join("clip.mp4").exists());
+    }
 
     #[test]
     fn validates_direct_mp4_names() {

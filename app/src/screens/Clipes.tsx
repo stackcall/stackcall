@@ -3,6 +3,10 @@ import { Faixa } from '../components/Faixa';
 import { Icone } from '../components/Icone';
 import { apagarClipe, listarClipes, mostrarNaPasta, titulo, type Clipe } from '../lib/clipes';
 import { replay } from '../lib/nucleo';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import { TIPOS_LANCE, tipoDoClipe } from '../lib/lances';
+
+export const FIVESTACK = 'https://fivestack.com.br/';
 
 const mb = (b: number) => Math.round(b / 1e6).toLocaleString('pt-BR');
 const dur = (s: number | null) => (s === null ? '—' : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`);
@@ -80,6 +84,7 @@ export function Clipes({ onFechar, onReplay }: { onFechar(): void; onReplay(): v
           <button type="button" className={`btn btn-icone ${lista.length ? '' : 'ml-auto'}`} aria-label="Fechar clipes" title="Fechar (Esc)" onClick={onFechar}><Icone nome="fechar" /></button>
         </header>
         {erro && <Faixa acoes={[{ rotulo: 'Tentar de novo', onClick: () => { setErro(undefined); carregar(); } }]} onFechar={() => setErro(undefined)}>{erro}</Faixa>}
+        <ResumoDaNoite clipes={lista} />
         {clipes === null && !erro ? (
           <div className="grid grid-cols-3 gap-3" aria-busy="true">{[0, 1, 2].map((i) => <div key={i} className="skeleton h-[160px]" />)}</div>
         ) : lista.length === 0 ? (
@@ -137,5 +142,32 @@ export function Clipes({ onFechar, onReplay }: { onFechar(): void; onReplay(): v
         )}
       </aside>
     </div>
+  );
+}
+
+/**
+ * "Resumo da noite": the automatic CS2 plays of the last 12 hours by kind, and the match stats
+ * on Fivestack (it already has the 2D replay and the numbers; no need to repeat them here).
+ */
+function ResumoDaNoite({ clipes }: { clipes: Clipe[] }) {
+  const desde = Date.now() - 12 * 3600_000;
+  const lances = clipes.filter((c) => c.em >= desde && tipoDoClipe(c.nome));
+  const conta = TIPOS_LANCE.map((t) => [t, lances.filter((c) => tipoDoClipe(c.nome) === t).length] as const).filter(([, n]) => n > 0);
+  return (
+    <section aria-label="Resumo da noite" className="janela flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5">
+      <span className="rotulo">Resumo da noite</span>
+      {conta.length ? (
+        <span className="flex flex-wrap gap-2">
+          {conta.map(([t, n]) => (
+            <b key={t} className="border border-texto px-2 py-0.5 font-mono text-[13px]">{n} {t}</b>
+          ))}
+        </span>
+      ) : (
+        <span className="text-[14px] text-texto-fraco">Nenhum lance automático hoje. Ligue em Configurações › Clipes e replay.</span>
+      )}
+      <button type="button" className="btn btn-sm ml-auto" onClick={() => void openUrl(FIVESTACK).catch(() => undefined)}>
+        Ver partidas e estatísticas no Fivestack
+      </button>
+    </section>
   );
 }

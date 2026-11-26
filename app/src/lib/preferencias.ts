@@ -17,6 +17,8 @@ export type Preferencias = {
   replaySegundos: 30 | 60 | 120;
   /** "transmissao" = same quality as the stream; "720p" = lighter file. */
   replayQualidade: 'transmissao' | '720p';
+  /** CS2: record only during a match and save 3K, 4K and aces by themselves (GSI). */
+  clipesAuto: boolean;
   cutucarVoz: boolean;
   /** 0 to 100. */
   cutucarVolume: number;
@@ -43,6 +45,7 @@ export const PREFERENCIAS_PADRAO: Preferencias = {
   replayLigado: false,
   replaySegundos: 60,
   replayQualidade: 'transmissao',
+  clipesAuto: false,
   cutucarVoz: true,
   cutucarVolume: 70,
   cutucarMesmoSilenciado: true,
@@ -71,6 +74,7 @@ const REGRAS: { [K in keyof Preferencias]: Validar<Preferencias[K]> } = {
   replayLigado: bool,
   replaySegundos: um(30, 60, 120),
   replayQualidade: um('transmissao', '720p'),
+  clipesAuto: bool,
   cutucarVoz: bool,
   cutucarVolume: faixa(0, 100),
   cutucarMesmoSilenciado: bool,

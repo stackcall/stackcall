@@ -31,6 +31,10 @@ struct Config {
 struct GameState {
     time: Option<String>,
     fase: Option<String>,
+    /// Kills of this PC's player in the current round, only while they are alive and in control.
+    kills: Option<u8>,
+    mapa: Option<String>,
+    round: Option<u16>,
 }
 
 struct Http {
@@ -117,8 +121,22 @@ async fn start(app: &AppHandle, running: &mut Option<Config>, create: bool) -> R
             eprintln!("GSI do CS2: {error}");
         }
     });
+    update_installed_file(&config);
     *running = Some(config);
     Ok(())
+}
+
+/// Files written by older versions lack the player state that the automatic clips need.
+/// Only a file that Stackcall wrote is replaced; CS2 reads it on its next start.
+fn update_installed_file(config: &Config) {
+    let Some(path) = cs2_config() else { return };
+    let Ok(text) = fs::read_to_string(&path) else {
+        return;
+    };
+    let wanted = configuration(config);
+    if text.starts_with(HEADER) && text != wanted {
+        let _ = fs::write(path, wanted);
+    }
 }
 
 async fn receive(HttpState(http): HttpState<Arc<Http>>, body: Bytes) -> StatusCode {
@@ -145,6 +163,20 @@ fn parse(json: &Value, token: &str) -> Option<GameState> {
         .and_then(Value::as_str)
         .zip(json.pointer("/player/steamid").and_then(Value::as_str))
         .is_some_and(|(own, player)| own != player);
+    let kills = json
+        .pointer("/player/state/round_kills")
+        .and_then(Value::as_u64)
+        .filter(|_| !other_player)
+        .map(|kills| kills.min(10) as u8);
+    let mapa = json
+        .pointer("/map/name")
+        .and_then(Value::as_str)
+        .filter(|name| name.len() <= 64)
+        .map(str::to_owned);
+    let round = json
+        .pointer("/map/round")
+        .and_then(Value::as_u64)
+        .map(|round| round.min(999) as u16);
     let time = match json.pointer("/player/team").and_then(Value::as_str) {
         Some("CT") if !other_player => Some("CT".into()),
         Some("T") if !other_player => Some("TR".into()),
@@ -155,7 +187,13 @@ fn parse(json: &Value, token: &str) -> Option<GameState> {
         .and_then(Value::as_str)
         .or_else(|| json.pointer("/map/phase").and_then(Value::as_str))
         .map(str::to_owned);
-    Some(GameState { time, fase })
+    Some(GameState {
+        time,
+        fase,
+        kills,
+        mapa,
+        round,
+    })
 }
 
 #[tauri::command]
@@ -200,7 +238,7 @@ fn configuration(config: &Config) -> String {
     "throttle" "0.5"
     "heartbeat" "15.0"
     "auth" {{ "token" "{token}" }}
-    "data" {{ "map" "1" "round" "1" "player_id" "1" }}
+    "data" {{ "map" "1" "round" "1" "player_id" "1" "player_state" "1" }}
 }}
 "#
     )
@@ -286,22 +324,29 @@ mod tests {
 
     #[test]
     fn authenticates_gsi_and_only_reports_the_local_team() {
-        let mut json = json!({"auth":{"token":"test"},"provider":{"steamid":"1"},"player":{"steamid":"1","team":"T"},"map":{"phase":"live"},"round":{"phase":"freezetime"}});
+        let mut json = json!({"auth":{"token":"test"},"provider":{"steamid":"1"},"player":{"steamid":"1","team":"T","state":{"round_kills":3}},"map":{"phase":"live","name":"de_mirage","round":7},"round":{"phase":"freezetime"}});
         assert_eq!(parse(&json, "wrong"), None);
         assert_eq!(
             parse(&json, "test"),
             Some(GameState {
                 time: Some("TR".into()),
-                fase: Some("freezetime".into())
+                fase: Some("freezetime".into()),
+                kills: Some(3),
+                mapa: Some("de_mirage".into()),
+                round: Some(7),
             })
         );
+        // Dead and spectating a teammate: their kills are not mine.
         json["player"]["steamid"] = "2".into();
         json["round"] = Value::Null;
         assert_eq!(
             parse(&json, "test"),
             Some(GameState {
                 time: None,
-                fase: Some("live".into())
+                fase: Some("live".into()),
+                kills: None,
+                mapa: Some("de_mirage".into()),
+                round: Some(7),
             })
         );
     }

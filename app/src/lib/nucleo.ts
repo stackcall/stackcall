@@ -40,7 +40,8 @@ export const nucleo = {
 };
 
 /** `stackcall-gsi`: the team of the CS2 match on this PC. */
-export type EventoGsi = { time: 'CT' | 'TR' | null; fase: string | null };
+/** `kills`: this PC's player in the round, only while alive; `round`: rounds already played. */
+export type EventoGsi = { time: 'CT' | 'TR' | null; fase: string | null; kills?: number | null; mapa?: string | null; round?: number | null };
 export function aoGsi(f: (e: EventoGsi) => void) {
   if (falso() || web()) return () => undefined;
   const parar = listen<EventoGsi>('stackcall-gsi', ({ payload }) => f(payload));
@@ -107,18 +108,25 @@ export const FAIXA_PRINCIPAL = 'screen';
  * outside the air: the primary monitor. "720p" is the lighter local file; otherwise the core default.
  */
 export function sincronizarReplay(ler: () => Preferencias, ouvir: (f: (p: Preferencias) => void) => () => void,
-  fontePrincipal: () => Promise<string | null>) {
+  fontePrincipal: () => Promise<string | null>, aoMudarPartida?: (f: (on: boolean) => void) => void) {
   let ultimo = '';
+  // Automatic clips record only during a CS2 match: nothing runs in the menu or with the game closed.
+  let emPartida = false;
   const aplicar = async (p: Preferencias) => {
-    const chave = JSON.stringify([p.replayLigado, p.replaySegundos, p.replayQualidade]);
+    const ligado = p.replayLigado || (p.clipesAuto && emPartida);
+    const chave = JSON.stringify([ligado, p.replaySegundos, p.replayQualidade]);
     if (chave === ultimo) return;
     ultimo = chave;
-    const fonte = p.replayLigado ? await fontePrincipal().catch(() => null) : null;
-    await replay.definir(p.replayLigado
+    const fonte = ligado ? await fontePrincipal().catch(() => null) : null;
+    await replay.definir(ligado
       ? { segundos: p.replaySegundos, sempre: !!fonte, ...(fonte ? { fonte } : {}), ...(p.replayQualidade === '720p' ? { resolucao: '720p' as const } : {}) }
       : null).catch((e) => console.error('replay_definir', e));
   };
   void aplicar(ler());
+  aoMudarPartida?.((on) => {
+    emPartida = on;
+    void aplicar(ler());
+  });
   return ouvir((p) => void aplicar(p));
 }
 

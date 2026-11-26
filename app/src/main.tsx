@@ -1,4 +1,5 @@
 import { StrictMode } from 'react';
+import { iniciarClipesAutomaticos } from './lib/lances';
 import { createRoot } from 'react-dom/client';
 // Only the weights the interface uses (docs/PLANO-ABERTO.md, leveza).
 import '@fontsource/anton/400.css';
@@ -36,7 +37,7 @@ if (janelaQuemFala) {
     if (!isTauri()) return null;
     const fontes = await listSources();
     return (fontes.find((f) => !f.pid && f.primary) ?? fontes.find((f) => !f.pid))?.id ?? null;
-  });
+  }, (f) => iniciarClipesAutomaticos(f));
 }
 
 createRoot(document.getElementById('root')!).render(

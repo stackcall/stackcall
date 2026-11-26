@@ -44,6 +44,10 @@ export function PaginaClipes({ destaque }: Pagina) {
   return (
     <>
       <Cabecalho rotulo="Você · gravado só neste PC" titulo="Clipes e replay" />
+      <Linha ajuste="clipes-auto" titulo="Salvar sozinho os melhores lances do CS2" destaque={destaque === 'clipes-auto'}
+        descricao="Grava só durante a partida (nada no menu ou com o jogo fechado) e salva 3K, 4K e ace com a reação da galera. Precisa do Mapa do CS2 instalado. Para pesar menos, use 720p abaixo.">
+        <Chave rotulo="Salvar sozinho os melhores lances do CS2" ligado={p.clipesAuto} onMudar={(clipesAuto) => mudar({ clipesAuto })} />
+      </Linha>
       <Linha ajuste="replay-ligado" titulo="Replay sempre ligado" destaque={destaque === 'replay-ligado'}
         descricao="Guarda os últimos segundos da sala o tempo todo; o botão Clipe salva. Gasta memória e um pouco da placa de vídeo.">
         <Chave rotulo="Replay sempre ligado" ligado={p.replayLigado} onMudar={(replayLigado) => mudar({ replayLigado })} />

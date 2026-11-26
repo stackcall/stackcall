@@ -61,6 +61,7 @@
     "allow-replay-salvar",
     "allow-clipes-listar",
     "allow-clipes-apagar",
-    "allow-registrar-assistir"
+    "allow-registrar-assistir",
+    "allow-clipes-renomear"
   ]
 }

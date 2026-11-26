@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.1
+
+### Novidades
+
+- Clipes automáticos do CS2: com a opção ligada, o app salva sozinho 3K, 4K e ace, com o som do jogo e a reação da galera, e dá ao clipe um nome como "ACE mirage R8"
+- A gravação dos clipes automáticos só roda durante a partida: no menu ou com o jogo fechado, nada fica gravando
+- Resumo da noite na galeria de clipes, com os lances do dia e um botão para ver as partidas e estatísticas no Fivestack
+
 ## v0.6.0
 
 ### Novidades

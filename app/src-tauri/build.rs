@@ -28,6 +28,7 @@ const COMMANDS: &[&str] = &[
     "clipes_listar",
     "clipes_apagar",
     "registrar_assistir",
+    "clipes_renomear",
 ];
 
 fn main() {

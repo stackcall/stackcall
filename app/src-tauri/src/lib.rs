@@ -276,7 +276,9 @@ pub fn run() {
             #[cfg(windows)]
             clipes::clipes_listar,
             #[cfg(windows)]
-            clipes::clipes_apagar
+            clipes::clipes_apagar,
+            #[cfg(windows)]
+            clipes::clipes_renomear
         ])
         .build(tauri::generate_context!())
         .expect("failed to build Stackcall")

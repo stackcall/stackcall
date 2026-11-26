@@ -1,5 +1,28 @@
 [
   {
+    "version": "0.6.1",
+    "date": "2026-11-26",
+    "categories": [
+      {
+        "name": "Novidades",
+        "items": [
+          {
+            "message": "Clipes automáticos do CS2: com a opção ligada, o app salva sozinho 3K, 4K e ace, com o som do jogo e a reação da galera, e dá ao clipe um nome como \"ACE mirage R8\"",
+            "breaking": false
+          },
+          {
+            "message": "A gravação dos clipes automáticos só roda durante a partida: no menu ou com o jogo fechado, nada fica gravando",
+            "breaking": false
+          },
+          {
+            "message": "Resumo da noite na galeria de clipes, com os lances do dia e um botão para ver as partidas e estatísticas no Fivestack",
+            "breaking": false
+          }
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.6.0",
     "date": "2026-11-26",
     "categories": [
