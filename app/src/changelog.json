@@ -1,5 +1,27 @@
 [
   {
+    "version": "0.5.3",
+    "date": "2026-11-26",
+    "categories": [
+      {
+        "name": "Melhorias",
+        "items": [
+          { "message": "Imagem da transmissão mais nítida em tela cheia: bitrate maior em todas as qualidades (1080p60 em AV1 passou para 8 Mb/s)", "breaking": false },
+          { "message": "Supressão forte de ruído ligada por padrão, como o Krisp do Discord: tira teclado, mouse e ventoinha", "breaking": false },
+          { "message": "Transmitindo a tela inteira com um jogo aberto, vai só o som do jogo (sem Discord, música ou outros programas)", "breaking": false }
+        ]
+      },
+      {
+        "name": "Correções",
+        "items": [
+          { "message": "O microfone não pede mais permissão do navegador interno. Se o Windows bloquear, o app explica e abre a configuração certa", "breaking": false },
+          { "message": "Jogo minimizado não derruba mais a transmissão: ela espera o jogo voltar e avisa \"volte ao jogo\"", "breaking": false },
+          { "message": "Abrir um convite num PC que já está no servidor não cria mais uma segunda conta", "breaking": false }
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.5.2",
     "date": "2026-11-25",
     "categories": [
