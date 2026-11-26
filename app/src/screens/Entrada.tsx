@@ -4,6 +4,7 @@ import { NAME_PATTERN, store } from '../lib/config';
 import { type Previa, type Servidor, type Usuario } from '../lib/servidor';
 import { SERVIDOR_OFICIAL, lerServidores } from '../lib/servidores';
 import { modoFalso } from '../lib/falso';
+import { naWeb } from '../lib/ambiente';
 
 type Props = {
   /** Link that arrived by deep link or was pasted earlier. */
@@ -19,10 +20,10 @@ type Props = {
 /** No password and no address to type: the invite link brings the server, the person types a name. */
 export function Entrada({ link, servidorDe, onLink, onEntrou, onConfig, onVoltar }: Props) {
   return (
-    <div className="grid h-full grid-cols-[minmax(0,1.1fr)_minmax(380px,0.9fr)] items-center gap-10 overflow-y-auto px-14 py-10">
+    <div className="grid h-full grid-cols-[minmax(0,1.1fr)_minmax(380px,0.9fr)] items-center gap-10 overflow-y-auto px-14 py-10 max-md:grid-cols-1 max-md:content-start max-md:gap-5 max-md:px-4 max-md:py-6">
       <div className="flex flex-col gap-5">
         <span className="font-display text-[34px] leading-none">stack<span className="text-destaque">call</span></span>
-        <h1 className="text-[96px]">Bora pra <span className="font-pincel inline-block -rotate-3 text-[0.8em] text-destaque normal-case">call</span></h1>
+        <h1 className="text-[96px] max-md:text-[56px]">Bora pra <span className="font-pincel inline-block -rotate-3 text-[0.8em] text-destaque normal-case">call</span></h1>
         <p className="m-0 max-w-[46ch] text-[17px] text-texto-fraco">
           Voz, tela e conversa com a sua turma. Não tem senha nem cadastro: quem já está no grupo manda um link de convite.
         </p>
@@ -36,7 +37,7 @@ export function Entrada({ link, servidorDe, onLink, onEntrou, onConfig, onVoltar
         )}
         <div className="flex flex-wrap items-center gap-2">
           {onVoltar && <button type="button" className="btn btn-fant" onClick={onVoltar}>Voltar para o servidor</button>}
-          <button type="button" className="btn btn-fant ml-auto" onClick={onConfig}>Sobre e atualizações</button>
+          {!naWeb() && <button type="button" className="btn btn-fant ml-auto" onClick={onConfig}>Sobre e atualizações</button>}
         </div>
       </div>
     </div>
@@ -61,7 +62,7 @@ function ColarLink({ onLink }: { onLink(link: LinkConvite): void }) {
         <input id="link" className="campo" value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="https://servidor/c/…"
           autoComplete="off" spellCheck={false} aria-invalid={!!erro} aria-describedby="link-ajuda" />
         <span id="link-ajuda" className={`text-[13px] ${erro ? 'text-perigo' : 'text-texto-fraco'}`} role={erro ? 'alert' : undefined}>
-          {erro ?? 'Recebeu o link no celular? Cole aqui. Se abrir o link neste PC, o app já entra sozinho.'}
+          {erro ?? (naWeb() ? 'Abra o link de convite que recebeu, ou no PC vá em Configurações › Celular e aponte a câmera para o QR code.' : 'Recebeu o link no celular? Cole aqui. Se abrir o link neste PC, o app já entra sozinho.')}
         </span>
         <button type="submit" className="btn btn-prim btn-lg" disabled={!texto.trim()}>Continuar</button>
       </div>
@@ -77,7 +78,8 @@ function ComLink({ link, servidor, onTrocar, onEntrou }: {
   const [nome, setNome] = useState(() => store.get('nome') ?? '');
   const [erro, setErro] = useState<string>();
   const [ocupado, setOcupado] = useState(false);
-  const conhecido = link.servidor === SERVIDOR_OFICIAL || lerServidores().some((s) => s.url === link.servidor);
+  // The web app only ever talks to the server that served it.
+  const conhecido = naWeb() || link.servidor === SERVIDOR_OFICIAL || lerServidores().some((s) => s.url === link.servidor);
   const host = new URL(link.servidor).host;
   // The session lives in Windows' credential store, outside the WebView profile. If this PC is
   // already in the server (the server list was lost, e.g. EBWebView deleted), reuse that account

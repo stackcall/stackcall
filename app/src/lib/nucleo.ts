@@ -1,4 +1,5 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
+import { naWeb } from './ambiente';
 import { listen } from '@tauri-apps/api/event';
 import type { PosicaoQuemFala, Preferencias, TamanhoQuemFala } from './preferencias';
 import { aoPublicarQuemFala, linhasQuemFala, type EstadoQuemFala } from './quemfala';
@@ -8,7 +9,9 @@ import { aoPublicarQuemFala, linhasQuemFala, type EstadoQuemFala } from './quemf
  * to the core and its error reaches the caller (no silent fallback). Outside the app (the demo
  * `?demo=1` and the tests) the fake answers, so the screens can be reviewed in a browser.
  */
-const falso = () => !isTauri();
+const falso = () => !isTauri() && !naWeb();
+/** Web app: no core. Every call answers "nothing here" instead of the demo's fake data. */
+const web = naWeb;
 
 /** Width of the "falantes" window per size (logical pixels); the core adds 26 + rows × 26/32/40 of height. */
 export const LARGURA_FALANTES: Record<TamanhoQuemFala, number> = { p: 260, m: 320, g: 400 };
@@ -20,26 +23,26 @@ export type JogoDetectado = { executavel: string; nome: string };
 export const nucleo = {
   /** Display name of the game in front, or null. Called every 30 s only while the presence is on. */
   jogoAtual: async (): Promise<string | null> =>
-    falso() ? 'Counter-Strike 2' : (await invoke<JogoDetectado | null>('presenca_jogo_atual', { ativa: true }))?.nome ?? null,
+    web() ? null : falso() ? 'Counter-Strike 2' : (await invoke<JogoDetectado | null>('presenca_jogo_atual', { ativa: true }))?.nome ?? null,
   /** Path where the CS2 GSI file goes, or null when CS2 was not found. */
   gsiLocalizar: (): Promise<string | null> =>
-    falso() ? Promise.resolve('C:\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg\\gamestate_integration_stackcall.cfg')
+    web() ? Promise.resolve(null) : falso() ? Promise.resolve('C:\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg\\gamestate_integration_stackcall.cfg')
       : invoke<string | null>('gsi_cs2_localizar'),
   /** Writes the GSI file after the person confirmed the path; returns the path written. */
-  gsiInstalar: (): Promise<string> => (falso() ? nucleo.gsiLocalizar().then((c) => c!) : invoke<string>('gsi_cs2_instalar', { confirmado: true })),
-  falantesAbrir: () => (falso() ? Promise.resolve() : invoke<void>('falantes_abrir')),
-  falantesFechar: () => (falso() ? Promise.resolve() : invoke<void>('falantes_fechar')),
+  gsiInstalar: (): Promise<string> => (web() ? Promise.reject(new Error('Só no app do Windows.')) : falso() ? nucleo.gsiLocalizar().then((c) => c!) : invoke<string>('gsi_cs2_instalar', { confirmado: true })),
+  falantesAbrir: () => (falso() || web() ? Promise.resolve() : invoke<void>('falantes_abrir')),
+  falantesFechar: () => (falso() || web() ? Promise.resolve() : invoke<void>('falantes_fechar')),
   /** Resizes the open window and anchors it to a corner of the primary monitor ("livre" keeps it where it is). */
   falantesRedimensionar: (tamanho: TamanhoQuemFala, linhas: number, posicao: PosicaoQuemFala) =>
-    (falso() ? Promise.resolve() : invoke<void>('falantes_redimensionar', { tamanho, linhas, posicao })),
+    (falso() || web() ? Promise.resolve() : invoke<void>('falantes_redimensionar', { tamanho, linhas, posicao })),
   /** Physical pixels on the virtual desktop (may be negative). */
-  falantesPosicionar: (x: number, y: number) => (falso() ? Promise.resolve() : invoke<void>('falantes_posicionar', { x, y })),
+  falantesPosicionar: (x: number, y: number) => (falso() || web() ? Promise.resolve() : invoke<void>('falantes_posicionar', { x, y })),
 };
 
 /** `stackcall-gsi`: the team of the CS2 match on this PC. */
 export type EventoGsi = { time: 'CT' | 'TR' | null; fase: string | null };
 export function aoGsi(f: (e: EventoGsi) => void) {
-  if (falso()) return () => undefined;
+  if (falso() || web()) return () => undefined;
   const parar = listen<EventoGsi>('stackcall-gsi', ({ payload }) => f(payload));
   return () => void parar.then((u) => u());
 }
@@ -65,20 +68,23 @@ const emitirFalso = (e: EventoReplay) => ouvintesFalsos.forEach((f) => f(e));
 
 export const replay = {
   definir: async (config: ConfigReplay | null) => {
+    if (web()) return;
     if (!falso()) return invoke<void>('replay_definir', { config });
     falsoAtivo = config !== null;
     emitirFalso({ event: 'state', ativo: falsoAtivo });
   },
-  atual: (): Promise<boolean> => (falso() ? Promise.resolve(falsoAtivo) : invoke<boolean>('replay_atual')),
+  atual: (): Promise<boolean> => (web() ? Promise.resolve(false) : falso() ? Promise.resolve(falsoAtivo) : invoke<boolean>('replay_atual')),
   /** The MP4 arrives later in the `saved` event. */
   salvar: async () => {
+    if (web()) throw new Error('Clipes só no app do Windows.');
     if (!falso()) return invoke<void>('replay_salvar');
     if (!falsoAtivo) throw new Error('O replay está desligado.');
     emitirFalso({ event: 'saved', caminho: `C:\\Users\\voce\\Videos\\Stackcall\\clipe-${Date.now()}.mp4`, duracao: 60, tamanho: 40e6 });
   },
   /** Whether my microphone is really open (mute, deafen, push to talk, leaving the room). */
-  microfone: (ativo: boolean) => (falso() ? Promise.resolve() : invoke<void>('replay_microfone', { ativo })),
+  microfone: (ativo: boolean) => (falso() || web() ? Promise.resolve() : invoke<void>('replay_microfone', { ativo })),
   aoEvento: (f: (e: EventoReplay) => void) => {
+    if (web()) return () => undefined;
     if (falso()) {
       ouvintesFalsos.add(f);
       return () => void ouvintesFalsos.delete(f);

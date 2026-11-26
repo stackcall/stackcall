@@ -4,6 +4,7 @@ import { Topo } from '../components/Topo';
 import type { Cutucada } from '../lib/cutucar';
 import { esperaCutucar, marcarCutucada, somSilenciado } from '../lib/cutucadas';
 import { abrir } from '../lib/paleta';
+import { temNucleo } from '../lib/ambiente';
 import type { Pessoa, Sala, Servidor, Usuario } from '../lib/servidor';
 import { useDemoRoom } from '../room/demo';
 import { useLiveRoom } from '../room/useLiveRoom';
@@ -28,6 +29,7 @@ export type RoomProps = {
   /** Poke received (lib/cutucar.ts); the strip stays until closed or until entering that room. */
   cutucada?: Cutucada | null;
   onFecharCutucada?(): void;
+  onBora?(): void;
 };
 
 export type ComSala = Omit<RoomProps, 'sala'> & { sala: Sala };
@@ -44,9 +46,9 @@ export function RoomScreen(props: RoomProps) {
     }, () => undefined);
   };
   return (
-    <div className={`grid h-full gap-4 overflow-hidden px-5 pt-4 pb-5 ${cutucada ? 'grid-rows-[auto_auto_minmax(0,1fr)]' : 'grid-rows-[auto_minmax(0,1fr)]'}`}>
+    <div className={`grid h-full grid-cols-[minmax(0,1fr)] gap-4 overflow-hidden px-5 pt-4 pb-5 max-md:gap-2 max-md:px-2.5 max-md:pt-2 max-md:pb-2 ${cutucada ? 'grid-rows-[auto_auto_minmax(0,1fr)]' : 'grid-rows-[auto_minmax(0,1fr)]'}`}>
       <Topo nomeServidor={props.nomeServidor} salas={props.salas} sala={props.sala} pessoas={props.pessoas} eu={props.eu}
-        onSala={props.onSala} onConfig={props.onConfig} onPerfil={props.onPerfil} onBusca={() => abrir('paleta')} onClipes={() => abrir('clipes')} />
+        onSala={props.onSala} onConfig={props.onConfig} onPerfil={props.onPerfil} onBusca={() => abrir('paleta')} onClipes={temNucleo() ? () => abrir('clipes') : undefined} onBora={props.onBora} />
       {cutucada && onFecharCutucada && (
         <FaixaCutucada cutucada={cutucada} silenciado={somSilenciado()} onFechar={onFecharCutucada}
           onEntrar={cutucada.salaId && cutucada.salaId !== props.sala ? () => { props.onSala(cutucada.salaId); onFecharCutucada(); } : undefined}

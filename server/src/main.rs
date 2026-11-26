@@ -12,6 +12,7 @@ mod profile;
 mod push;
 mod rooms;
 mod sleep;
+mod web;
 
 use axum::{
     Json, Router,
@@ -219,6 +220,7 @@ fn app(config: Arc<Config>) -> Router {
         .merge(pokes::routes())
         .merge(boras::routes())
         .merge(push::routes())
+        .merge(web::routes())
         .merge(profile::routes())
         .route(
             "/api/upload-test",

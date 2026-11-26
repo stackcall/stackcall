@@ -11,3 +11,16 @@
 !core/Cargo.toml
 !core/src/
 !core/src/**
+!vendor/
+!vendor/livekit/
+!vendor/livekit/**
+!app/
+!app/package.json
+!app/package-lock.json
+!app/index.html
+!app/vite.config.ts
+!app/tsconfig.json
+!app/web-public/
+!app/web-public/**
+!app/src/
+!app/src/**

@@ -24,6 +24,8 @@ import { iniciarDeteccaoJogo } from './lib/jogo';
 import type { PaginaId } from './lib/buscaConfig';
 import { aoGsi } from './lib/nucleo';
 import { lerPreferencias } from './lib/preferencias';
+import { useBoras } from './lib/bora';
+import { FaixaBora, NovoBora } from './components/FaixaBora';
 import { destinoCs2, salasVisiveis, subSala } from './lib/cs2';
 
 export type Overlay = null | 'settings' | 'perfil' | { novidades: string | null } | { cartao: string };
@@ -73,6 +75,8 @@ export function App() {
   // CS2 team sub-room: kept here until GET /api/salas lists it (only occupied ones are listed).
   const [subSalaAtual, setSubSalaAtual] = useState<Sala | null>(null);
   const salaAtual = salas.find((s) => s.id === sala) ?? (subSalaAtual?.id === sala ? subSalaAtual : undefined);
+  const [boraAberto, setBoraAberto] = useState(false);
+  const bora = useBoras(estado.fase === 'pronto' ? srv : null, eu?.id ?? null, pessoas, (id) => salas.find((s) => s.id === id)?.nome ?? null, visivel);
   const visiveis = salasVisiveis(salas, salaAtual);
 
   const carregar = useCallback(async (s: Servidor) => {
@@ -326,6 +330,14 @@ export function App() {
           {aviso.texto}
         </Faixa>
       )}
+      {comSala && eu && (
+        <div className="mx-5 mt-3 empty:hidden max-md:mx-2.5 max-md:mt-2">
+          <FaixaBora boras={bora.boras} euId={eu.id} pessoas={pessoas} salas={visiveis} salaAtual={sala}
+            onResponder={(id, r) => void bora.responder(id, r).catch((e: Error) => setAviso({ tipo: 'erro', texto: `Não deu para responder. ${e.message}` }))}
+            onEncerrar={(id) => void bora.encerrar(id).catch(() => undefined)}
+            onEntrar={(id) => escolherSala(id)} />
+        </div>
+      )}
       <div className="relative min-h-0 flex-1">
         {comSala && srv && eu && !sala && (
           <div hidden={!!corpo} className="h-full">
@@ -340,6 +352,7 @@ export function App() {
               onCartao={(id) => setOverlay({ cartao: id })}
               onConvidar={convidar}
               onFecharCutucada={() => setCutucada(null)}
+              onBora={() => setBoraAberto(true)}
             />
           </div>
         )}
@@ -355,10 +368,14 @@ export function App() {
               onConvidar={convidar}
               onAmigo={(id, sim) => void amigo(id, sim)}
               cutucada={cutucada} onFecharCutucada={() => setCutucada(null)}
+              onBora={() => setBoraAberto(true)}
             />
           </div>
         )}
         {corpo}
+        {boraAberto && (
+          <NovoBora salas={visiveis} salaPadrao={sala} onFechar={() => setBoraAberto(false)} onEnviar={(o) => bora.criar(o)} />
+        )}
         <Camada05 servidor={estado.fase === 'pronto' ? srv : null} eu={eu} pessoas={pessoas} salas={visiveis} sala={sala}
           onSala={escolherSala} onCartao={(id) => setOverlay({ cartao: id })}
           onConfig={(pagina) => { setPaginaConfig(pagina); setOverlay('settings'); }} />

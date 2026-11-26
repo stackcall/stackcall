@@ -9,6 +9,7 @@ import { Avatar } from '../../components/Avatar';
 import { Faixa } from '../../components/Faixa';
 import { Icone } from '../../components/Icone';
 import { useInterfaceAtiva } from '../../lib/leveza';
+import { podeTransmitirNoNavegador, temNucleo, useCompacto } from '../../lib/ambiente';
 import { demoScreen } from '../../lib/config';
 import { ultimoAlvo, esperaCutucar, marcarCutucada, marcarSilenciado } from '../../lib/cutucadas';
 import { replay as nucleoReplay } from '../../lib/nucleo';
@@ -58,6 +59,10 @@ export function RoomView(props: ComSala & { model: RoomModel & RoomActions; reco
   const [painel, setPainel] = useState<Painel>(null);
   const [grade, setGrade] = useState(() => new URLSearchParams(location.search).has('grade'));
   const [replayAtivo, setReplayAtivo] = useState(false);
+  const compacto = useCompacto();
+  // Web app: no core (clips, overlay); screen capture only where the browser has it (not phones).
+  const nucleo = temNucleo();
+  const podeTransmitir = nucleo || podeTransmitirNoNavegador();
   const [aviso, setAviso] = useState<{ texto: string; erro?: boolean } | null>(null);
   const antesDoMudo = useRef(new Map<string, number>());
   const me = model.people.find((p) => p.isLocal);
@@ -184,10 +189,12 @@ export function RoomView(props: ComSala & { model: RoomModel & RoomActions; reco
     return [
       { id: 'sala-rede', grupo: 'acoes', rotulo: 'Modo internet ruim', detalhe: ruim ? 'ligado' : undefined, onde: ruim ? 'desligar' : 'ligar', icone: 'antena',
         apelidos: ['lag', 'rede', 'voz primeiro'], teclas: lerAtalhos().teclas.redeRuim, executar: alternarRedeRuim },
-      { id: 'sala-clipe', grupo: 'acoes', rotulo: 'Salvar clipe', onde: 'clipes', icone: 'replay', teclas: lerAtalhos().teclas.clipe, executar: () => void salvarClipe() },
-      { id: 'sala-quemfala', grupo: 'acoes', rotulo: 'Mostrar ou esconder a janela quem fala', onde: 'janela', icone: 'pessoa', executar: alternarQuemFala },
-      { id: 'sala-transmitir', grupo: 'acoes', rotulo: a.imLive ? 'Sair do ar' : 'Transmitir', onde: 'transmitir', icone: 'tela',
-        executar: () => (a.imLive ? a.model.stopLive() : setGoLive(true)) },
+      ...(temNucleo() ? [
+        { id: 'sala-clipe', grupo: 'acoes', rotulo: 'Salvar clipe', onde: 'clipes', icone: 'replay', teclas: lerAtalhos().teclas.clipe, executar: () => void salvarClipe() },
+        { id: 'sala-quemfala', grupo: 'acoes', rotulo: 'Mostrar ou esconder a janela quem fala', onde: 'janela', icone: 'pessoa', executar: alternarQuemFala },
+      ] satisfies ItemPaleta[] : []),
+      ...(temNucleo() || podeTransmitirNoNavegador() ? [{ id: 'sala-transmitir', grupo: 'acoes', rotulo: a.imLive ? 'Sair do ar' : 'Transmitir', onde: 'transmitir', icone: 'tela',
+        executar: () => (a.imLive ? a.model.stopLive() : setGoLive(true)) }] satisfies ItemPaleta[] : []),
       ...a.others.flatMap((p): ItemPaleta[] => [{
         id: `sala-cutucar-${p.id}`, grupo: 'salas', pessoa: true, rotulo: `Cutucar ${p.name}`, detalhe: textoRede(p.rede ?? { qualidade: 'boa' }) ?? undefined,
         onde: 'na sala', icone: 'cutuca', executar: () => abrirCutucar(p.id),
@@ -232,8 +239,24 @@ export function RoomView(props: ComSala & { model: RoomModel & RoomActions; reco
   const linha = `${model.people.length} na sala · ${stage ? `${stage.owner.isLocal ? 'você' : stage.owner.name} no ar` : 'ninguém no ar'}`;
   const alvoMenu = painel?.tipo === 'menu' || painel?.tipo === 'cutucar' ? model.people.find((p) => p.id === painel.id) : undefined;
 
+  const voce = (
+    <Voce model={model} nome={eu.nome} sala={sala.nome} imLive={imLive} replay={replay} podeTransmitir={podeTransmitir} temClipe={nucleo}
+      onGoLive={abrirGoLive} onSair={() => onSala(null)} onClipe={() => void salvarClipe()}
+      onFallback={() => { model.clearStreamError?.(); setFallback(true); setGoLive(true); }}
+      onOuvem={(el) => setPainel({ tipo: 'ouvem', ancora: { x: el.getBoundingClientRect().left - 10, y: el.getBoundingClientRect().top - 8 } })}
+      onMais={(el) => setPainel({ tipo: 'mais', ancora: ancoraDe(el) })} />
+  );
+  const abrirMenuSala = (el: HTMLElement) =>
+    setPainel({ tipo: 'sala', ancora: { x: Math.max(8, el.getBoundingClientRect().right - 260), y: el.getBoundingClientRect().bottom + 4 } });
+
   return (
     <>
+      {compacto ? (
+        <SalaCompacta sala={sala.nome} linha={linha} model={model} stage={stage} others={others} porId={porId} pessoas={pessoas} salas={salas} eu={eu}
+          aviso={aviso} onFecharAviso={() => setAviso(null)} reconexao={props.reconexao} onRetry={props.onRetry}
+          onCartao={onCartao} onAmigo={props.onAmigo} onMenuSala={abrirMenuSala} voce={voce}
+          onMenuPessoa={(id, ancora) => setPainel({ tipo: 'menu', id, ancora })} />
+      ) : (
       <div className="grid min-h-0 grid-rows-[36px_minmax(0,1fr)_164px] gap-2.5">
         <div className="flex min-w-0 items-center gap-3.5">
           <h1 className="text-[32px] leading-none">{sala.nome}</h1>
@@ -257,7 +280,7 @@ export function RoomView(props: ComSala & { model: RoomModel & RoomActions; reco
               <Icone nome="link" tamanho={16} />{convite === 'gerando' ? 'Gerando…' : 'Convidar'}
             </button>
             <button type="button" className="btn btn-sm btn-icone" aria-label="Menu da sala" aria-haspopup="menu" title="Menu da sala"
-              onClick={(e) => setPainel({ tipo: 'sala', ancora: { x: e.currentTarget.getBoundingClientRect().right - 260, y: e.currentTarget.getBoundingClientRect().bottom + 4 } })}>
+              onClick={(e) => abrirMenuSala(e.currentTarget)}>
               <Icone nome="pontos" tamanho={16} />
             </button>
           </span>
@@ -289,11 +312,7 @@ export function RoomView(props: ComSala & { model: RoomModel & RoomActions; reco
         </main>
 
         <footer className="grid min-h-0 min-w-0 grid-cols-[372px_minmax(0,1fr)] gap-3">
-          <Voce model={model} nome={eu.nome} sala={sala.nome} imLive={imLive} replay={replay}
-            onGoLive={abrirGoLive} onSair={() => onSala(null)} onClipe={() => void salvarClipe()}
-            onFallback={() => { model.clearStreamError?.(); setFallback(true); setGoLive(true); }}
-            onOuvem={(el) => setPainel({ tipo: 'ouvem', ancora: { x: el.getBoundingClientRect().left - 10, y: el.getBoundingClientRect().top - 8 } })}
-            onMais={(el) => setPainel({ tipo: 'mais', ancora: ancoraDe(el) })} />
+          {voce}
           {stage || emGrade ? (
             <ul aria-label="Pessoas na sala" className="m-0 grid min-w-0 list-none auto-cols-[minmax(200px,1fr)] grid-flow-col gap-3 overflow-x-auto p-0">
               {others.map((p) => (
@@ -307,6 +326,7 @@ export function RoomView(props: ComSala & { model: RoomModel & RoomActions; reco
           )}
         </footer>
       </div>
+      )}
 
       {painel?.tipo === 'menu' && alvoMenu && (
         <MenuPessoa ancora={painel.ancora} person={alvoMenu} perfil={porId.get(alvoMenu.id)} eu={eu} salas={salas} salaAtual={sala.id}
@@ -346,9 +366,9 @@ export function RoomView(props: ComSala & { model: RoomModel & RoomActions; reco
           <div onKeyDown={navegarMenu}>
             {[
               { t: model.redeRuim ? 'Desligar modo internet ruim' : 'Modo internet ruim', f: alternarRedeRuim, i: 'antena' as const },
-              { t: 'Mostrar ou esconder a janela quem fala', f: alternarQuemFala, i: 'pessoa' as const },
+              ...(nucleo ? [{ t: 'Mostrar ou esconder a janela quem fala', f: alternarQuemFala, i: 'pessoa' as const }] : []),
               { t: 'Teste de rede e microfone', f: props.onConfig, i: 'ajustes' as const },
-              { t: 'Entrar no ar com outra fonte', f: abrirGoLive, i: 'tela' as const, off: !conectada || imLive },
+              ...(podeTransmitir ? [{ t: 'Entrar no ar com outra fonte', f: abrirGoLive, i: 'tela' as const, off: !conectada || imLive }] : []),
             ].map((o) => (
               <button key={o.t} type="button" role="menuitem" aria-disabled={o.off || undefined}
                 onClick={o.off ? undefined : () => { setPainel(null); o.f(); }}
@@ -755,8 +775,9 @@ function BarrasRede({ rede, naBarra = true }: { rede?: Rede; naBarra?: boolean }
   );
 }
 
-function Voce({ model, nome, sala, imLive, replay, onGoLive, onSair, onFallback, onClipe, onOuvem, onMais }: {
+function Voce({ model, nome, sala, imLive, replay, podeTransmitir, temClipe, onGoLive, onSair, onFallback, onClipe, onOuvem, onMais }: {
   model: RoomModel & RoomActions; nome: string; sala: string; imLive: boolean; replay: { ligado: boolean; segundos: number };
+  podeTransmitir: boolean; temClipe: boolean;
   onGoLive(): void; onSair(): void; onFallback(): void; onClipe(): void; onOuvem(el: HTMLElement): void; onMais(el: HTMLElement): void;
 }) {
   const me = model.people.find((p) => p.isLocal);
@@ -787,14 +808,14 @@ function Voce({ model, nome, sala, imLive, replay, onGoLive, onSair, onFallback,
         </button>
         {imLive ? (
           <button type="button" className="btn min-w-0 flex-1 px-2" onClick={model.stopLive}><Icone nome="tela" />Sair do ar</button>
-        ) : (
+        ) : podeTransmitir ? (
           <button type="button" className="btn btn-prim min-w-0 flex-1 px-2" disabled={model.state !== 'connected'} onClick={onGoLive}><Icone nome="tela" />Transmitir</button>
-        )}
-        <button type="button" className="btn btn-icone relative w-10" onClick={onClipe}
+        ) : <span className="flex-1" />}
+        {temClipe && <button type="button" className="btn btn-icone relative w-10" onClick={onClipe}
           aria-label={replay?.ligado ? 'Salvar clipe, replay ligado' : 'Salvar clipe'} title={replay?.ligado ? `Salvar clipe (últimos ${replay.segundos} s)` : 'Salvar clipe (ligue o replay em Configurações)'}>
           <Icone nome="replay" />
           {replay?.ligado && <span aria-hidden="true" className="absolute top-1 right-1 size-[7px] bg-destaque" />}
-        </button>
+        </button>}
         <button type="button" className="btn btn-icone w-10" aria-label="Mais" aria-haspopup="menu" title="Mais: janela quem fala, internet ruim, teste de rede"
           onClick={(e) => onMais(e.currentTarget)}><Icone nome="pontos" /></button>
         <button type="button" className="btn btn-icone w-10 text-destaque" aria-label="Sair da sala" title="Sair da sala" onClick={onSair}>
@@ -806,11 +827,14 @@ function Voce({ model, nome, sala, imLive, replay, onGoLive, onSair, onFallback,
           {imLive && model.gameMinimized && <span>Jogo minimizado: volte ao jogo para a imagem voltar.</span>}
           {imLive && model.videoPaused && <span className="text-texto-fraco">Ninguém assistindo · vídeo pausado</span>}
           {model.micError && <span>{model.micError}</span>}
+          {model.micError === MIC_BLOQUEADO && !isTauri() && (
+            <span className="text-texto-fraco">Libere o microfone no navegador: toque no cadeado ao lado do endereço e permita o microfone.</span>
+          )}
           {model.micError === MIC_BLOQUEADO && (
             <span className="flex flex-wrap gap-2">
-              <button type="button" className="btn btn-sm" onClick={() => void openUrl('ms-settings:privacy-microphone').catch(() => undefined)}>
+              {isTauri() && <button type="button" className="btn btn-sm" onClick={() => void openUrl('ms-settings:privacy-microphone').catch(() => undefined)}>
                 Abrir configurações do Windows
-              </button>
+              </button>}
               <button type="button" className="btn btn-sm" onClick={() => model.setMic?.(true)}>Tentar de novo</button>
             </span>
           )}
@@ -930,6 +954,62 @@ function CanalView({ person, perfil, onVolume, onCartao, onMenu, onAssistir }: C
         <span className="w-10 text-right font-mono text-[11px] tabular-nums">{pct}%</span>
       </div>
     </li>
+  );
+}
+
+/**
+ * Phone layout: the watched screen on top (16:9), then tabs for the room, the chat and the
+ * server, and the Você controls at the bottom within thumb reach.
+ */
+function SalaCompacta({ sala, linha, model, stage, others, porId, pessoas, salas, eu, aviso, onFecharAviso, reconexao, onRetry, onCartao, onAmigo, onMenuSala, onMenuPessoa, voce }: {
+  sala: string; linha: string; model: RoomModel & RoomActions; stage?: Stream; others: Person[]; porId: Map<string, Pessoa>; pessoas: Pessoa[]; salas: Sala[]; eu: Usuario;
+  aviso: { texto: string; erro?: boolean } | null; onFecharAviso(): void; reconexao: Reconexao; onRetry(): void;
+  onCartao(id: string): void; onAmigo(id: string, sim: boolean): void; onMenuSala(el: HTMLElement): void; onMenuPessoa(id: string, ancora: Ancora): void; voce: ReactNode;
+}) {
+  const [aba, setAba] = useState<'sala' | 'conversa' | 'servidor'>('sala');
+  const abas = [
+    { id: 'sala' as const, rotulo: `Na sala · ${others.length + 1}` },
+    { id: 'conversa' as const, rotulo: 'Conversa' },
+    { id: 'servidor' as const, rotulo: `Galera · ${pessoas.filter((p) => p.online).length} on` },
+  ];
+  return (
+    <div className="flex min-h-0 min-w-0 flex-col gap-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <h1 className="truncate text-[26px] leading-none">{sala}</h1>
+        <span className="rotulo min-w-0 truncate text-[11px]">{linha}</span>
+        <button type="button" className="btn btn-sm btn-icone ml-auto shrink-0" aria-label="Menu da sala" aria-haspopup="menu" onClick={(e) => onMenuSala(e.currentTarget)}>
+          <Icone nome="pontos" tamanho={16} />
+        </button>
+      </div>
+      {aviso && <Faixa tipo={aviso.erro ? 'erro' : 'aviso'} onFechar={onFecharAviso}>{aviso.texto}</Faixa>}
+      {(stage || model.state === 'error') && (
+        <div className="flex aspect-video w-full shrink-0 flex-col">
+          <Palco model={model} stage={stage} reconexao={reconexao} jogo={stage ? porId.get(stage.owner.id)?.jogo : null} onPick={() => undefined} onRetry={onRetry} />
+        </div>
+      )}
+      <section className="janela flex min-h-0 flex-1 flex-col" aria-label="Sala">
+        <div className="flex border-b border-texto" role="tablist" aria-label="Painéis da sala">
+          {abas.map((a) => (
+            <button key={a.id} type="button" role="tab" aria-selected={aba === a.id} onClick={() => setAba(a.id)}
+              className={`min-h-11 flex-1 border-0 px-1 font-mono text-[11px] font-bold tracking-[0.04em] uppercase [&+&]:border-l [&+&]:border-texto ${aba === a.id ? 'bg-texto text-superficie' : 'bg-transparent text-texto-fraco'}`}>
+              {a.rotulo}
+            </button>
+          ))}
+        </div>
+        {aba === 'sala' && (
+          <ul aria-label="Pessoas na sala" className="m-0 grid min-h-0 flex-1 list-none content-start gap-2 overflow-y-auto p-2">
+            {others.map((p) => (
+              <Canal key={p.id} person={p} perfil={porId.get(p.id)} onVolume={(v) => model.setVolume(p.id, v)} onCartao={() => onCartao(p.id)}
+                onMenu={(ancora) => onMenuPessoa(p.id, ancora)} onAssistir={() => p.live && model.watch(p.id)} />
+            ))}
+            {others.length === 0 && <li className="px-2 py-3 text-[14px] text-texto-fraco">Só você na sala. Chame a galera com o Bora?.</li>}
+          </ul>
+        )}
+        {aba === 'conversa' && <Conversa sala={sala} chat={model.chat} onSend={model.sendChat} />}
+        {aba === 'servidor' && <Pessoas pessoas={pessoas} salas={salas} eu={eu} onCartao={onCartao} onAmigo={onAmigo} />}
+      </section>
+      <div className="shrink-0 pb-[env(safe-area-inset-bottom)]">{voce}</div>
+    </div>
   );
 }
 

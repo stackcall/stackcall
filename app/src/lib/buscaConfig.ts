@@ -1,3 +1,5 @@
+import { naWeb } from './ambiente';
+
 /**
  * Settings map and search (docs/design/v05-interface.md, section 5). Three groups; the server
  * group only for the owner and admins. The search looks in the setting name, its description
@@ -5,11 +7,12 @@
  */
 export type Grupo = 'voce' | 'servidor' | 'app';
 export type PaginaId =
-  | 'perfil' | 'voz' | 'atalhos' | 'clipes' | 'cutucadas' | 'sons' | 'quemfala' | 'cs2' | 'aparencia'
+  | 'perfil' | 'voz' | 'celular' | 'atalhos' | 'clipes' | 'cutucadas' | 'sons' | 'quemfala' | 'cs2' | 'aparencia'
   | 'geral' | 'salas' | 'membros'
   | 'servidores' | 'sobre';
 
-export type Pagina = { id: PaginaId; grupo: Grupo; rotulo: string; precisaServidor?: boolean };
+/** `soApp`: needs the Windows app (core, hotkeys, CS2 files); hidden in the web app. */
+export type Pagina = { id: PaginaId; grupo: Grupo; rotulo: string; precisaServidor?: boolean; soApp?: boolean };
 
 export const GRUPOS: { id: Grupo; rotulo: string }[] = [
   { id: 'voce', rotulo: 'Você' },
@@ -20,23 +23,24 @@ export const GRUPOS: { id: Grupo; rotulo: string }[] = [
 export const PAGINAS: Pagina[] = [
   { id: 'perfil', grupo: 'voce', rotulo: 'Perfil', precisaServidor: true },
   { id: 'voz', grupo: 'voce', rotulo: 'Voz e rede' },
-  { id: 'atalhos', grupo: 'voce', rotulo: 'Atalhos' },
-  { id: 'clipes', grupo: 'voce', rotulo: 'Clipes e replay' },
+  { id: 'celular', grupo: 'voce', rotulo: 'Celular', precisaServidor: true },
+  { id: 'atalhos', grupo: 'voce', rotulo: 'Atalhos', soApp: true },
+  { id: 'clipes', grupo: 'voce', rotulo: 'Clipes e replay', soApp: true },
   { id: 'cutucadas', grupo: 'voce', rotulo: 'Cutucadas' },
   { id: 'sons', grupo: 'voce', rotulo: 'Sons e avisos' },
-  { id: 'quemfala', grupo: 'voce', rotulo: 'Janela quem fala' },
-  { id: 'cs2', grupo: 'voce', rotulo: 'Mapa do CS2' },
+  { id: 'quemfala', grupo: 'voce', rotulo: 'Janela quem fala', soApp: true },
+  { id: 'cs2', grupo: 'voce', rotulo: 'Mapa do CS2', soApp: true },
   { id: 'aparencia', grupo: 'voce', rotulo: 'Aparência' },
   { id: 'geral', grupo: 'servidor', rotulo: 'Geral e convites', precisaServidor: true },
   { id: 'salas', grupo: 'servidor', rotulo: 'Salas', precisaServidor: true },
   { id: 'membros', grupo: 'servidor', rotulo: 'Membros e cargos', precisaServidor: true },
-  { id: 'servidores', grupo: 'app', rotulo: 'Servidores' },
+  { id: 'servidores', grupo: 'app', rotulo: 'Servidores', soApp: true },
   { id: 'sobre', grupo: 'app', rotulo: 'Sobre e atualizações' },
 ];
 
 /** Pages this person sees: the server group needs a server and an owner or admin. */
 export function paginasVisiveis(comServidor: boolean, admin: boolean) {
-  return PAGINAS.filter((p) => (!p.precisaServidor || comServidor) && (p.grupo !== 'servidor' || admin));
+  return PAGINAS.filter((p) => (!p.precisaServidor || comServidor) && (p.grupo !== 'servidor' || admin) && !(p.soApp && naWeb()));
 }
 
 /** `id` matches the `data-ajuste` of the row in the page, so a result can scroll to it. */

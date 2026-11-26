@@ -22,6 +22,7 @@ type Props = {
   onCartao(id: string): void;
   onConvidar(): Promise<void>;
   onFecharCutucada(): void;
+  onBora?(): void;
 };
 
 /** The game most people in the room are playing, if any. */
@@ -58,9 +59,9 @@ export function Saguao(props: Props) {
   const nomeSala = (id: string | null) => salas.find((s) => s.id === id)?.nome;
 
   return (
-    <div className="grid h-full grid-rows-[auto_minmax(0,1fr)] gap-4 overflow-hidden px-5 pt-4 pb-5">
+    <div className="grid h-full grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] gap-4 overflow-hidden px-5 pt-4 pb-5 max-md:gap-2 max-md:px-2.5 max-md:pt-2 max-md:pb-2">
       <Topo nomeServidor={props.nomeServidor} salas={salas} sala={null} pessoas={pessoas} eu={eu}
-        onSala={onSala} onConfig={props.onConfig} onPerfil={props.onPerfil} />
+        onSala={onSala} onConfig={props.onConfig} onPerfil={props.onPerfil} onBora={props.onBora} />
       <main className="flex min-h-0 flex-col gap-4 overflow-y-auto">
         {props.cutucada && (
           <FaixaCutucada cutucada={props.cutucada} silenciado={false} onFechar={props.onFecharCutucada}
@@ -69,7 +70,7 @@ export function Saguao(props: Props) {
         <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
           <div className="flex flex-col gap-1">
             <span className="rotulo">/ {props.nomeServidor} · fora da voz</span>
-            <h1 className="text-[56px]">Escolha uma sala</h1>
+            <h1 className="text-[56px] max-md:text-[36px]">Escolha uma sala</h1>
             <p className="m-0 text-texto-fraco">
               {emVoz ? `${plural(emVoz, 'pessoa', 'pessoas')} em voz agora. Entre numa sala para falar, assistir e conversar.` : 'Ninguém em voz agora. Entre numa sala e chame a galera.'}
             </p>

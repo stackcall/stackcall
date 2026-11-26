@@ -9,24 +9,24 @@ const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um :
  * Same markup as the room's own bar in screens/Room.tsx; the lobby uses this copy so the room
  * file stays with the room thread. The search and clips buttons appear when their handlers exist.
  */
-export function Topo({ nomeServidor, salas, sala, pessoas, eu, onSala, onConfig, onPerfil, onBusca, onClipes }: {
+export function Topo({ nomeServidor, salas, sala, pessoas, eu, onSala, onConfig, onPerfil, onBusca, onClipes, onBora }: {
   nomeServidor: string; salas: Sala[]; sala: string | null; pessoas: Pessoa[]; eu: Usuario;
-  onSala(id: string): void; onConfig(): void; onPerfil(): void; onBusca?(): void; onClipes?(): void;
+  onSala(id: string): void; onConfig(): void; onPerfil(): void; onBusca?(): void; onClipes?(): void; onBora?(): void;
 }) {
   const online = pessoas.filter((p) => p.online).length;
   return (
-    <header className="flex min-w-0 items-center gap-3">
-      <div className="janela flex h-[52px] shrink-0 items-center gap-3 pr-1 pl-3">
-        <span className="font-display text-[26px] leading-none">stack<span className="text-destaque">call</span></span>
-        <span aria-hidden="true" className="h-[26px] w-px bg-texto" />
-        <button type="button" onClick={onConfig} className="flex h-11 flex-col items-start justify-center border-0 bg-transparent px-2 text-left leading-[1.15] hover:bg-superficie-alta"
+    <header className="flex min-w-0 items-center gap-3 max-md:flex-wrap max-md:gap-2">
+      <div className="janela flex h-[52px] shrink-0 items-center gap-3 pr-1 pl-3 max-md:min-w-0 max-md:flex-1 max-md:shrink">
+        <span className="font-display text-[26px] leading-none max-md:hidden">stack<span className="text-destaque">call</span></span>
+        <span aria-hidden="true" className="h-[26px] w-px bg-texto max-md:hidden" />
+        <button type="button" onClick={onConfig} className="flex h-11 min-w-0 flex-col items-start justify-center border-0 bg-transparent px-2 text-left leading-[1.15] hover:bg-superficie-alta max-md:px-0"
           aria-label={`Servidor ${nomeServidor}, ${plural(pessoas.length, 'membro', 'membros')}. Abrir configurações do servidor`}>
-          <b className="max-w-[180px] truncate text-[14px]">{nomeServidor}</b>
-          <span className="rotulo text-[11px]">{plural(pessoas.length, 'membro', 'membros')} · {online} online</span>
+          <b className="max-w-[180px] truncate text-[14px] max-md:max-w-full">{nomeServidor}</b>
+          <span className="rotulo truncate text-[11px] max-md:max-w-full">{plural(pessoas.length, 'membro', 'membros')} · {online} online</span>
         </button>
       </div>
 
-      <nav aria-label="Salas" className="janela flex min-w-0 overflow-x-auto">
+      <nav aria-label="Salas" className="janela flex min-w-0 overflow-x-auto max-md:order-last max-md:w-full">
         {salas.map((r) => {
           const ativa = r.id === sala;
           const ponto = r.noAr ? 'bg-destaque' : r.pessoas > 0 ? 'bg-lima outline outline-1 outline-texto' : 'bg-borda';
@@ -48,13 +48,18 @@ export function Topo({ nomeServidor, salas, sala, pessoas, eu, onSala, onConfig,
       </nav>
 
       {onBusca ? (
-        <button type="button" onClick={onBusca} aria-keyshortcuts="Control+K" className="janela flex h-[52px] min-w-0 flex-1 items-center gap-2.5 px-3 text-left text-texto-fraco hover:border-destaque">
+        <button type="button" onClick={onBusca} aria-keyshortcuts="Control+K" className="janela flex h-[52px] min-w-0 flex-1 items-center gap-2.5 px-3 text-left text-texto-fraco hover:border-destaque max-md:hidden">
           <Icone nome="busca" /><span className="truncate">Buscar sala, pessoa, ação ou ajuste</span>
           <kbd className="ml-auto hidden border border-borda px-1.5 font-mono text-[11px] min-[1280px]:inline">Ctrl+K</kbd>
         </button>
-      ) : <span className="flex-1" />}
+      ) : <span className="flex-1 max-md:hidden" />}
 
-      <div className="flex shrink-0 items-center gap-2.5">
+      <div className="flex shrink-0 items-center gap-2.5 max-md:gap-1.5">
+        {onBora && (
+          <button type="button" className="btn border-lima" title="Chamar a galera para jogar" onClick={onBora}>
+            <Icone nome="voz" />Bora?
+          </button>
+        )}
         {onClipes && <button type="button" className="btn btn-icone" aria-label="Clipes" title="Clipes" onClick={onClipes}><Icone nome="filme" /></button>}
         <button type="button" className="btn btn-icone" aria-label="Configurações" title="Configurações" onClick={onConfig}><Icone nome="ajustes" /></button>
         <button type="button" className="border-0 bg-transparent p-0" aria-label="Seu perfil" title="Seu perfil" onClick={onPerfil}>

@@ -11,7 +11,7 @@ handle @livekit {
 	reverse_proxy livekit:7880
 }
 
-@porteiro path /api/* /c/* /media/*
+@porteiro path /api/* /c/* /media/* /app /app/*
 handle @porteiro {
 	reverse_proxy porteiro:8100
 }

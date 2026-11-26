@@ -254,6 +254,10 @@ async fn accept(
     .map_err(InviteError)
 }
 
+fn config_public(server: &str) -> Url {
+    Url::parse(server).expect("server origin is a valid URL")
+}
+
 async fn page(
     State(config): State<Arc<Config>>,
     Path(code): Path<String>,
@@ -264,10 +268,18 @@ async fn page(
         .append_pair("servidor", &server)
         .append_pair("codigo", &code);
     let name = config.server_name.clone();
+    let code_for_page = code.clone();
     db::run(config, move |conn| inviter(conn, &code, &name))
         .await
         .map_err(InviteError)?;
     let link = link.as_str().replace('&', "&amp;");
+    let mut web = config_public(&server);
+    web.set_path("/app/");
+    web.set_fragment(Some(&format!(
+        "convite={}",
+        url::form_urlencoded::byte_serialize(code_for_page.as_bytes()).collect::<String>()
+    )));
+    let web = web.as_str().replace('&', "&amp;");
     let nonce = auth::id();
     let html = format!(
         r#"<!doctype html>
@@ -275,8 +287,12 @@ async fn page(
 <title>Convite do Stackcall</title>
 <h1>Convite do Stackcall</h1>
 <p><a id="abrir" href="{link}">Abrir no Stackcall</a></p>
-<p><a href="https://github.com/stackcall/releases/releases/latest">Baixar o Stackcall</a></p>
-<script nonce="{nonce}">window.location.href = document.getElementById("abrir").href;</script>
+<p><a id="web" href="{web}">Entrar pelo celular ou pelo navegador</a></p>
+<p><a href="https://github.com/stackcall/releases/releases/latest">Baixar o Stackcall para Windows</a></p>
+<script nonce="{nonce}">
+var celular = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+window.location.href = document.getElementById(celular ? "web" : "abrir").href;
+</script>
 </html>"#
     );
     Ok(([

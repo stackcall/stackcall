@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCompacto } from '../lib/ambiente';
+import { PaginaCelular } from './config/Celular';
 import { isTauri } from '@tauri-apps/api/core';
 import { CATEGORIES, countOf, formatDate, loadChangelog, type Version } from '../lib/changelog';
 import type { useUpdater } from '../lib/updater';
@@ -67,6 +69,9 @@ export function Settings(props: Props) {
   const [destaque, setDestaque] = useState<string>();
   const principal = useRef<HTMLElement>(null);
   const atual = visiveis.some((p) => p.id === pagina) ? pagina : visiveis[0].id;
+  // Phone: the section list and the page take turns on the screen.
+  const compacto = useCompacto();
+  const [naLista, setNaLista] = useState(!props.pagina);
 
   useEffect(() => {
     // Esc while a shortcut is being recorded cancels the recording, not the whole screen.
@@ -83,6 +88,7 @@ export function Settings(props: Props) {
   }, [destaque, atual]);
 
   const abrir = (id: PaginaId, ajuste?: string) => {
+    setNaLista(false);
     setPagina(id);
     setBusca('');
     setDestaque(ajuste);
@@ -92,8 +98,8 @@ export function Settings(props: Props) {
   const nomeServidor = props.servidor ? new URL(props.servidor.url).host : '';
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Configurações" className="absolute inset-0 z-20 grid grid-cols-[272px_minmax(0,1fr)] bg-fundo">
-      <nav aria-label="Seções" className="flex min-h-0 flex-col gap-px overflow-y-auto border-r border-texto bg-superficie px-3.5 pt-4 pb-3">
+    <div role="dialog" aria-modal="true" aria-label="Configurações" className="absolute inset-0 z-20 grid grid-cols-[272px_minmax(0,1fr)] bg-fundo max-md:grid-cols-1">
+      <nav aria-label="Seções" hidden={compacto && !naLista && !resultados} className="flex min-h-0 flex-col gap-px overflow-y-auto border-r border-texto bg-superficie px-3.5 pt-4 pb-3 max-md:border-r-0">
         <span className="rotulo px-1">/ Configurações</span>
         <label className={`my-2 flex h-10 shrink-0 items-center gap-2 border px-2.5 text-texto-fraco ${busca ? 'border-2 border-destaque' : 'border-texto'}`}>
           <Icone nome="busca" tamanho={15} />
@@ -129,12 +135,16 @@ export function Settings(props: Props) {
           <Icone nome="sair" tamanho={16} />Voltar
         </button>
       </nav>
-      <main ref={principal} className="flex min-w-0 flex-col gap-3 overflow-y-auto px-8 pt-6 pb-8">
+      <main ref={principal} hidden={compacto && naLista && !resultados} className="flex min-w-0 flex-col gap-3 overflow-y-auto px-8 pt-6 pb-8 max-md:px-3 max-md:pt-3">
         <div className="flex w-full max-w-[1040px] flex-col gap-3">
+          {compacto && !resultados && (
+            <button type="button" className="btn btn-fant self-start" onClick={() => setNaLista(true)}><Icone nome="sair" tamanho={16} />Seções</button>
+          )}
           {resultados ? <Resultados busca={busca} lista={resultados} onAbrir={(a) => abrir(a.pagina, a.id)} /> : (
             <>
               {atual === 'perfil' && <PaginaPerfil eu={props.eu} destaque={destaque} onEditar={props.onPerfil} />}
               {atual === 'voz' && <SecaoPreferencias servidorUrl={props.servidor?.url ?? null} destaque={destaque} />}
+              {atual === 'celular' && <PaginaCelular servidor={props.servidor} />}
               {atual === 'atalhos' && <SecaoAtalhos />}
               {atual === 'clipes' && <PaginaClipes destaque={destaque} />}
               {atual === 'cutucadas' && <PaginaCutucadas servidor={props.servidor} eu={props.eu} destaque={destaque} />}

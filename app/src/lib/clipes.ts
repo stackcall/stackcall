@@ -1,4 +1,5 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
+import { naWeb } from './ambiente';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 
 /**
@@ -18,7 +19,7 @@ let exemplos: Clipe[] = [
 ];
 
 /** Newest first. */
-export const listarClipes = (): Promise<Clipe[]> => (isTauri() ? invoke<Clipe[]>('clipes_listar') : Promise.resolve([...exemplos]));
+export const listarClipes = (): Promise<Clipe[]> => (isTauri() ? invoke<Clipe[]>('clipes_listar') : naWeb() ? Promise.resolve([]) : Promise.resolve([...exemplos]));
 
 /** Sends the file to the Windows Recycle Bin; on error the clip stays in the folder. */
 export async function apagarClipe(c: Clipe) {

@@ -1,4 +1,4 @@
-import { ApiError, type Convite, type Pessoa, type ReceberCutucadas, type Sala, type Servidor, type Usuario } from './servidor';
+import { ApiError, type Bora, type Convite, type Pessoa, type ReceberCutucadas, type Sala, type Servidor, type Usuario } from './servidor';
 
 /**
  * Fake server for development and tests (`?demo=1` or VITE_SERVIDOR_FALSO=1 in dev).
@@ -47,6 +47,11 @@ export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
     { id: 'ranked', nome: 'Ranked', ordem: 4, pessoas: 0, noAr: false },
   ];
   let receber: ReceberCutucadas = 'todos';
+  // ?bora=1: Rafa called the group to play, Duda is in.
+  let boras: Bora[] = new URLSearchParams(location.search).has('bora') ? [{
+    id: 'b-demo', autor: 'rafa', sala: 'cs', recado: 'premier agora', criadoEm: Date.now() / 1000 - 300, expiraEm: Date.now() / 1000 + 6900,
+    respostas: [{ usuario: 'rafa', resposta: 'dentro', em: 0 }, { usuario: 'duda', resposta: '10min', em: 1 }],
+  }] : [];
   let convites: Convite[] = [{ id: 'c1', link: null, expiraEm: '2026-12-01T21:00:00Z', usos: 0, usosMax: 1 }];
   const exigeSessao = () => {
     if (!sessao) throw new ApiError(401, 'Sua sessão neste aparelho acabou. Peça um convite novo.');
@@ -123,6 +128,24 @@ export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
       if (Date.now() - (cutucou.get(para) ?? 0) < 30_000) throw new ApiError(429, 'Espere 30 s para cutucar essa pessoa de novo.');
       cutucou.set(para, Date.now());
     },
+    boras: async () => (await espera(), boras.map((b) => ({ ...b, respostas: [...b.respostas] }))),
+    criarBora: async ({ sala, recado }) => {
+      await espera();
+      boras = boras.filter((b) => b.autor !== eu.id);
+      const b: Bora = { id: `b${Date.now()}`, autor: eu.id, sala: sala ?? null, recado: recado ?? '', criadoEm: Date.now() / 1000, expiraEm: Date.now() / 1000 + 7200,
+        respostas: [{ usuario: eu.id, resposta: 'dentro', em: Date.now() / 1000 }] };
+      boras = [b, ...boras];
+      return b.id;
+    },
+    responderBora: async (id, resposta) => {
+      const b = boras.find((x) => x.id === id);
+      if (!b) throw new ApiError(404, 'Esse Bora? já acabou.');
+      b.respostas = [...b.respostas.filter((r) => r.usuario !== eu.id), { usuario: eu.id, resposta, em: Date.now() / 1000 }];
+    },
+    encerrarBora: async (id) => void (boras = boras.filter((b) => b.id !== id)),
+    pushChave: async () => 'BFakeKeyForTheDemoOnly',
+    pushInscrever: async () => undefined,
+    pushRemover: async () => undefined,
     moderar: async (_salaId, a) => {
       await espera();
       if (a.acao === 'silenciar') return;

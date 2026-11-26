@@ -1,4 +1,5 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
+import { naWeb } from './ambiente';
 import { store } from './config';
 
 /**
@@ -83,6 +84,24 @@ export function aoPerderSessao(f: (servidor: string) => void) {
 const rotaDeCodigo = (metodo: string, rota: string) =>
   rota === '/api/aparelhos/entrar' || /^\/api\/convites\/[^/]+\/aceitar$/.test(rota) || (metodo === 'GET' && /^\/api\/convites\/[^/]+$/.test(rota));
 
+export type RespostaBora = 'dentro' | '10min' | 'nao';
+export type Bora = {
+  id: string; autor: string; sala: string | null; recado: string; criadoEm: number; expiraEm: number;
+  respostas: { usuario: string; resposta: RespostaBora; em: number }[];
+};
+const RESPOSTAS: readonly RespostaBora[] = ['dentro', '10min', 'nao'];
+export const lerBora = (o: Record<string, unknown>): Bora => ({
+  id: String(o.id ?? ''),
+  autor: String(o.autor ?? ''),
+  sala: typeof o.sala === 'string' ? o.sala : null,
+  recado: typeof o.recado === 'string' ? o.recado : '',
+  criadoEm: Number(o.criado_em) || 0,
+  expiraEm: Number(o.expira_em) || 0,
+  respostas: (Array.isArray(o.respostas) ? o.respostas : [])
+    .map((r: Record<string, unknown>) => ({ usuario: String(r.usuario ?? ''), resposta: r.resposta as RespostaBora, em: Number(r.em) || 0 }))
+    .filter((r) => RESPOSTAS.includes(r.resposta)),
+});
+
 export interface Servidor {
   readonly url: string;
   temSessao(): Promise<boolean>;
@@ -118,9 +137,24 @@ export interface Servidor {
   /** POST /api/cutucar. 429 = the 30 s limit for that person, 403 = their preference refused. */
   cutucar(para: string, recado: string): Promise<void>;
   moderar(salaId: string, acao: AcaoModeracao): Promise<void>;
+  /** "Bora?": open calls to play (2 h), newest first. */
+  boras(): Promise<Bora[]>;
+  criarBora(opcoes: { sala?: string; recado?: string }): Promise<string>;
+  responderBora(id: string, resposta: RespostaBora): Promise<void>;
+  encerrarBora(id: string): Promise<void>;
+  /** Web Push (phone notices): the server key, then this browser's subscription. */
+  pushChave(): Promise<string>;
+  pushInscrever(inscricao: { endpoint: string; p256dh: string; auth: string }): Promise<void>;
+  pushRemover(endpoint: string): Promise<void>;
 }
 
-const nomeAparelho = () => (navigator.userAgent.includes('Windows') ? 'PC com Windows' : 'Computador');
+const nomeAparelho = () => {
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod/.test(ua)) return 'iPhone (navegador)';
+  if (/Android/.test(ua)) return 'Celular Android (navegador)';
+  if (naWeb()) return 'Navegador';
+  return ua.includes('Windows') ? 'PC com Windows' : 'Computador';
+};
 
 // The porteiro is written in another thread; accept snake_case and short names alike.
 const str = (v: unknown) => (typeof v === 'string' ? v : v == null ? '' : String(v));
@@ -194,12 +228,32 @@ type Obj = Record<string, unknown>;
 const lista = (v: unknown, chave: string): Obj[] =>
   Array.isArray(v) ? v : Array.isArray((v as Obj | null)?.[chave]) ? ((v as Obj)[chave] as Obj[]) : [];
 
+/** Web app: same-origin fetch; the session cookie goes along and writes carry the web header. */
+async function viaNavegador(url: string, metodo: string, rota: string, corpo?: unknown, webp?: Blob) {
+  const resposta = await fetch(`${url.replace(/\/+$/, '')}${rota}`, {
+    method: metodo,
+    credentials: 'same-origin',
+    cache: 'no-store',
+    redirect: 'error',
+    headers: { 'x-stackcall-web': '1', ...(webp ? { 'content-type': 'image/webp' } : corpo !== undefined ? { 'content-type': 'application/json' } : {}) },
+    body: webp ?? (corpo !== undefined ? JSON.stringify(corpo) : undefined),
+  });
+  const texto = await resposta.text();
+  let json: unknown = null;
+  try {
+    json = texto ? JSON.parse(texto) : null;
+  } catch {
+    json = null;
+  }
+  return { status: resposta.status, corpo: json };
+}
+
 export function servidorReal(url: string): Servidor {
   async function chamar(metodo: string, rota: string, corpo?: unknown, webp?: Blob): Promise<Obj> {
-    if (!isTauri()) throw new ApiError(0, 'Abra pelo app do Stackcall.');
+    if (!isTauri() && !naWeb()) throw new ApiError(0, 'Abra pelo app do Stackcall.');
     let r: { status: number; corpo: unknown };
     try {
-      r = await invoke('api', {
+      r = naWeb() ? await viaNavegador(url, metodo, rota, corpo, webp) : await invoke('api', {
         chamada: {
           servidor: url, metodo, rota, corpo: corpo ?? null,
           bytes: webp ? Array.from(new Uint8Array(await webp.arrayBuffer())) : null,
@@ -221,7 +275,9 @@ export function servidorReal(url: string): Servidor {
   const c = encodeURIComponent;
   return {
     url,
-    temSessao: async () => (isTauri() ? invoke<boolean>('sessao_existe', { servidor: url }).catch(() => false) : false),
+    // On the web the HttpOnly cookie is invisible to the page: asking /api/eu is the only check.
+    temSessao: async () => (isTauri() ? invoke<boolean>('sessao_existe', { servidor: url }).catch(() => false)
+      : naWeb() ? viaNavegador(url, 'GET', '/api/eu').then((r) => r.status === 200, () => false) : false),
     info: async () => {
       const o = await chamar('GET', '/api/servidor');
       return { nome: str(o.nome) || new URL(url).hostname, versao: str(o.versao), dorme: lerDorme(o.dorme) };
@@ -230,12 +286,12 @@ export function servidorReal(url: string): Servidor {
       const o = await chamar('GET', `/api/convites/${c(codigo)}`);
       return { servidor: str(o.servidor ?? o.nome), convidadoPor: str(o.convidado_por ?? o.convidadoPor) };
     },
-    aceitar: async (codigo, nome) => usuarioDe(await chamar('POST', `/api/convites/${c(codigo)}/aceitar`, { nome, aparelho: nomeAparelho() })),
+    aceitar: async (codigo, nome) => usuarioDe(await chamar('POST', `/api/convites/${c(codigo)}/aceitar`, { nome, aparelho: nomeAparelho(), web: naWeb() })),
     linkAparelho: async () => {
       const o = await chamar('POST', '/api/aparelhos/link');
       return str(o.url ?? o.link);
     },
-    entrarAparelho: async (codigo) => usuarioDe(await chamar('POST', '/api/aparelhos/entrar', { codigo, aparelho: nomeAparelho() })),
+    entrarAparelho: async (codigo) => usuarioDe(await chamar('POST', '/api/aparelhos/entrar', { codigo, aparelho: nomeAparelho(), web: naWeb() })),
     sair: async () => void (await chamar('POST', '/api/sair').catch(() => undefined)),
     eu: async () => usuarioDe(await chamar('GET', '/api/eu')),
     perfil: async ({ tema, ...resto }) => usuarioDe(await chamar('PATCH', '/api/eu/perfil', tema ? { ...resto, tema_perfil: tema } : resto)),
@@ -273,6 +329,16 @@ export function servidorReal(url: string): Servidor {
     cutucar: async (para, recado) => void (await chamar('POST', '/api/cutucar', { para, recado })),
     moderar: async (salaId, a) => void (await chamar('POST', `/api/salas/${c(salaId)}/moderacao/${a.acao}`,
       a.acao === 'mover' ? { usuario_id: a.usuarioId, destino_id: a.destinoId } : a.acao === 'retirar' ? { usuario_id: a.usuarioId } : {})),
+    boras: async () => {
+      const o = await chamar('GET', '/api/boras');
+      return (Array.isArray(o) ? o : []).map(lerBora);
+    },
+    criarBora: async ({ sala, recado }) => str((await chamar('POST', '/api/boras', { ...(sala ? { sala } : {}), recado: recado ?? '' })).id),
+    responderBora: async (id, resposta) => void (await chamar('POST', `/api/boras/${c(id)}/resposta`, { resposta })),
+    encerrarBora: async (id) => void (await chamar('DELETE', `/api/boras/${c(id)}`)),
+    pushChave: async () => str((await chamar('GET', '/api/push/chave')).chave),
+    pushInscrever: async (inscricao) => void (await chamar('POST', '/api/push', inscricao)),
+    pushRemover: async (endpoint) => void (await chamar('DELETE', '/api/push', { endpoint })),
   };
 }
 

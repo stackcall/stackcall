@@ -1,5 +1,32 @@
 [
   {
+    "version": "0.6.0",
+    "date": "2026-11-26",
+    "categories": [
+      {
+        "name": "Novidades",
+        "items": [
+          {
+            "message": "Stackcall no celular: abra o convite no celular, ou o QR code em Configurações › Celular no PC, e use o mesmo app no navegador, sem instalar nada da loja",
+            "breaking": false
+          },
+          {
+            "message": "No celular dá para entrar na call, falar, ouvir, conversar e assistir às telas; ele recebe a versão leve 720p, que gasta menos internet",
+            "breaking": false
+          },
+          {
+            "message": "Bora?: chame a galera para jogar com um toque; todo mundo recebe no app e no celular e responde \"tô dentro\", \"em 10 min\" ou \"hoje não\"",
+            "breaking": false
+          },
+          {
+            "message": "Avisos no celular para o Bora? e para as cutucadas, mesmo com o app fechado (Configurações › Celular)",
+            "breaking": false
+          }
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.5.5",
     "date": "2026-11-26",
     "categories": [

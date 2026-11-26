@@ -11,6 +11,7 @@ import { tocarSom } from '../lib/sons';
 import { ATRIBUTO_OUVE, ATRIBUTO_REDE, ouveLista, quemRecebe, redeDe } from './sala05';
 import { interfaceAtiva, useInterfaceAtiva } from '../lib/leveza';
 import { lerAmostra, linhaAssistir, type Amostra } from '../lib/qualidadeRecebida';
+import { ehCelular } from '../lib/ambiente';
 import type { Servidor } from '../lib/servidor';
 import { resolutionOf, type Codec, type Preset } from '../lib/presets';
 import { setTransmissionPaused, stopTransmission, type StreamEvent } from '../lib/sidecar';
@@ -691,7 +692,12 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
       if (!room) return;
       if (watchingRef.current && watchingRef.current !== id) setScreenSubscribed(watchingRef.current, false);
       watchingRef.current = id;
+      // Phones get the light 720p H.264 screen by default: every phone decodes it and it costs
+      // a third of the data. The person can switch to Original on Wi-Fi.
+      const leveNoCelular = ehCelular() && qualidadeRef.current[id] === undefined;
+      if (leveNoCelular) qualidadeRef.current = { ...qualidadeRef.current, [id]: 'leve' };
       setScreenSubscribed(id, true);
+      if (leveNoCelular) pedirLeve(id, true);
       void sendWatch(room, id);
       announceWatch(room);
       rerender();

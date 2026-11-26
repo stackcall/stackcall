@@ -52,7 +52,7 @@ fn open_calls(conn: &Connection) -> rusqlite::Result<Vec<Bora>> {
     let mut answers = conn.prepare(
         "SELECT r.usuario_id, r.resposta, r.em FROM bora_respostas r
          JOIN usuarios u ON u.id = r.usuario_id AND u.removido_em IS NULL
-         WHERE r.bora_id = ?1 ORDER BY r.em",
+         WHERE r.bora_id = ?1 ORDER BY r.em, r.rowid",
     )?;
     let calls = query
         .query_map([], |row| {
