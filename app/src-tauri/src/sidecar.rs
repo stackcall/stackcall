@@ -325,27 +325,53 @@ fn guardar_log(app: &AppHandle, stderr: tokio::process::ChildStderr) {
         return;
     };
     tauri::async_runtime::spawn(async move {
-        let _ = std::fs::create_dir_all(&dir);
-        let path = dir.join("nucleo.log");
-        if std::fs::metadata(&path).is_ok_and(|meta| meta.len() > 2_000_000) {
-            let _ = std::fs::rename(&path, dir.join("nucleo.1.log"));
-        }
-        let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-        else {
+        let Ok(mut file) = abrir_log(&dir, "nucleo") else {
             return;
         };
         let mut lines = BufReader::new(stderr).lines();
         while let Ok(Some(line)) = lines.next_line().await {
-            let secs = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |d| d.as_secs());
             use std::io::Write;
-            let _ = writeln!(file, "{secs} {line}");
+            let _ = writeln!(file, "{} {line}", agora_epoch());
         }
     });
+}
+
+/// `logs/<name>.log` for appending, rotated to `<name>.1.log` above 2 MB.
+fn abrir_log(dir: &std::path::Path, name: &str) -> std::io::Result<std::fs::File> {
+    std::fs::create_dir_all(dir)?;
+    let path = dir.join(format!("{name}.log"));
+    if std::fs::metadata(&path).is_ok_and(|meta| meta.len() > 2_000_000) {
+        let _ = std::fs::rename(&path, dir.join(format!("{name}.1.log")));
+    }
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+}
+
+fn agora_epoch() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
+/// What a viewer received, one line a minute from the room (fps, freezes, loss, sound vs image),
+/// saved to `logs/assistir.log` next to nucleo.log.
+#[tauri::command]
+pub fn registrar_assistir(app: AppHandle, linha: String) -> Result<(), String> {
+    let dir = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("logs");
+    let linha: String = linha
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(1000)
+        .collect();
+    let mut file = abrir_log(&dir, "assistir").map_err(|e| e.to_string())?;
+    use std::io::Write;
+    writeln!(file, "{} {linha}", agora_epoch()).map_err(|e| e.to_string())
 }
 
 fn launch(

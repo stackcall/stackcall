@@ -272,6 +272,7 @@ pub fn run() {
             sidecar::replay_atual,
             sidecar::replay_microfone,
             sidecar::replay_salvar,
+            sidecar::registrar_assistir,
             #[cfg(windows)]
             clipes::clipes_listar,
             #[cfg(windows)]

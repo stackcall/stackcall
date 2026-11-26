@@ -663,6 +663,7 @@ function Palco({ model, stage, reconexao, jogo, onPick, onRetry }: {
         )}
         {model.redeRuim && !stage.owner.isLocal && <VozPrimeiro model={model} />}
         <ControlesTela model={model} stream={stage} videoRef={videoRef} alvo={ref} zoom={zoom} setZoom={setZoom} />
+        <SeloLeve model={model} stream={stage} className="top-3 left-3" />
         <div className="absolute top-3 right-3 z-10 flex flex-wrap justify-end gap-2">
           {model.streams.length > 1 && model.streams.map((x) => (
             <button key={x.owner.id} type="button" onClick={() => onPick(x.owner.id)} aria-pressed={x === stage} className={`btn btn-sm ${x === stage ? 'bg-texto text-superficie' : ''}`}>
@@ -691,10 +692,22 @@ function Grade({ model, streams }: { model: RoomModel & RoomActions; streams: St
   );
 }
 
+/** Always visible while a remote screen comes in light 720p: the hover-only quality button hid it. */
+function SeloLeve({ model, stream, className }: { model: RoomModel & RoomActions; stream: Stream; className: string }) {
+  if (stream.owner.isLocal || model.qualidade?.[stream.owner.id] !== 'leve' || !model.setQualidade) return null;
+  return (
+    <button type="button" title="Você está recebendo a versão leve desta tela"
+      className={`absolute z-10 inline-flex h-8 items-center gap-2 border border-[#4a4a50] bg-[#101012] px-2 text-[13px] text-[#f4f4f1] hover:border-[#f4f4f1] ${className}`}
+      onClick={(e) => { e.stopPropagation(); model.setQualidade!(stream.owner.id, 'original'); }}>
+      <b className="text-lima">Leve 720p</b><span>Ver em Original</span>
+    </button>
+  );
+}
+
 function TelaGrade({ model, stream, comSom }: { model: RoomModel & RoomActions; stream: Stream; comSom: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const q = model.qualidade?.[stream.owner.id] === 'leve' ? 'leve 720p' : '1080p60';
+  const q = model.qualidade?.[stream.owner.id] === 'leve' ? 'leve 720p' : stream.info ? stream.info.toLowerCase() : 'original';
   return (
     <div ref={ref} className={`janela flex min-h-0 flex-col ${comSom ? 'outline-[3px] outline-offset-[-1px] outline-destaque' : ''}`}>
       <div className="barra barra-ar">
@@ -706,6 +719,7 @@ function TelaGrade({ model, stream, comSom }: { model: RoomModel & RoomActions; 
           : <span className="absolute inset-0 grid place-items-center text-[13px] text-sobre-palco">Carregando a tela…</span>}
         {model.redeRuim && !stream.owner.isLocal && <VozPrimeiro model={model} />}
         <ControlesTela model={model} stream={stream} videoRef={videoRef} alvo={ref} zoom={1} setZoom={() => undefined} mini />
+        <SeloLeve model={model} stream={stream} className="top-2 left-2" />
         {!comSom && !stream.owner.isLocal && (
           <button type="button" className="btn btn-sm absolute top-2 right-2 z-10" aria-label={`Ouvir a tela de ${stream.owner.name}`}
             onClick={(e) => { e.stopPropagation(); model.setSomTela?.(stream.owner.id); }}><Icone nome="volume" tamanho={16} /></button>

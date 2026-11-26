@@ -27,6 +27,7 @@ const COMMANDS: &[&str] = &[
     "replay_salvar",
     "clipes_listar",
     "clipes_apagar",
+    "registrar_assistir",
 ];
 
 fn main() {

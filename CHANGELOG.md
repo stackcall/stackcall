@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.5
+
+### Melhorias
+
+- Quem assiste vê um selo fixo "Leve 720p" quando está recebendo a versão leve de uma tela, com um clique para voltar ao Original
+- Na grade de telas, cada tela mostra a qualidade real que chega, em vez de sempre "1080p60"
+- O app grava num arquivo de log como cada transmissão foi (codificador, bitrate, pausas, motivo de parar) e, para quem assiste, a cada minuto: travadas, perda, espera e se o som está adiantado ou atrasado em relação à imagem
+
 ## v0.5.4
 
 ### Correções

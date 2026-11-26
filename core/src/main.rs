@@ -34,6 +34,10 @@ fn main() -> Result<()> {
         cli::Command::Publish(options) => {
             let controlled = options.control_stdin;
             let result = tokio::runtime::Runtime::new()?.block_on(publish::run(options));
+            match &result {
+                Ok(()) => eprintln!("Fim: transmissão encerrada."),
+                Err(error) => eprintln!("Fim com erro: {error:#}"),
+            }
             if controlled {
                 match &result {
                     Ok(()) => println!("{}", serde_json::json!({"event": "stopped"})),

@@ -60,6 +60,7 @@
     "allow-replay-microfone",
     "allow-replay-salvar",
     "allow-clipes-listar",
-    "allow-clipes-apagar"
+    "allow-clipes-apagar",
+    "allow-registrar-assistir"
   ]
 }

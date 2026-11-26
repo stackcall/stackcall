@@ -10,6 +10,7 @@ import { lerPreferencias, salvarPreferencias } from '../lib/preferencias';
 import { tocarSom } from '../lib/sons';
 import { ATRIBUTO_OUVE, ATRIBUTO_REDE, ouveLista, quemRecebe, redeDe } from './sala05';
 import { interfaceAtiva, useInterfaceAtiva } from '../lib/leveza';
+import { lerAmostra, linhaAssistir, type Amostra } from '../lib/qualidadeRecebida';
 import type { Servidor } from '../lib/servidor';
 import { resolutionOf, type Codec, type Preset } from '../lib/presets';
 import { setTransmissionPaused, stopTransmission, type StreamEvent } from '../lib/sidecar';
@@ -499,8 +500,24 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
 
     // Real ping and stage numbers from WebRTC stats every 2 s, only while someone can see them.
     let lastVideo: { bytes: number; at: number } | null = null;
+    // One line a minute in logs/assistir.log with what this viewer really received.
+    let minuto: { dono: string; amostra: Amostra } | null = null;
+    const registrarMinuto = async (owner: string, video: RTCStatsReport) => {
+      const telaAudio = room.remoteParticipants.get(owner + SCREEN_SUFFIX)?.getTrackPublication(Track.Source.ScreenShareAudio)?.track;
+      const audio = await telaAudio?.getRTCStatsReport().catch(() => undefined);
+      const amostra = lerAmostra(video, audio, performance.now());
+      if (!amostra) return;
+      if (minuto?.dono !== owner) minuto = { dono: owner, amostra };
+      if (amostra.at - minuto.amostra.at < 60_000) return;
+      const quem = room.remoteParticipants.get(owner)?.name || owner;
+      void invoke('registrar_assistir', { linha: linhaAssistir(quem, amostra, minuto.amostra) }).catch(() => undefined);
+      minuto = { dono: owner, amostra };
+    };
     const stats = setInterval(async () => {
-      if (!interfaceAtiva() || room.state !== 'connected') return;
+      if (!interfaceAtiva() || room.state !== 'connected') {
+        minuto = null; // the paused minute would read as a drop
+        return;
+      }
       const tracks = [
         room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track,
         ...[...room.remoteParticipants.values()].flatMap((p) => [...p.audioTrackPublications.values()].map((pub) => pub.track)),
@@ -509,13 +526,18 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
       const rtt = audio ? rttOf(audio) : null;
       setPing(rtt);
       publicarRede(rtt, audio ? perdaDe(audio) : null);
-      if (!watchingRef.current && !lastVideo) return; // nothing watched: skip the stats object
+      if (!watchingRef.current && !lastVideo) { // nothing watched: skip the stats object
+        minuto = null;
+        return;
+      }
       const owner = watchingRef.current;
       const screen = owner
         ? [room.remoteParticipants.get(owner + SCREEN_SUFFIX), room.remoteParticipants.get(owner)]
           .map((p) => p && telaQuer(p, qualidadeRef.current[owner] === 'leve')?.videoTrack).find((t) => !!t)
         : undefined;
       const report = await screen?.getRTCStatsReport().catch(() => undefined);
+      if (report && owner && isTauri()) await registrarMinuto(owner, report);
+      else minuto = null;
       const next = report ? videoOf(report, lastVideo) : null;
       lastVideo = next ? { bytes: next.bytes, at: performance.now() } : null;
       setStageStats(next && { height: next.height, fps: next.fps, codec: next.codec, mbps: next.mbps });

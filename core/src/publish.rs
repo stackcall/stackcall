@@ -447,6 +447,17 @@ pub async fn run(mut args: Publish) -> Result<()> {
     } else {
         args.res.dimensions()
     };
+    eprintln!(
+        "Início: fonte {:?}, {:?} {}x{} {} fps, {} kbps, som {:?}, clipe local {}",
+        args.source,
+        args.codec,
+        size.0,
+        size.1,
+        args.fps,
+        args.bitrate,
+        args.audio_pid,
+        args.local_replay
+    );
     let source = NativeVideoSource::new_encoded(VideoResolution {
         width: size.0,
         height: size.1,
@@ -715,6 +726,13 @@ pub async fn run(mut args: Publish) -> Result<()> {
 }
 
 pub fn emit(event: serde_json::Value) {
+    // The app saves stderr to nucleo.log: every event goes there, the per-second stats once every 30.
+    static STATS: AtomicU32 = AtomicU32::new(0);
+    if event.get("captured_fps").is_none()
+        || STATS.fetch_add(1, Ordering::Relaxed).is_multiple_of(30)
+    {
+        eprintln!("{event}");
+    }
     let mut stdout = std::io::stdout().lock();
     let _ = writeln!(stdout, "{event}");
     let _ = stdout.flush();
@@ -814,6 +832,8 @@ impl GraphicsCaptureApiHandler for Capture {
             .as_ref()
             .is_none_or(|session| session.input_size != dimensions);
         if let Some(target) = update {
+            let why = if manual != 0 { "pedido do app" } else { "rede" };
+            eprintln!("Bitrate {} -> {target} kbps ({why})", self.kbps);
             self.kbps = target;
             self.pending_kbps = None;
             self.last_bitrate_change = Instant::now();
