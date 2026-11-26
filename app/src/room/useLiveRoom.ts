@@ -38,10 +38,13 @@ const telaQuer = (p: Participant, leve: boolean) => {
 };
 const decoder = new TextDecoder();
 const MAX_CHAT = 200;
-type NativeStream = { id: string; info: string; ready: boolean; pauseRequested: boolean; paused: boolean };
+type NativeStream = { id: string; info: string; ready: boolean; pauseRequested: boolean; paused: boolean; minimized?: boolean };
 /** Hidden this long (game on top, tray, minimized): stop receiving the watched screen. */
 export const VIDEO_OCULTO_MS = 10_000;
-const MIC_ERROR = 'Microfone indisponível. Confira a permissão do Windows e o dispositivo.';
+const MIC_ERROR = 'Microfone indisponível. Confira se ele está conectado e escolhido em Configurações › Voz e rede.';
+export const MIC_BLOQUEADO = 'O Windows está bloqueando o microfone para apps. Ligue "Permitir que aplicativos da área de trabalho acessem o microfone" e tente de novo.';
+// The app grants its own WebView2 prompt, so NotAllowedError means Windows' privacy switch.
+const erroMic = (e: unknown) => ((e as DOMException)?.name === 'NotAllowedError' ? MIC_BLOQUEADO : MIC_ERROR);
 /** Disconnects that a retry would only repeat: same account elsewhere, removed, room gone. */
 const FIM: Partial<Record<number, string>> = {
   2: 'Você entrou nesta sala por outro aparelho.',
@@ -145,6 +148,9 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
         rerender();
       } else if (payload.event === 'pause_changed' && typeof payload.paused === 'boolean') {
         current.paused = payload.paused;
+        rerender();
+      } else if (payload.event === 'minimized' && typeof payload.value === 'boolean') {
+        current.minimized = payload.value;
         rerender();
       }
     });
@@ -408,8 +414,8 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
           if (lerVoz().modo === 'ptt') await room.localParticipant.setMicrophoneEnabled(false);
           setMicError(undefined);
           if (lerVoz().forte) forte(true);
-        } catch {
-          setMicError(MIC_ERROR);
+        } catch (e) {
+          setMicError(erroMic(e));
         }
         rerender();
       } catch (e) {
@@ -486,7 +492,7 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
       if (trocouForte || v.entrada !== antes.entrada || v.eco !== antes.eco || v.ganho !== antes.ganho || v.ruido !== antes.ruido) {
         // The strong toggle also flips the browser's suppression (capturaDe), so the track restarts first.
         void mic.restartTrack(capturaDe(v))
-          .then(() => { if (!trocouForte) setMicError(undefined); }, () => setMicError(MIC_ERROR))
+          .then(() => { if (!trocouForte) setMicError(undefined); }, (e) => setMicError(erroMic(e)))
           .finally(() => { if (trocouForte) forte(v.forte); });
       }
     });
@@ -627,14 +633,14 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
     toggleMic: () => {
       if (!lp) return;
       lp.setMicrophoneEnabled(!lp.isMicrophoneEnabled)
-        .then(() => setMicError(undefined), () => setMicError(MIC_ERROR))
+        .then(() => setMicError(undefined), (e) => setMicError(erroMic(e)))
         .finally(rerender);
     },
     setMic: (on) => {
       const p = roomRef.current?.localParticipant;
       if (!p || p.isMicrophoneEnabled === on) return;
       p.setMicrophoneEnabled(on)
-        .then(() => setMicError(undefined), () => setMicError(MIC_ERROR))
+        .then(() => setMicError(undefined), (e) => setMicError(erroMic(e)))
         .finally(rerender);
     },
     toggleDeafen: () => {
@@ -783,6 +789,7 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
   return {
     room: roomId, state, error, autoRetry, people, streams, chat, deafened, micError, streamError, ping, stageStats,
     videoPaused: native.current?.paused,
+    gameMinimized: native.current?.minimized,
     receptores, redeRuim: redeRuimRef.current, qualidade: qualidadeRef.current, somTela: somTelaRef.current,
     micOn: !!lp?.isMicrophoneEnabled,
     cameraOn: !!lp?.isCameraEnabled,

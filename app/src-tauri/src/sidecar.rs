@@ -225,11 +225,16 @@ fn publish_arguments(command: &mut Command, args: &Publish, report: Option<&Path
             &args.kbps.to_string(),
         ]);
     if args.game_audio == Some(true) && args.source.starts_with("hmonitor:") {
-        command.args([
-            "--audio-pid",
-            &std::process::id().to_string(),
-            "--audio-exclude",
-        ]);
+        // Whole screen: with a known game open, only its sound (no Discord, no music);
+        // otherwise everything on the PC except Stackcall itself.
+        match crate::jogo::running_game_pid() {
+            Some(game) => command.args(["--audio-pid", &game.to_string()]),
+            None => command.args([
+                "--audio-pid",
+                &std::process::id().to_string(),
+                "--audio-exclude",
+            ]),
+        };
     } else if let Some(pid) = match args.game_audio {
         Some(true) => args
             .source
@@ -313,6 +318,36 @@ pub async fn iniciar_transmissao(
     started.await.map_err(|_| UNAVAILABLE)?
 }
 
+/// The core's stderr (why a stream dropped, capture rebuilt, encoder errors) goes to
+/// `%LOCALAPPDATA%\io.github.stackcall\logs\nucleo.log`, kept under 2 MB with one old copy.
+fn guardar_log(app: &AppHandle, stderr: tokio::process::ChildStderr) {
+    let Ok(dir) = app.path().app_local_data_dir().map(|dir| dir.join("logs")) else {
+        return;
+    };
+    tauri::async_runtime::spawn(async move {
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("nucleo.log");
+        if std::fs::metadata(&path).is_ok_and(|meta| meta.len() > 2_000_000) {
+            let _ = std::fs::rename(&path, dir.join("nucleo.1.log"));
+        }
+        let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        else {
+            return;
+        };
+        let mut lines = BufReader::new(stderr).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            let secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs());
+            use std::io::Write;
+            let _ = writeln!(file, "{secs} {line}");
+        }
+    });
+}
+
 fn launch(
     app: &AppHandle,
     hub: &Hub,
@@ -321,8 +356,14 @@ fn launch(
     live: Option<(String, String)>,
     mic: Mic,
 ) -> Result<oneshot::Receiver<Result<(), String>>, String> {
-    command.stdin(Stdio::piped()).stdout(Stdio::piped());
-    let child = command.spawn().map_err(|_| UNAVAILABLE)?;
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command.spawn().map_err(|_| UNAVAILABLE)?;
+    if let Some(stderr) = child.stderr.take() {
+        guardar_log(app, stderr);
+    }
     #[cfg(windows)]
     if live.is_some() {
         opt_out_of_eco_qos(&child);
@@ -452,6 +493,15 @@ async fn supervise(
                         }
                     }
                     Some("stats" | "pause_changed" | "light_error") => {
+                        if let Some((id, _)) = live { emit(app, id, event); }
+                    }
+                    Some("minimized") => {
+                        // A minimized game delays the first frame: wait for it to come back
+                        // (up to 10 min) instead of failing after 25 s.
+                        if started.is_some() {
+                            let espera = if event["value"].as_bool() == Some(true) { 600 } else { 25 };
+                            deadline.as_mut().reset(tokio::time::Instant::now() + Duration::from_secs(espera));
+                        }
                         if let Some((id, _)) = live { emit(app, id, event); }
                     }
                     Some("replay_state") => replay_state(app, hub, event["ativo"].as_bool().unwrap_or(false)),
@@ -827,9 +877,16 @@ mod tests {
             .map(|arg| arg.to_string_lossy())
             .collect();
         let pid = std::process::id().to_string();
-        assert!(flags
-            .windows(3)
-            .any(|args| args == ["--audio-pid", pid.as_str(), "--audio-exclude"]));
+        // With a known game running (a dev PC with CS2 open), only the game's sound is taken.
+        let expected = match crate::jogo::running_game_pid() {
+            Some(game) => flags
+                .windows(2)
+                .any(|args| args == ["--audio-pid", game.to_string().as_str()]),
+            None => flags
+                .windows(3)
+                .any(|args| args == ["--audio-pid", pid.as_str(), "--audio-exclude"]),
+        };
+        assert!(expected);
     }
 
     #[test]

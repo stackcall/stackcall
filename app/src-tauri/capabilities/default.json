@@ -30,6 +30,9 @@
         },
         {
           "url": "http://10.*"
+        },
+        {
+          "url": "ms-settings:privacy-microphone"
         }
       ]
     },

@@ -19,6 +19,62 @@ pub fn presenca_jogo_atual(ativa: bool) -> Option<ForegroundGame> {
     })
 }
 
+const KNOWN_GAMES: &[&str] = &[
+    "cs2.exe",
+    "valorant-win64-shipping.exe",
+    "league of legends.exe",
+    "dota2.exe",
+    "fortniteclient-win64-shipping.exe",
+    "overwatch.exe",
+    "r5apex.exe",
+    "gta5.exe",
+    "gta5_enhanced.exe",
+    "rocketleague.exe",
+    "minecraft.windows.exe",
+    "robloxplayerbeta.exe",
+    "eldenring.exe",
+];
+
+/// PID of a known game that is running, if any. Streaming a whole screen with a game open
+/// sends only the game's sound, so another call app (Discord) or music never reaches viewers.
+#[cfg(windows)]
+pub fn running_game_pid() -> Option<u32> {
+    use windows_sys::Win32::{
+        Foundation::{CloseHandle, INVALID_HANDLE_VALUE},
+        System::Diagnostics::ToolHelp::{
+            CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+            TH32CS_SNAPPROCESS,
+        },
+    };
+    // SAFETY: the snapshot handle is checked and closed; the entry is a plain C struct.
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snapshot == INVALID_HANDLE_VALUE {
+            return None;
+        }
+        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        let mut found = None;
+        let mut ok = Process32FirstW(snapshot, &mut entry) != 0;
+        while ok {
+            let len = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(0);
+            let exe = String::from_utf16_lossy(&entry.szExeFile[..len]).to_ascii_lowercase();
+            if KNOWN_GAMES.contains(&exe.as_str()) {
+                found = Some(entry.th32ProcessID);
+                break;
+            }
+            ok = Process32NextW(snapshot, &mut entry) != 0;
+        }
+        CloseHandle(snapshot);
+        found
+    }
+}
+
+#[cfg(not(windows))]
+pub fn running_game_pid() -> Option<u32> {
+    None
+}
+
 fn friendly_name(exe: &str) -> Option<&str> {
     Some(match exe.to_ascii_lowercase().as_str() {
         "cs2.exe" => "Counter-Strike 2",

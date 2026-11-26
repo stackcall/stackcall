@@ -60,6 +60,8 @@ export type RoomModel = {
   micError?: string;
   streamError?: string;
   videoPaused?: boolean;
+  /** The game window being streamed is minimized: viewers see the last frame until it comes back. */
+  gameMinimized?: boolean;
   /** Round trip to the media server in ms (ICE candidate pair), null until measured. */
   ping: number | null;
   stageStats: StreamStats | null;

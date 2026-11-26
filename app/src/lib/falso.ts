@@ -15,7 +15,9 @@ const pessoa = (id: string, nome: string, p: Partial<Pessoa> = {}): Pessoa => ({
 });
 
 export function servidorFalso(url = 'https://galera.exemplo'): Servidor {
-  let sessao = new URLSearchParams(location.search).get('tela') !== 'entrada';
+  // Only the demo's own server starts signed in; another server (an invite from outra.turma) has
+  // no credential on this PC, like the real app.
+  let sessao = url === 'https://galera.exemplo' && new URLSearchParams(location.search).get('tela') !== 'entrada';
   let eu: Usuario = { id: 'bronze', nome: 'bronze', papel: 'dono', avatar: null, banner: null, bio: 'entro de awp', tema: 'papel', cor: '#c8191f' };
   // ?grupo=pequeno: the real common case (one room, nobody in voice, one friend offline).
   const pequeno = new URLSearchParams(location.search).get('grupo') === 'pequeno';

@@ -73,6 +73,43 @@ fn update_visibility(window: &WebviewWindow, visible: bool) {
     let _ = window.emit(EVENTO_VISIVEL, visible);
 }
 
+/// The microphone is the app's own: grant it to our page instead of showing the WebView2 prompt,
+/// whose "Block" is remembered in the profile and could only be undone by deleting EBWebView.
+/// Windows' own privacy switch still applies; the page explains that one if it blocks.
+fn permitir_microfone(window: &WebviewWindow) {
+    #[cfg(windows)]
+    {
+        use webview2_com::Microsoft::Web::WebView2::Win32::{
+            COREWEBVIEW2_PERMISSION_KIND, COREWEBVIEW2_PERMISSION_KIND_MICROPHONE,
+            COREWEBVIEW2_PERMISSION_STATE_ALLOW,
+        };
+        use webview2_com::{take_pwstr, PermissionRequestedEventHandler};
+        use windows::core::PWSTR;
+
+        let _ = window.with_webview(|webview| unsafe {
+            let Ok(core) = webview.controller().CoreWebView2() else {
+                return;
+            };
+            let handler = PermissionRequestedEventHandler::create(Box::new(|_, args| {
+                let Some(args) = args else { return Ok(()) };
+                let mut kind = COREWEBVIEW2_PERMISSION_KIND::default();
+                args.PermissionKind(&mut kind)?;
+                let mut uri = PWSTR::null();
+                args.Uri(&mut uri)?;
+                let uri = take_pwstr(uri);
+                let nossa = uri.starts_with("http://tauri.localhost")
+                    || uri.starts_with("https://tauri.localhost");
+                if kind == COREWEBVIEW2_PERMISSION_KIND_MICROPHONE && nossa {
+                    args.SetState(COREWEBVIEW2_PERMISSION_STATE_ALLOW)?;
+                }
+                Ok(())
+            }));
+            let mut token = Default::default();
+            let _ = core.add_PermissionRequested(&handler, &mut token);
+        });
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// A game in exclusive fullscreen (CS2 at 1280×960) or Parsec shrinks the monitor; the window
 /// then hangs off the screen, cut. Every 2 s, bring it back inside the monitor it is on.
@@ -181,6 +218,9 @@ pub fn run() {
             modo_jogo::iniciar(app.handle().clone());
             gsi::restore(app.handle().clone());
             manter_na_tela(app.handle().clone());
+            if let Some(window) = app.get_webview_window("main") {
+                permitir_microfone(&window);
+            }
             Ok(())
         })
         .on_window_event(|window, event| {

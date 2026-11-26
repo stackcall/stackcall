@@ -29,9 +29,11 @@ export type MachineReport = { trials: Trial[]; adapters?: Adapter[]; cbr?: boole
 
 export type StreamEvent = {
   id: string;
-  event: 'started' | 'stats' | 'stopped' | 'error' | 'pause_changed';
+  event: 'started' | 'stats' | 'stopped' | 'error' | 'pause_changed' | 'minimized';
   reason?: string;
   paused?: boolean;
+  /** `minimized`: the chosen game window is minimized (no frames until it comes back). */
+  value?: boolean;
 };
 
 export const listSources = () => invoke<CaptureSource[]>('listar_fontes');

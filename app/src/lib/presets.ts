@@ -18,15 +18,17 @@ export type Preset = {
 export const P6_1440P60_VALIDATED = false;
 
 export const PRESETS: Preset[] = [
-  { id: '720p30', width: 1280, height: 720, fps: 30, mbps: { h264: 2, av1: 1.4 }, note: 'leve, bom para internet fraca' },
-  { id: '1080p30', width: 1920, height: 1080, fps: 30, mbps: { h264: 4.5, av1: 3.2 }, note: 'texto e área de trabalho' },
-  { id: '1080p60', width: 1920, height: 1080, fps: 60, mbps: { h264: 7, av1: 4.2 }, note: 'jogo com movimento' },
+  // Bitrates for fast games in fullscreen (25/11: 4.2 Mb/s at 1080p60 looked blocky full screen).
+  // In line with Twitch/Discord 1080p60 (6-8 Mb/s H.264); AV1 needs about a third less.
+  { id: '720p30', width: 1280, height: 720, fps: 30, mbps: { h264: 3.5, av1: 2.4 }, note: 'leve, bom para internet fraca' },
+  { id: '1080p30', width: 1920, height: 1080, fps: 30, mbps: { h264: 7, av1: 5 }, note: 'texto e área de trabalho' },
+  { id: '1080p60', width: 1920, height: 1080, fps: 60, mbps: { h264: 12, av1: 8 }, note: 'jogo com movimento' },
   {
-    id: '1440p60', width: 2560, height: 1440, fps: 60, mbps: { h264: 10, av1: 7 }, note: 'mais nitidez, pede mais de quem assiste',
+    id: '1440p60', width: 2560, height: 1440, fps: 60, mbps: { h264: 18, av1: 12 }, note: 'mais nitidez, pede mais de quem assiste',
     lockedReason: P6_1440P60_VALIDATED ? undefined : 'Ainda não provado no WebView2. Libera quando o teste no PC de casa passar.',
   },
-  { id: '4k30', width: 3840, height: 2160, fps: 30, mbps: { h264: 15, av1: 10.5 }, note: 'filme e série', lockedReason: 'O modo de reserva suporta até 1080p60.' },
-  { id: '4k60', width: 3840, height: 2160, fps: 60, mbps: { h264: 25, av1: 18 }, note: 'jogo em 4K', lockedReason: 'O modo de reserva suporta até 1080p60.' },
+  { id: '4k30', width: 3840, height: 2160, fps: 30, mbps: { h264: 25, av1: 16 }, note: 'filme e série', lockedReason: 'O modo de reserva suporta até 1080p60.' },
+  { id: '4k60', width: 3840, height: 2160, fps: 60, mbps: { h264: 40, av1: 25 }, note: 'jogo em 4K', lockedReason: 'O modo de reserva suporta até 1080p60.' },
 ];
 
 export const resolutionOf = (p: Preset) => p.height === 2160 ? '4k' : `${p.height}p`;

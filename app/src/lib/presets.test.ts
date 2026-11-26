@@ -36,8 +36,8 @@ test('native mode does not lock by source size: the core scales to the chosen re
 test('only unlocks 720p30 at 5 Mbps and reports the chosen codec requirement', () => {
   const cards = evaluatePresets({ ...base, uploadMbps: 5, trials: nativeTrials });
   expect(cards.filter((c) => !c.locked).map((c) => c.id)).toEqual(['720p30']);
-  expect(cards[1].reason).toMatch(/\(5,0 Mb\/s\).*pede cerca de 5,1 Mb\/s/);
-  expect(cards[1].short).toBe('Pede 6,4 Mb/s · seu upload 5,0');
+  expect(cards[1].reason).toMatch(/\(5,0 Mb\/s\).*pede cerca de 7,8 Mb\/s/);
+  expect(cards[1].short).toBe('Pede 9,8 Mb/s · seu upload 5,0');
 });
 
 test('locks by source size and by encoder', () => {
@@ -53,11 +53,11 @@ test('unknown upload does not lock', () => {
 
 test('unlocks native 4K only when throughput, encoder load and upload pass', () => {
   const trial = { encoder: 'av1_nvenc', resolution: '4k', target_fps: 60, ok: true, fps: 75, encoder_load_percent: 80 };
-  const input = { ...base, sourceHeight: 2160, uploadMbps: 34.2 as number | null, trials: [trial] };
+  const input = { ...base, sourceHeight: 2160, uploadMbps: 47.3 as number | null, trials: [trial] };
   const card = (overrides: Partial<typeof input>) =>
     evaluatePresets({ ...input, ...overrides }).find((preset) => preset.id === '4k60')!;
   expect(card({}).locked).toBe(false);
-  expect(card({ uploadMbps: 34.1 }).locked).toBe(true);
+  expect(card({ uploadMbps: 47.2 }).locked).toBe(true);
   expect(card({ uploadMbps: null }).locked).toBe(true);
   expect(card({ trials: [{ ...trial, fps: 56 }] }).locked).toBe(true);
   expect(card({ trials: [{ ...trial, encoder_load_percent: 81 }] }).locked).toBe(true);
@@ -67,9 +67,9 @@ test('RTX-class GPU with good upload unlocks 4K30 on a 4K screen and keeps the r
   const trials: Trial[] = (['720p', '1080p', '1440p', '4k'] as const).flatMap((resolution) => [30, 60].map((target_fps) => ({
     encoder: 'av1_nvenc', resolution, target_fps, ok: true, fps: target_fps, encoder_load_percent: resolution === '4k' && target_fps === 60 ? 92 : 50,
   })));
-  const cards = evaluatePresets({ ...base, sourceHeight: 2160, sourceWidth: 3840, uploadMbps: 30, trials });
+  const cards = evaluatePresets({ ...base, sourceHeight: 2160, sourceWidth: 3840, uploadMbps: 50, trials });
   expect(cards.find((c) => c.id === '4k30')?.locked).toBe(false);
   expect(cards.find((c) => c.id === '4k60')?.short).toBe('Placa acima de 80% de carga');
   expect(evaluatePresets({ ...base, sourceHeight: 2160, sourceWidth: 3840, uploadMbps: 15, trials }).find((c) => c.id === '4k30')?.short)
-    .toBe('Pede 20,1 Mb/s · seu upload 15,0');
+    .toBe('Pede 30,4 Mb/s · seu upload 15,0');
 });

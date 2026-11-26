@@ -3,6 +3,7 @@ import { lerConvite, type LinkConvite } from '../lib/convite';
 import { NAME_PATTERN, store } from '../lib/config';
 import { type Previa, type Servidor, type Usuario } from '../lib/servidor';
 import { SERVIDOR_OFICIAL, lerServidores } from '../lib/servidores';
+import { modoFalso } from '../lib/falso';
 
 type Props = {
   /** Link that arrived by deep link or was pasted earlier. */
@@ -78,13 +79,47 @@ function ComLink({ link, servidor, onTrocar, onEntrou }: {
   const [ocupado, setOcupado] = useState(false);
   const conhecido = link.servidor === SERVIDOR_OFICIAL || lerServidores().some((s) => s.url === link.servidor);
   const host = new URL(link.servidor).host;
+  // The session lives in Windows' credential store, outside the WebView profile. If this PC is
+  // already in the server (the server list was lost, e.g. EBWebView deleted), reuse that account
+  // instead of creating a second one with the invite.
+  const [jaSou, setJaSou] = useState<Usuario | null>(null);
 
   useEffect(() => {
     if (link.aparelho) return;
     let vivo = true;
     servidor.previa(link.codigo).then((p) => vivo && setPrevia(p), (e: Error) => vivo && setErroPrevia(e.message));
+    // Only when the server fell off this PC's list but the credential survived (the case that made
+    // a second account); with the server listed, the normal entry flow stays.
+    // The demo has a single fake server for every link, so it would always look "already in".
+    const listado = modoFalso() || lerServidores().some((s) => s.url === link.servidor);
+    (listado ? Promise.resolve(false) : servidor.temSessao())
+      .then((tem) => (tem ? servidor.eu() : null))
+      .then((eu) => vivo && setJaSou(eu), () => undefined);
     return () => { vivo = false; };
   }, [servidor, link]);
+
+  async function continuarComo(eu: Usuario) {
+    setOcupado(true);
+    const info = await servidor.info().catch(() => ({ nome: previa?.servidor || host, versao: '' }));
+    onEntrou(servidor, info.nome, eu);
+  }
+
+  if (jaSou) {
+    return (
+      <div className="janela flex flex-col" aria-label="Você já está neste servidor">
+        <div className="barra barra-lima">Convite<span className="ml-auto truncate font-medium">{host}</span></div>
+        <div className="flex flex-col gap-4 p-5">
+          <p className="m-0">Este PC já está neste servidor como <b>{jaSou.nome}</b>. Não precisa usar o convite de novo.</p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn btn-prim btn-lg flex-1" disabled={ocupado} onClick={() => void continuarComo(jaSou)}>
+              Entrar como {jaSou.nome}
+            </button>
+            <button type="button" className="btn" disabled={ocupado} onClick={() => setJaSou(null)}>Criar outra conta</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   async function entrar(e: FormEvent) {
     e.preventDefault();

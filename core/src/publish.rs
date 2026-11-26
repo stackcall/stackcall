@@ -246,6 +246,15 @@ fn fills_screen(source: &Source, frame: (u32, u32)) -> bool {
     }
 }
 
+/// Whether the chosen window is minimized (WGC sends no frames for it then).
+fn window_minimized(source: &Source) -> bool {
+    use windows::Win32::{Foundation::HWND, UI::WindowsAndMessaging::IsIconic};
+    match source {
+        Source::WindowHandle { handle, .. } => unsafe { IsIconic(HWND(*handle as _)).as_bool() },
+        _ => false,
+    }
+}
+
 /// Current size of a monitor source; `None` for windows (their resizes are handled per frame).
 fn monitor_dimensions(source: &Source) -> Option<(u32, u32)> {
     match resolve_target(source).ok()? {
@@ -532,6 +541,8 @@ pub async fn run(mut args: Publish) -> Result<()> {
             let mut started = !controlled;
             let mut monitor_size = monitor_dimensions(&setup.args.source);
             let mut size_check = Instant::now();
+            let mut wait_from = start;
+            let mut minimized = false;
             loop {
                 tokio::select! {
                     result = &mut signal => { result?; break; }
@@ -600,7 +611,15 @@ pub async fn run(mut args: Publish) -> Result<()> {
                                 sample_start = Instant::now();
                                 cpu_start = process_ticks();
                             } else {
-                                ensure!(start.elapsed() < Duration::from_secs(12), "A captura não enviou quadros. Confira se a janela está aberta e visível.");
+                                // A minimized game (CS2 behind Alt+Tab) sends no frames: wait for it
+                                // instead of failing; the 12 s only count while the window is visible.
+                                if window_minimized(&setup.args.source) {
+                                    wait_from = Instant::now();
+                                    if !minimized && controlled { emit(serde_json::json!({"event": "minimized", "value": true})); }
+                                    minimized = true;
+                                    continue;
+                                }
+                                ensure!(wait_from.elapsed() < Duration::from_secs(12), "A captura não enviou quadros. Confira se a janela está aberta e visível.");
                                 continue;
                             }
                         }
@@ -660,6 +679,12 @@ pub async fn run(mut args: Publish) -> Result<()> {
                 // WGC keeps sending the old surface (black), so rebuild the capture on a new size.
                 if control.is_some() && size_check.elapsed() >= Duration::from_secs(1) {
                     size_check = Instant::now();
+                    // Tell the app when the chosen game window is minimized or comes back.
+                    let now_minimized = window_minimized(&setup.args.source);
+                    if now_minimized != minimized {
+                        minimized = now_minimized;
+                        if controlled { emit(serde_json::json!({"event": "minimized", "value": minimized})); }
+                    }
                     let current = monitor_dimensions(&setup.args.source);
                     let finished = control.as_ref().is_some_and(Control::is_finished);
                     if (current.is_some() && current != monitor_size) || (finished && monitor_size.is_some()) {

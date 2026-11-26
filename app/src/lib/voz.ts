@@ -17,7 +17,11 @@ export type Voz = {
 };
 
 const CHAVE = 'stackcall.voz';
-export const VOZ_PADRAO: Voz = { entrada: '', saida: '', eco: true, ganho: true, ruido: true, forte: false, modo: 'voz', soltura: 200 };
+// Strong suppression (RNNoise) is on by default since 0.5.3, like Krisp in Discord: keyboard and
+// fan noise reached the call with only the browser filter. Settings saved before that (no
+// `versao`) get it on once; after that the person's choice is kept.
+const VERSAO_VOZ = 2;
+export const VOZ_PADRAO: Voz = { entrada: '', saida: '', eco: true, ganho: true, ruido: true, forte: true, modo: 'voz', soltura: 200 };
 
 export function lerVoz(): Voz {
   try {
@@ -28,7 +32,7 @@ export function lerVoz(): Voz {
       eco: v.eco !== false,
       ganho: v.ganho !== false,
       ruido: v.ruido !== false,
-      forte: v.forte === true,
+      forte: v.versao === VERSAO_VOZ ? v.forte === true : true,
       modo: v.modo === 'ptt' ? 'ptt' : 'voz',
       soltura: Number.isFinite(v.soltura) ? Math.min(1000, Math.max(0, Math.round(v.soltura))) : 200,
     };
@@ -47,7 +51,7 @@ export function salvarVoz(mudanca: Partial<Voz>) {
   const antes = lerVoz();
   const v = { ...antes, ...mudanca };
   try {
-    localStorage.setItem(CHAVE, JSON.stringify(v));
+    localStorage.setItem(CHAVE, JSON.stringify({ ...v, versao: VERSAO_VOZ }));
   } catch {
     // Storage blocked: the change still applies to this session.
   }

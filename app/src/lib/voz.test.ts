@@ -2,9 +2,16 @@ import { aoMudarVoz, aplicarForte, capturaDe, lerVoz, salvarVoz, VOZ_PADRAO } fr
 
 beforeEach(() => localStorage.clear());
 
-test('defaults keep the browser processing on and the Windows devices', () => {
+test('defaults: echo and gain on, strong suppression (RNNoise) on in place of the browser one', () => {
   expect(lerVoz()).toEqual(VOZ_PADRAO);
-  expect(capturaDe(lerVoz())).toMatchObject({ deviceId: undefined, echoCancellation: true, autoGainControl: true, noiseSuppression: true, sampleRate: 48000 });
+  expect(capturaDe(lerVoz())).toMatchObject({ deviceId: undefined, echoCancellation: true, autoGainControl: true, noiseSuppression: false, sampleRate: 48000 });
+});
+
+test('settings saved before 0.5.3 get strong suppression on once; a later choice is kept', () => {
+  localStorage.setItem('stackcall.voz', JSON.stringify({ ...VOZ_PADRAO, forte: false }));
+  expect(lerVoz().forte).toBe(true);
+  salvarVoz({ forte: false });
+  expect(lerVoz().forte).toBe(false);
 });
 
 test('a change is saved and reaches the room listener with the previous value', () => {
@@ -26,7 +33,7 @@ test('garbage in storage falls back to the defaults', () => {
 test('strong suppression turns the browser one off, and only then', () => {
   expect(capturaDe({ ...VOZ_PADRAO, forte: true }).noiseSuppression).toBe(false);
   expect(capturaDe({ ...VOZ_PADRAO, forte: false }).noiseSuppression).toBe(true);
-  expect(lerVoz().forte).toBe(false);
+  expect(lerVoz().forte).toBe(true);
 });
 
 describe('aplicarForte', () => {

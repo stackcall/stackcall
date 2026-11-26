@@ -3,6 +3,8 @@ import * as Slider from '@radix-ui/react-slider';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import { MIC_BLOQUEADO } from '../../room/useLiveRoom';
 import { Avatar } from '../../components/Avatar';
 import { Faixa } from '../../components/Faixa';
 import { Icone } from '../../components/Icone';
@@ -785,10 +787,19 @@ function Voce({ model, nome, sala, imLive, replay, onGoLive, onSair, onFallback,
           <Icone nome="sair" />
         </button>
       </div>
-      {(model.micError || model.streamError || (imLive && model.videoPaused)) && (
+      {(model.micError || model.streamError || (imLive && (model.videoPaused || model.gameMinimized))) && (
         <div role="alert" className="flex flex-col gap-1.5 px-2.5 pb-2 text-[12.5px] text-perigo">
+          {imLive && model.gameMinimized && <span>Jogo minimizado: volte ao jogo para a imagem voltar.</span>}
           {imLive && model.videoPaused && <span className="text-texto-fraco">Ninguém assistindo · vídeo pausado</span>}
           {model.micError && <span>{model.micError}</span>}
+          {model.micError === MIC_BLOQUEADO && (
+            <span className="flex flex-wrap gap-2">
+              <button type="button" className="btn btn-sm" onClick={() => void openUrl('ms-settings:privacy-microphone').catch(() => undefined)}>
+                Abrir configurações do Windows
+              </button>
+              <button type="button" className="btn btn-sm" onClick={() => model.setMic?.(true)}>Tentar de novo</button>
+            </span>
+          )}
           {model.streamError && (
             <>
               <span>{model.streamError}</span>

@@ -90,7 +90,7 @@ export function SecaoPreferencias({ servidorUrl, destaque }: { servidorUrl: stri
               ? 'Fica parada enquanto a supressão forte está ligada, para não cortar a voz duas vezes.'
               : 'Tira ruído constante (ventoinha, ar-condicionado). Teclado alto ainda passa.'}
               ligado={voz.ruido} onMudar={(ruido) => mudar({ ruido })} />
-            <Opcao id="voz-forte" rotulo="Supressão forte (teclado e cliques)" ajuda="Filtro RNNoise: tira teclado e mouse. Gasta um pouco de CPU e pode cortar o fim de palavras. Só carrega quando você liga."
+            <Opcao id="voz-forte" rotulo="Supressão forte (teclado e cliques)" ajuda="Filtro RNNoise, ligado de fábrica: tira teclado, mouse e ventoinha, como o Krisp do Discord. Gasta 1 a 3% de CPU. Se cortar o fim das palavras, desligue."
               ligado={voz.forte} onMudar={(forte) => mudar({ forte })} />
             <Opcao id="voz-eco" rotulo="Cancelamento de eco" ajuda="Precisa se o som sai da caixa. Com fone de ouvido, pode desligar."
               ligado={voz.eco} onMudar={(eco) => mudar({ eco })} />

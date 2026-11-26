@@ -45,7 +45,7 @@ export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart, on
   const [reserva, setReserva] = useState<string | null>(() =>
     fallback ? 'A transmissão nativa falhou nesta sessão.' : canNative ? null : '');
   const native = canNative && reserva === null;
-  const [upload, setUpload] = useState<number | null | 'testing'>(() => (demo ? 30 : uploadGuardado(server) ?? 'testing'));
+  const [upload, setUpload] = useState<number | null | 'testing'>(() => (demo ? 50 : uploadGuardado(server) ?? 'testing'));
   const [webCodec, setWebCodec] = useState<{ codec: Codec; hardware: boolean }>({ codec: 'h264', hardware: false });
   const [encoding, setEncoding] = useState<Record<string, Encoding>>({});
   const [stream, setStream] = useState<MediaStream | null>(null);
