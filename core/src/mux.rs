@@ -127,6 +127,53 @@ impl Drop for Mux {
     }
 }
 
+struct AvcHeaders(NonNull<AVBSFContext>);
+
+impl AvcHeaders {
+    fn new() -> Result<Self> {
+        unsafe {
+            let mut context = ptr::null_mut();
+            check(media::av_bsf_list_parse_str(
+                c"filter_units=remove_types=7|8".as_ptr(),
+                &mut context,
+            ))?;
+            let filter = Self(NonNull::new(context).context("FFmpeg não criou o filtro H.264")?);
+            (*(*context).par_in).codec_type = AVMediaType::AVMEDIA_TYPE_VIDEO;
+            (*(*context).par_in).codec_id = AVCodecID::AV_CODEC_ID_H264;
+            (*context).time_base_in = VIDEO_TIME;
+            check(media::av_bsf_init(context))?;
+            Ok(filter)
+        }
+    }
+
+    fn process(&mut self, packet: NonNull<AVPacket>, changed: Option<&[u8]>) -> Result<()> {
+        unsafe {
+            check(media::av_bsf_send_packet(self.0.as_ptr(), packet.as_ptr()))?;
+            check(media::av_bsf_receive_packet(
+                self.0.as_ptr(),
+                packet.as_ptr(),
+            ))?;
+            if let Some(headers) = changed {
+                // MOV uses new extradata to switch avc1 sample descriptions.
+                let side = media::av_packet_new_side_data(
+                    packet.as_ptr(),
+                    AVPacketSideDataType::AV_PKT_DATA_NEW_EXTRADATA,
+                    headers.len(),
+                );
+                ensure!(!side.is_null(), "FFmpeg não alocou os parâmetros H.264");
+                ptr::copy_nonoverlapping(headers.as_ptr(), side, headers.len());
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Drop for AvcHeaders {
+    fn drop(&mut self) {
+        unsafe { media::av_bsf_free(&mut self.0.as_ptr()) };
+    }
+}
+
 struct Aac {
     encoder: NonNull<AVCodecContext>,
     frame: Frame,
@@ -244,16 +291,21 @@ fn write(path: &Path, mut clip: Clip) -> Result<f64> {
     ) + tail;
     let mux = Mux::new(path)?;
     let video = mux.stream(c"Tela", VIDEO_TIME, true)?;
+    let (codec, tag) = match clip.format.codec {
+        Codec::H264 => (AVCodecID::AV_CODEC_ID_H264, *b"avc1"),
+        Codec::Av1 => (AVCodecID::AV_CODEC_ID_AV1, *b"av01"),
+    };
+    let mut avc_headers = (codec == AVCodecID::AV_CODEC_ID_H264)
+        .then(AvcHeaders::new)
+        .transpose()
+        .context("Não foi possível preparar os parâmetros H.264 do clipe")?;
     unsafe {
         let params = &mut *video.as_ref().codecpar;
         params.codec_type = AVMediaType::AVMEDIA_TYPE_VIDEO;
-        params.codec_id = match clip.format.codec {
-            // avc1 + avcC (built by movenc from the Annex B headers) opens in the Windows player;
-            // avc3 did not. shortcut: if QSV changes SPS/PPS mid-clip after a bitrate change, the
-            // in-band copies still follow; switch to avc3 only for that case if players complain.
-            Codec::H264 => AVCodecID::AV_CODEC_ID_H264,
-            Codec::Av1 => AVCodecID::AV_CODEC_ID_AV1,
-        };
+        // avc1 + avcC opens in the Windows player (avc3 did not); in-band SPS/PPS are stripped and
+        // mid-clip changes go as new extradata (see AvcHeaders).
+        params.codec_id = codec;
+        params.codec_tag = u32::from_le_bytes(tag);
         params.width = clip.format.width as i32;
         params.height = clip.format.height as i32;
         let headers = &clip.headers;
@@ -294,6 +346,7 @@ fn write(path: &Path, mut clip: Clip) -> Result<f64> {
         Ok(())
     };
     let mut last_pts = -1;
+    let mut headers = clip.headers.as_ref();
     for (index, frame) in clip.video.iter().enumerate() {
         let pts = micros(frame.at.saturating_duration_since(start)).max(last_pts + 1);
         feed_audio(pts)?;
@@ -318,6 +371,13 @@ fn write(path: &Path, mut clip: Clip) -> Result<f64> {
             if frame.key {
                 (*packet).flags |= AV_PKT_FLAG_KEY;
             }
+        }
+        if let Some(filter) = &mut avc_headers {
+            let changed = frame.headers.as_deref().filter(|&next| next != headers);
+            filter
+                .process(mux.1, changed)
+                .context("Não foi possível separar os parâmetros H.264 do clipe")?;
+            headers = changed.unwrap_or(headers);
         }
         mux.packet(video, VIDEO_TIME)?;
         last_pts = pts;

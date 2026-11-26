@@ -46,7 +46,7 @@ pub struct Video {
     pub at: Instant,
     pub key: bool,
     pub payload: Arc<Samples<u8>>,
-    headers: Option<Arc<[u8]>>,
+    pub(crate) headers: Option<Arc<[u8]>>,
 }
 
 #[derive(Clone)]
@@ -484,6 +484,103 @@ pub fn report_error(error: impl std::fmt::Display) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn writes_mp4_codec_configuration_records() -> Result<()> {
+        // Single black frames encoded as Annex B H.264 (QSV) and AV1 OBUs (libaom).
+        const BASELINE: &[u8] = &[
+            0x00, 0x00, 0x00, 0x01, 0x27, 0x42, 0x00, 0x0a, 0x95, 0xb1, 0x09, 0xb0, 0x11, 0x00,
+            0x00, 0x03, 0x00, 0x01, 0x00, 0x00, 0x03, 0x00, 0x3c, 0x9d, 0xa1, 0xc2, 0x6e, 0x00,
+            0x00, 0x00, 0x01, 0x28, 0xce, 0x3c, 0x80, 0x00, 0x00, 0x01, 0x25, 0x88, 0x80, 0x41,
+            0xbf, 0xff, 0xff, 0x0f, 0x45, 0x00, 0x01, 0x06, 0x9f, 0x27, 0x27, 0x27, 0x27, 0x27,
+            0x27, 0x27, 0x27, 0x27, 0x27, 0x27, 0x27, 0x27, 0x27, 0x27, 0x80,
+        ];
+        const HIGH: &[u8] = &[
+            0x00, 0x00, 0x00, 0x01, 0x27, 0x64, 0x00, 0x0a, 0xac, 0x2b, 0x62, 0x13, 0x60, 0x22,
+            0x00, 0x00, 0x03, 0x00, 0x02, 0x00, 0x00, 0x03, 0x00, 0x79, 0x3b, 0x43, 0x84, 0xdc,
+            0x00, 0x00, 0x00, 0x01, 0x28, 0xee, 0x3c, 0xb0, 0x00, 0x00, 0x01, 0x25, 0x88, 0x80,
+            0x41, 0xbf, 0x94, 0x01, 0xb1, 0x76, 0xaf, 0x99, 0x5f, 0x01, 0xff, 0xbc, 0x5a, 0x66,
+            0x74, 0xde, 0xac, 0x6d, 0x94, 0xb0, 0xcf, 0xac, 0x7c, 0x69, 0x9f, 0xb4, 0xfd, 0x76,
+            0x18,
+        ];
+        const AV1: &[u8] = &[
+            0x12, 0x00, 0x0a, 0x0a, 0x00, 0x00, 0x00, 0x02, 0x27, 0xfe, 0x6d, 0x7c, 0x80, 0x20,
+            0x32, 0x0e, 0x10, 0x00, 0xc0, 0x00, 0x00, 0x02, 0x80, 0x00, 0x00, 0x02, 0xe5, 0xd6,
+            0xf7, 0x40,
+        ];
+
+        crate::media::init()?;
+        crate::media::init_muxer()?;
+        let directory =
+            std::env::temp_dir().join(format!("stackcall-mux-test-{}", std::process::id()));
+        for (codec, size, frames, tag, config, count) in [
+            (
+                Codec::H264,
+                64,
+                &[BASELINE, BASELINE, HIGH][..],
+                b"avc1",
+                b"avcC",
+                2,
+            ),
+            (Codec::Av1, 32, &[AV1][..], b"av01", b"av1C", 1),
+        ] {
+            let mut buffer = Buffer {
+                seconds: Some(30),
+                ..Default::default()
+            };
+            let format = VideoFormat {
+                codec,
+                width: size,
+                height: size,
+                fps: 30,
+            };
+            let start = Instant::now();
+            for (index, payload) in frames.iter().enumerate() {
+                buffer.video(
+                    format,
+                    start + Duration::from_secs(index as u64),
+                    true,
+                    payload,
+                );
+            }
+            let saved = mux::save(&directory, buffer.snapshot().unwrap())?;
+            let file = std::fs::read(&saved.path)?;
+
+            let mdat = file.windows(4).position(|bytes| bytes == b"mdat").unwrap();
+            let mdat_size = u32::from_be_bytes(file[mdat - 4..mdat].try_into()?) as usize;
+            let media = &file[mdat + 4..mdat - 4 + mdat_size];
+            let moov = &file[mdat - 4 + mdat_size..];
+            assert_eq!(moov.windows(4).filter(|bytes| *bytes == tag).count(), count);
+            let records = moov
+                .windows(4)
+                .enumerate()
+                .filter(|(_, bytes)| *bytes == config);
+            assert_eq!(records.clone().count(), count);
+            for (offset, _) in records {
+                let size = u32::from_be_bytes(moov[offset - 4..offset].try_into()?);
+                let version = if codec == Codec::H264 { 1 } else { 0x81 };
+                assert!(size > 12);
+                assert_eq!(moov[offset + 4], version);
+            }
+            if codec == Codec::H264 {
+                for payload in frames {
+                    let headers = codec_headers(codec, payload).unwrap();
+                    let sps_end = headers[4..]
+                        .windows(4)
+                        .position(|bytes| bytes == [0, 0, 0, 1])
+                        .unwrap()
+                        + 4;
+                    let sps = &headers[4..sps_end];
+                    let pps = &headers[sps_end + 4..];
+                    assert!(!media.windows(sps.len()).any(|bytes| bytes == sps));
+                    assert!(!media.windows(pps.len()).any(|bytes| bytes == pps));
+                }
+            }
+            std::fs::remove_file(saved.path)?;
+        }
+        std::fs::remove_dir(directory)?;
+        Ok(())
+    }
 
     #[test]
     fn expires_whole_gops_and_pins_snapshot_bytes() {
