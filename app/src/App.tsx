@@ -323,7 +323,7 @@ export function App() {
   }), [escolherSala]);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className="flex h-full flex-col overflow-clip">
       <UpdateBanner updater={updater} inCall={!!sala} room={salas.find((s) => s.id === sala)?.nome ?? ''} onNotes={() => setOverlay({ novidades: null })} />
       {aviso && (
         <Faixa tipo={aviso.tipo} acoes={aviso.acoes} onFechar={aviso.acoes?.length ? undefined : () => setAviso(null)} className="mx-5 mt-3 shrink-0">

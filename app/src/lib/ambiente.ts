@@ -19,10 +19,14 @@ export const ambiente = (): Ambiente => (isTauri() ? 'app' : demo() ? 'demo' : '
 export const naWeb = () => ambiente() === 'web';
 /** The core (stream, clips, game detection, overlay) exists only in the Windows app. */
 export const temNucleo = () => ambiente() !== 'web';
-/** Screen capture in a browser: desktop browsers have it; phones do not. */
-export const podeTransmitirNoNavegador = () => typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
 /** Phone or tablet: decides the light screen by default and the compact layout. */
 export const ehCelular = () => typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+/**
+ * Screen capture in a desktop browser. Phones and tablets only watch: recent iOS exposes
+ * getDisplayMedia, but a phone screen is not what the room wants to see.
+ */
+export const podeTransmitirNoNavegador = () =>
+  typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia && !ehCelular();
 
 
 const ESTREITA = '(max-width: 767px)';

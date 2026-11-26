@@ -140,7 +140,8 @@ test('go live layout: only the source list scrolls and the action bar is outside
   const dialog = screen.getByRole('dialog', { name: 'Entrar no ar' });
   // shortcut: jsdom has no layout; real sizes were checked in the browser at 1920x1080, 1366x768 and 1100x700.
   expect(dialog.className).toMatch(/grid-rows-\[auto_minmax\(0,1fr\)_auto\]/);
-  expect(dialog.className).not.toMatch(/overflow/);
+  // Only the narrow layout (max-md, a small browser window) scrolls the whole screen.
+  expect(dialog.className).not.toMatch(/(^|\s)overflow-/);
   expect((await screen.findByRole('radiogroup', { name: 'Telas e janelas' })).className).toMatch(/overflow-y-auto/);
   const action = screen.getByRole('button', { name: 'Entrar no ar' });
   expect(action.closest('.overflow-y-auto')).toBeNull();

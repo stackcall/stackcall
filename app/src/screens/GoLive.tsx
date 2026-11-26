@@ -240,18 +240,18 @@ export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart, on
 
   return (
     <div ref={dialog} role="dialog" aria-modal="true" aria-label="Entrar no ar" tabIndex={-1} onKeyDown={onKey}
-      className="absolute inset-0 z-20 grid grid-rows-[auto_minmax(0,1fr)_auto] gap-4 bg-fundo pt-5 outline-none">
-      <header className="flex min-w-0 flex-wrap items-end gap-x-6 gap-y-1 px-8">
+      className="absolute inset-0 z-20 grid grid-rows-[auto_minmax(0,1fr)_auto] gap-4 bg-fundo pt-5 outline-none max-md:grid-rows-none max-md:overflow-y-auto">
+      <header className="flex min-w-0 flex-wrap items-end gap-x-6 gap-y-1 px-8 max-md:px-3">
         <div className="flex flex-col gap-1">
           <span className="rotulo">/ Sala {roomLabel} · {viewers === 0 ? 'ninguém na sala ainda' : `${viewers} ${viewers === 1 ? 'pessoa pode' : 'pessoas podem'} assistir`}</span>
-          <h1 className="text-[56px] leading-[0.9]">Entrar no ar</h1>
+          <h1 className="text-[56px] leading-[0.9] max-md:text-[40px]">Entrar no ar</h1>
         </div>
-        <p className="m-0 min-w-0 flex-1 truncate pb-1 text-[14px] text-texto-fraco">
+        <p className="m-0 min-w-0 flex-1 truncate pb-1 text-[14px] text-texto-fraco max-md:hidden">
           Escolha a fonte e a qualidade. Os números vêm do teste da sua placa e da sua internet.
         </p>
       </header>
 
-      <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-6 px-8">
+      <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-6 px-8 max-md:grid-cols-[minmax(0,1fr)] max-md:px-3">
         {native ? (
           <Fontes sources={sources} loading={loadingSources} selected={source?.id} disabled={busy} refreshDisabled={testing || busy}
             searchRef={search} onSelect={pick} onEnter={() => void start()}
@@ -295,7 +295,7 @@ export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart, on
               <span className="ml-auto truncate font-medium">upload {uploadText} · {encoderText}</span>
             </div>
             {chosen ? (
-              <div className="flex flex-1 items-center gap-5 px-4 py-3 [@media(max-height:760px)]:py-2">
+              <div className="flex flex-1 items-center gap-5 px-4 py-3 max-md:flex-col max-md:items-stretch max-md:gap-3 [@media(max-height:760px)]:py-2">
                 <div className="relative shrink-0 pr-[4.5rem]">
                   <b className="block font-display text-[76px] leading-[0.9] tabular-nums [@media(max-height:820px)]:text-[60px]">{fmtRes(chosen)}</b>
                   <span className="absolute right-0 bottom-0 -rotate-6 font-pincel text-[24px] text-destaque">{chosen.fps} fps</span>
@@ -374,8 +374,8 @@ export function GoLive({ demo, server, roomLabel, viewers, onCancel, onStart, on
             )}
           </div>
         )}
-        <div className="flex h-[72px] items-center gap-3 border-t border-texto bg-superficie px-8">
-          <span className="min-w-0 flex-1 truncate text-[14px] text-texto-fraco">
+        <div className="flex h-[72px] items-center gap-3 border-t border-texto bg-superficie px-8 max-md:h-auto max-md:flex-wrap max-md:px-3 max-md:py-2.5">
+          <span className="min-w-0 flex-1 truncate text-[14px] text-texto-fraco max-md:basis-full max-md:whitespace-normal">
             Vai transmitir <b className="text-texto">{sourceName ?? 'nenhuma fonte'}</b>{chosen && <> em <b className="text-texto">{presetLabel(chosen)}</b></>}, {!withAudio ? 'sem som do jogo' : source?.pid ? 'com o som do jogo' : 'com o som do PC, menos o Stackcall'}.
           </span>
           <span className="shrink-0 text-[13px] font-bold" id="som-do-jogo">Som do jogo</span>

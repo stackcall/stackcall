@@ -17,7 +17,7 @@ export function UpdateBanner({ updater, inCall, room, onNotes }: {
   if (!updater.available || depois === updater.available.version) return null;
   const busy = updater.status === 'downloading' || updater.status === 'installing';
   return (
-    <div role="status" className="flex min-h-10 shrink-0 items-center gap-3 border-b border-texto bg-lima px-5 text-[14px] text-sobre-lima">
+    <div role="status" className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-texto bg-lima px-5 py-1.5 text-[14px] text-sobre-lima max-md:px-2.5">
       <span><b>Stackcall {updater.available.version}</b> está disponível.</span>
       <button type="button" onClick={onNotes} className="border-0 bg-transparent p-0 font-bold text-sobre-lima underline underline-offset-2">Ver novidades</button>
       {updater.status === 'error' && <span className="font-bold">Falhou: {updater.error}</span>}

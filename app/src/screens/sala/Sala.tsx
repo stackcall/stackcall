@@ -149,7 +149,7 @@ export function RoomView(props: ComSala & { model: RoomModel & RoomActions; reco
       const k = e.key.toLowerCase();
       if (k === 'm') voz.executar('mic', 'pressionado', false);
       else if (k === 's') voz.executar('silenciar', 'pressionado', false);
-      else if (k === 't' && a.conectada && !a.imLive && !a.goLive) setGoLive(true);
+      else if (k === 't' && podeTransmitir && a.conectada && !a.imLive && !a.goLive) setGoLive(true);
       else return;
       e.preventDefault();
     };

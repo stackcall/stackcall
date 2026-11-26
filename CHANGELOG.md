@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.2
+
+### Correções
+
+- No celular a tela fica só para assistir: o botão Transmitir não aparece mais no celular nem no tablet
+- A tela não fica mais cortada para o lado, sem como voltar, quando um botão ou menu abre perto da borda
+- Entrar no ar e o aviso de atualização se ajustam a janelas estreitas
+
 ## v0.6.1
 
 ### Novidades
