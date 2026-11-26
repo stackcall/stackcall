@@ -19,7 +19,7 @@ pub fn routes() -> Router<Arc<Config>> {
     let csp = format!(
         "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; \
          img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' {livekit}; \
-         worker-src 'self' blob:; manifest-src 'self'; font-src 'self'; frame-ancestors 'none'; \
+         worker-src 'self' blob:; manifest-src 'self'; font-src 'self' data:; frame-ancestors 'none'; \
          base-uri 'none'; form-action 'none'"
     );
     let serve = ServeDir::new(&dir).fallback(ServeFile::new(dir.join("index.html")));
