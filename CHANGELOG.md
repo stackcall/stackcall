@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5.4
+
+### Correções
+
+- O som do jogo na transmissão agora é estéreo: dá para ouvir de que lado vêm os passos, como no jogo
+
 ## v0.5.3
 
 ### Melhorias

@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.5.4",
+    "date": "2026-11-26",
+    "categories": [
+      {
+        "name": "Correções",
+        "items": [
+          { "message": "O som do jogo na transmissão agora é estéreo: dá para ouvir de que lado vêm os passos, como no jogo", "breaking": false }
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.5.3",
     "date": "2026-11-26",
     "categories": [

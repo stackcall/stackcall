@@ -1,5 +1,9 @@
 [workspace]
 members = ["server", "core"]
 # The Tauri app and the spikes keep their own Cargo.lock (release.yml caches app/src-tauri on its own).
-exclude = ["app/src-tauri", "spikes"]
+exclude = ["app/src-tauri", "spikes", "vendor"]
 resolver = "2"
+
+# Stereo game audio: see vendor/livekit/PATCHED.md.
+[patch.crates-io]
+livekit = { path = "vendor/livekit" }
