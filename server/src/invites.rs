@@ -208,13 +208,16 @@ async fn preview(
 struct Join {
     nome: String,
     aparelho: String,
+    #[serde(default)]
+    web: bool,
 }
 
 async fn accept(
     State(config): State<Arc<Config>>,
     Path(code): Path<String>,
     Json(input): Json<Join>,
-) -> Result<(StatusCode, Json<auth::Session>), InviteError> {
+) -> Result<Response, InviteError> {
+    let web = input.web;
     let name = input.nome.trim().to_owned();
     if !valid_name(&name) {
         return Err(InviteError(StatusCode::BAD_REQUEST));
@@ -245,7 +248,7 @@ async fn accept(
         .map_err(db::internal)?;
         let session = auth::issue_session(&tx, &id, &device).map_err(db::internal)?;
         tx.commit().map_err(db::internal)?;
-        Ok((StatusCode::CREATED, Json(session)))
+        Ok(auth::deliver(StatusCode::CREATED, session, web))
     })
     .await
     .map_err(InviteError)

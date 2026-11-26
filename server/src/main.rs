@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod api_tests;
 mod auth;
+mod boras;
 mod db;
 mod invites;
 mod livekit;
@@ -8,6 +9,7 @@ mod moderation;
 mod people;
 mod pokes;
 mod profile;
+mod push;
 mod rooms;
 mod sleep;
 
@@ -215,6 +217,8 @@ fn app(config: Arc<Config>) -> Router {
         .merge(moderation::routes())
         .merge(people::routes())
         .merge(pokes::routes())
+        .merge(boras::routes())
+        .merge(push::routes())
         .merge(profile::routes())
         .route(
             "/api/upload-test",

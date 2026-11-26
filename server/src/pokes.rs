@@ -1,7 +1,7 @@
 use crate::{
     Config,
     auth::{self, User},
-    db,
+    db, push,
 };
 use axum::{
     Json, Router,
@@ -89,7 +89,10 @@ async fn create(
     {
         return Err(StatusCode::BAD_REQUEST);
     }
-    db::run(config, move |conn| {
+    let notify_config = config.clone();
+    let recipient = input.para.clone();
+    let note = input.recado.trim().to_owned();
+    let sender = db::run(config, move |conn| {
         let tx = conn
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(db::internal)?;
@@ -127,10 +130,27 @@ async fn create(
             params![auth::id(), user.id, input.para, input.recado.trim(), now],
         )
         .map_err(db::internal)?;
+        let sender: String = tx
+            .query_row(
+                "SELECT nome FROM usuarios WHERE id = ?1",
+                [&user.id],
+                |row| row.get(0),
+            )
+            .map_err(db::internal)?;
         tx.commit().map_err(db::internal)?;
-        Ok(StatusCode::NO_CONTENT)
+        Ok(sender)
     })
-    .await
+    .await?;
+    push::notify(
+        notify_config,
+        vec![recipient],
+        serde_json::json!({
+            "tipo": "cutucada",
+            "titulo": format!("{sender} cutucou você"),
+            "texto": if note.is_empty() { "Toque para abrir o Stackcall.".to_owned() } else { note },
+        }),
+    );
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub fn take(conn: &mut Connection, recipient: &str) -> Result<Vec<Poke>, StatusCode> {

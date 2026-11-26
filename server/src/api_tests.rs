@@ -1815,3 +1815,232 @@ async fn keeps_the_upload_probe_bounded_and_times_out_incomplete_bodies() {
         StatusCode::REQUEST_TIMEOUT
     );
 }
+
+#[tokio::test]
+async fn bora_call_takes_answers_and_one_open_call_per_author() {
+    let fixture = fixture(false).await;
+    let app = &fixture.app;
+    let owner = join(app, &fixture.owner_code, "Dono").await;
+    let friend = member(app, session(&owner)).await;
+    let (status, created) = send(
+        app,
+        Method::POST,
+        "/api/boras",
+        Some(session(&owner)),
+        json!({"recado":"premier"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let bora = created["id"].as_str().unwrap().to_owned();
+    let uri = format!("/api/boras/{bora}/resposta");
+    assert_eq!(
+        send(
+            app,
+            Method::POST,
+            &uri,
+            Some(session(&friend)),
+            json!({"resposta":"10min"})
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        send(
+            app,
+            Method::POST,
+            &uri,
+            Some(session(&friend)),
+            json!({"resposta":"talvez"})
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    let (_, list) = send(
+        app,
+        Method::GET,
+        "/api/boras",
+        Some(session(&friend)),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(list.as_array().unwrap().len(), 1);
+    let answers: Vec<_> = list[0]["respostas"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["resposta"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(answers, ["dentro", "10min"]);
+    assert_eq!(list[0]["recado"], "premier");
+    // A new call by the same author closes the first one.
+    send(
+        app,
+        Method::POST,
+        "/api/boras",
+        Some(session(&owner)),
+        json!({}),
+    )
+    .await;
+    let (_, list) = send(
+        app,
+        Method::GET,
+        "/api/boras",
+        Some(session(&owner)),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(list.as_array().unwrap().len(), 1);
+    assert_ne!(list[0]["id"], bora);
+    // Only the author (or a manager) closes it.
+    let open = list[0]["id"].as_str().unwrap().to_owned();
+    assert_eq!(
+        send(
+            app,
+            Method::DELETE,
+            &format!("/api/boras/{open}"),
+            Some(session(&friend)),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        send(
+            app,
+            Method::DELETE,
+            &format!("/api/boras/{open}"),
+            Some(session(&owner)),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    let (_, list) = send(
+        app,
+        Method::GET,
+        "/api/boras",
+        Some(session(&owner)),
+        Value::Null,
+    )
+    .await;
+    assert!(list.as_array().unwrap().is_empty());
+    // Three calls in ten minutes at most.
+    assert_eq!(
+        send(
+            app,
+            Method::POST,
+            "/api/boras",
+            Some(session(&owner)),
+            json!({})
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    assert_eq!(
+        send(
+            app,
+            Method::POST,
+            "/api/boras",
+            Some(session(&owner)),
+            json!({})
+        )
+        .await
+        .0,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+}
+
+#[tokio::test]
+async fn web_login_uses_an_httponly_cookie_and_writes_need_the_web_header() {
+    let fixture = fixture(false).await;
+    let app = &fixture.app;
+    let owner = join(app, &fixture.owner_code, "Dono").await;
+    let (_, link) = send(
+        app,
+        Method::POST,
+        "/api/aparelhos/link",
+        Some(session(&owner)),
+        json!({}),
+    )
+    .await;
+    let url = url::Url::parse(link["url"].as_str().unwrap()).unwrap();
+    let code = url
+        .query_pairs()
+        .find(|(k, _)| k == "codigo")
+        .unwrap()
+        .1
+        .into_owned();
+    let req = request(
+        Method::POST,
+        "/api/aparelhos/entrar",
+        None,
+        Body::from(json!({"codigo": code, "aparelho": "Celular", "web": true}).to_string()),
+        "192.0.2.200:1234".parse().unwrap(),
+    );
+    let response = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let cookie = response
+        .headers()
+        .get(header::SET_COOKIE)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_owned();
+    assert!(
+        cookie.contains("HttpOnly")
+            && cookie.contains("Secure")
+            && cookie.contains("SameSite=Strict")
+    );
+    let body: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 64 * 1024).await.unwrap()).unwrap();
+    assert!(
+        body.get("sessao").is_none(),
+        "the browser never sees the token"
+    );
+    let pair = cookie.split(';').next().unwrap().to_owned();
+    let with_cookie = |method: Method, uri: &str, web: bool, value: Value| {
+        let mut req = request(
+            method,
+            uri,
+            None,
+            Body::from(value.to_string()),
+            "192.0.2.200:1234".parse().unwrap(),
+        );
+        req.headers_mut()
+            .insert(header::COOKIE, pair.parse().unwrap());
+        if web {
+            req.headers_mut()
+                .insert(auth::WEB_HEADER, "1".parse().unwrap());
+        }
+        req
+    };
+    assert_eq!(
+        result(app, with_cookie(Method::GET, "/api/eu", false, Value::Null))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        result(
+            app,
+            with_cookie(Method::POST, "/api/boras", false, json!({}))
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        result(
+            app,
+            with_cookie(Method::POST, "/api/boras", true, json!({}))
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+}

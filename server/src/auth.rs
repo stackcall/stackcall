@@ -2,7 +2,8 @@ use crate::{Config, db};
 use axum::{
     Json, Router,
     extract::{FromRequestParts, State},
-    http::{StatusCode, header, request::Parts},
+    http::{Method, StatusCode, header, request::Parts},
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use rusqlite::{Connection, OptionalExtension, Row, TransactionBehavior, params};
@@ -52,15 +53,27 @@ impl FromRequestParts<Arc<Config>> for User {
         parts: &mut Parts,
         config: &Arc<Config>,
     ) -> Result<Self, StatusCode> {
-        let token = parts
+        let bearer = parts
             .headers
             .get(header::AUTHORIZATION)
             .and_then(|value| value.to_str().ok())
             .and_then(|value| value.split_once(' '))
             .filter(|(scheme, token)| scheme.eq_ignore_ascii_case("Bearer") && is_hex(token, 64))
-            .map(|(_, token)| token)
-            .ok_or(StatusCode::UNAUTHORIZED)?;
-        let token_hash = hash(token);
+            .map(|(_, token)| token.to_owned());
+        let token = match bearer {
+            Some(token) => token,
+            None => {
+                let token = session_cookie(parts).ok_or(StatusCode::UNAUTHORIZED)?;
+                // A cookie travels with any request to this host: writes also need a header that
+                // another site cannot send without a CORS preflight, which only the apps pass.
+                let read = matches!(parts.method, Method::GET | Method::HEAD);
+                if !read && parts.headers.get(WEB_HEADER).is_none_or(|v| v != "1") {
+                    return Err(StatusCode::FORBIDDEN);
+                }
+                token
+            }
+        };
+        let token_hash = hash(&token);
         db::run(config.clone(), move |conn| {
             let user_id: String = conn
                 .query_row(
@@ -181,6 +194,41 @@ pub struct Session {
     usuario: Profile,
 }
 
+/// The web app (`/app/`) keeps its session in this cookie, out of reach of page scripts.
+pub const COOKIE: &str = "stackcall_sessao";
+/// Header the web app sends on every write when it authenticates by cookie.
+pub const WEB_HEADER: &str = "x-stackcall-web";
+
+fn session_cookie(parts: &Parts) -> Option<String> {
+    parts
+        .headers
+        .get_all(header::COOKIE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(';'))
+        .filter_map(|pair| pair.trim().split_once('='))
+        .find(|(name, value)| *name == COOKIE && is_hex(value, 64))
+        .map(|(_, value)| value.to_owned())
+}
+
+/// Desktop apps get the token in the body (they keep it in the system vault); the browser gets
+/// an HttpOnly cookie instead and never sees the token.
+pub fn deliver(status: StatusCode, session: Session, web: bool) -> Response {
+    if !web {
+        return (status, Json(session)).into_response();
+    }
+    let cookie = format!(
+        "{COOKIE}={}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=31536000",
+        session.sessao
+    );
+    (
+        status,
+        [(header::SET_COOKIE, cookie)],
+        Json(json!({ "usuario": session.usuario })),
+    )
+        .into_response()
+}
+
 pub fn issue_session(conn: &Connection, user: &str, device: &str) -> rusqlite::Result<Session> {
     let sessao = token();
     let usuario = profile(conn, user)?;
@@ -200,14 +248,15 @@ async fn me(State(config): State<Arc<Config>>, user: User) -> Result<Json<Profil
     .await
 }
 
-async fn logout(State(config): State<Arc<Config>>, user: User) -> Result<StatusCode, StatusCode> {
+async fn logout(State(config): State<Arc<Config>>, user: User) -> Result<Response, StatusCode> {
     db::run(config, move |conn| {
         conn.execute(
             "DELETE FROM sessoes WHERE token_hash = ?1",
             [user.token_hash],
         )
         .map_err(db::internal)?;
-        Ok(StatusCode::NO_CONTENT)
+        let clear = format!("{COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0");
+        Ok((StatusCode::NO_CONTENT, [(header::SET_COOKIE, clear)]).into_response())
     })
     .await
 }
@@ -251,12 +300,15 @@ async fn link(
 struct DeviceLogin {
     codigo: String,
     aparelho: String,
+    #[serde(default)]
+    web: bool,
 }
 
 async fn exchange(
     State(config): State<Arc<Config>>,
     Json(input): Json<DeviceLogin>,
-) -> Result<Json<Session>, StatusCode> {
+) -> Result<Response, StatusCode> {
+    let web = input.web;
     let name = device(input.aparelho)?;
     if !is_hex(&input.codigo, 64) {
         return Err(StatusCode::UNAUTHORIZED);
@@ -279,7 +331,7 @@ async fn exchange(
             .ok_or(StatusCode::UNAUTHORIZED)?;
         let session = issue_session(&tx, &user, &name).map_err(db::internal)?;
         tx.commit().map_err(db::internal)?;
-        Ok(Json(session))
+        Ok(deliver(StatusCode::OK, session, web))
     })
     .await
 }
