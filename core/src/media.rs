@@ -80,8 +80,18 @@ dll!(avcodec, "avcodec-63.dll", {
     ) -> c_int;
     fn avcodec_send_frame(ctx: *mut AVCodecContext, frame: *const AVFrame) -> c_int;
     fn avcodec_receive_packet(ctx: *mut AVCodecContext, packet: *mut AVPacket) -> c_int;
+    fn av_bsf_list_parse_str(spec: *const c_char, ctx: *mut *mut AVBSFContext) -> c_int;
+    fn av_bsf_init(ctx: *mut AVBSFContext) -> c_int;
+    fn av_bsf_send_packet(ctx: *mut AVBSFContext, packet: *mut AVPacket) -> c_int;
+    fn av_bsf_receive_packet(ctx: *mut AVBSFContext, packet: *mut AVPacket) -> c_int;
+    fn av_bsf_free(ctx: *mut *mut AVBSFContext);
     fn av_packet_alloc() -> *mut AVPacket;
     fn av_new_packet(packet: *mut AVPacket, size: c_int) -> c_int;
+    fn av_packet_new_side_data(
+        packet: *mut AVPacket,
+        kind: AVPacketSideDataType,
+        size: usize,
+    ) -> *mut u8;
     fn av_packet_unref(packet: *mut AVPacket);
     fn avcodec_parameters_from_context(
         params: *mut AVCodecParameters,
