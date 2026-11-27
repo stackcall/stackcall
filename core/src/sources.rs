@@ -17,7 +17,7 @@ use windows::Win32::{
 use windows_capture::{
     capture::{Context, GraphicsCaptureApiHandler},
     frame::Frame,
-    graphics_capture_api::InternalCaptureControl,
+    graphics_capture_api::{GraphicsCaptureApi, InternalCaptureControl},
     monitor::Monitor,
     settings::*,
     window::Window,
@@ -212,19 +212,31 @@ pub fn list() -> Result<Vec<SourceInfo>> {
     Ok(sources)
 }
 
-fn thumbnail<T: TryInto<GraphicsCaptureItemType> + Send + 'static>(target: T) -> Option<String> {
+fn thumbnail<T: TryInto<GraphicsCaptureItemType> + Copy + Send + 'static>(
+    target: T,
+) -> Option<String> {
     let (tx, rx) = mpsc::sync_channel(1);
-    let capture = Thumbnail::start_free_threaded(Settings::new(
-        target,
-        CursorCaptureSettings::Default,
-        DrawBorderSettings::Default,
-        SecondaryWindowSettings::Default,
-        MinimumUpdateIntervalSettings::Default,
-        DirtyRegionSettings::Default,
-        ColorFormat::Bgra8,
-        tx,
-    ))
-    .ok()?;
+    let settings = |border| {
+        Settings::new(
+            target,
+            CursorCaptureSettings::Default,
+            border,
+            SecondaryWindowSettings::Default,
+            MinimumUpdateIntervalSettings::Default,
+            DirtyRegionSettings::Default,
+            ColorFormat::Bgra8,
+            tx.clone(),
+        )
+    };
+    // Without it, every source flashes the yellow border while the picker builds its thumbnails.
+    let sem_borda = GraphicsCaptureApi::is_border_settings_supported()
+        .unwrap_or(false)
+        .then(|| Thumbnail::start_free_threaded(settings(DrawBorderSettings::WithoutBorder)).ok())
+        .flatten();
+    let capture = match sem_borda {
+        Some(capture) => capture,
+        None => Thumbnail::start_free_threaded(settings(DrawBorderSettings::Default)).ok()?,
+    };
     let image = rx.recv_timeout(Duration::from_millis(350)).ok();
     if capture.is_finished() {
         let _ = capture.wait();

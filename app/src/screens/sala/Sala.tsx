@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import * as Slider from '@radix-ui/react-slider';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { isTauri } from '@tauri-apps/api/core';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { MIC_BLOQUEADO } from '../../room/useLiveRoom';
@@ -101,6 +101,14 @@ export function RoomView(props: ComSala & { model: RoomModel & RoomActions; reco
     model.assistirTodas?.(emGrade);
     if (!emGrade) model.setSomTela?.(null);
   }, [emGrade]);
+
+  // Red dot on the tray icon while streaming; cleared when the stream ends or the room closes.
+  useEffect(() => {
+    if (!isTauri() || !imLive) return;
+    const marcar = (noAr: boolean) => void invoke('bandeja_no_ar', { noAr }).catch(() => undefined);
+    marcar(true);
+    return () => marcar(false);
+  }, [imLive]);
 
   const avisar = (texto: string, erro = false) => setAviso({ texto, erro });
 
