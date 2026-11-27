@@ -12,6 +12,7 @@ import { ATRIBUTO_OUVE, ATRIBUTO_REDE, ouveLista, quemRecebe, redeDe } from './s
 import { interfaceAtiva, useInterfaceAtiva } from '../lib/leveza';
 import { lerAmostra, linhaAssistir, type Amostra } from '../lib/qualidadeRecebida';
 import { ehCelular } from '../lib/ambiente';
+import { decodifica, vigiar } from './vigia';
 import type { Servidor } from '../lib/servidor';
 import { resolutionOf, type Codec, type Preset } from '../lib/presets';
 import { setTransmissionPaused, stopTransmission, type StreamEvent } from '../lib/sidecar';
@@ -39,6 +40,7 @@ const telaQuer = (p: Participant, leve: boolean) => {
   return (leve && videos.find((t) => t.trackName === FAIXA_LEVE)) || videos.find((t) => t.trackName !== FAIXA_LEVE) || videos[0];
 };
 const decoder = new TextDecoder();
+const SEM_ORIGINAL = 'Este aparelho não abre o Original desta tela. Você recebe a Leve 720p, que abre em todos.';
 const MAX_CHAT = 200;
 type NativeStream = { id: string; info: string; ready: boolean; pauseRequested: boolean; paused: boolean; minimized?: boolean };
 /** Hidden this long (game on top, tray, minimized): stop receiving the watched screen. */
@@ -106,6 +108,26 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
   const pedirLeve = (owner: string, assistir: boolean) => {
     void roomRef.current?.localParticipant.publishData(encoder.encode(JSON.stringify({ tela: owner + SCREEN_SUFFIX, assistir })),
       { reliable: true, topic: TOPICO_TELA_LEVE }).catch(() => undefined);
+  };
+  // Watched screen without a frame yet: since when (see vigia.ts), and what the person is told.
+  const esperaRef = useRef<number | null>(null);
+  const [imagemFalhou, setImagemFalhou] = useState(false);
+  const [avisoImagem, setAvisoImagem] = useState<string | null>(null);
+  const originalAbre = (owner: string) => {
+    const p = roomRef.current?.remoteParticipants.get(owner + SCREEN_SUFFIX) ?? roomRef.current?.remoteParticipants.get(owner);
+    return decodifica(p && telaQuer(p, false)?.mimeType);
+  };
+  const trocarQualidade = (ownerId: string, q: 'original' | 'leve') => {
+    qualidadeRef.current = { ...qualidadeRef.current, [ownerId]: q };
+    // Native screens: ask the sender's core for "screen-low", then switch when it appears (TrackPublished).
+    if (assistindo(ownerId) || q === 'original') pedirLeve(ownerId, q === 'leve');
+    for (const identity of [ownerId, ownerId + SCREEN_SUFFIX]) {
+      const p = roomRef.current?.remoteParticipants.get(identity);
+      if (p && assistindo(ownerId)) escolherFaixa(p, true);
+    }
+    if (watchingRef.current === ownerId) esperaRef.current = performance.now();
+    setImagemFalhou(false);
+    rerender();
   };
 
   const applyVolume = (p: RemoteParticipant) => {
@@ -517,6 +539,7 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
     const stats = setInterval(async () => {
       if (!interfaceAtiva() || room.state !== 'connected') {
         minuto = null; // the paused minute would read as a drop
+        if (esperaRef.current !== null) esperaRef.current = performance.now(); // hidden time is not a failure
         return;
       }
       const tracks = [
@@ -542,6 +565,20 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
       const next = report ? videoOf(report, lastVideo) : null;
       lastVideo = next ? { bytes: next.bytes, at: performance.now() } : null;
       setStageStats(next && { height: next.height, fps: next.fps, codec: next.codec, mbps: next.mbps });
+      if (!owner) return;
+      if (!videoPermitido()) {
+        if (esperaRef.current !== null) esperaRef.current = performance.now();
+        return;
+      }
+      const passo = vigiar(esperaRef.current, !!next, performance.now(), qualidadeRef.current[owner] === 'leve');
+      if (passo === 'ok') esperaRef.current = null;
+      else if (passo === 'leve') {
+        trocarQualidade(owner, 'leve');
+        setAvisoImagem('A imagem Original não abriu neste aparelho. Mudei para Leve 720p.');
+      } else if (passo === 'falhou') {
+        esperaRef.current = null;
+        setImagemFalhou(true);
+      }
     }, 2000);
     return () => {
       closed = true;
@@ -694,10 +731,15 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
       watchingRef.current = id;
       // Phones get the light 720p H.264 screen by default: every phone decodes it and it costs
       // a third of the data. The person can switch to Original on Wi-Fi.
-      const leveNoCelular = ehCelular() && qualidadeRef.current[id] === undefined;
-      if (leveNoCelular) qualidadeRef.current = { ...qualidadeRef.current, [id]: 'leve' };
+      // A device that cannot decode the main codec (AV1 on most iPhones) also gets the light one.
+      const semOriginal = !originalAbre(id);
+      const virarLeve = qualidadeRef.current[id] !== 'leve' && (semOriginal || (ehCelular() && qualidadeRef.current[id] === undefined));
+      if (virarLeve) qualidadeRef.current = { ...qualidadeRef.current, [id]: 'leve' };
       setScreenSubscribed(id, true);
-      if (leveNoCelular) pedirLeve(id, true);
+      if (virarLeve) pedirLeve(id, true);
+      esperaRef.current = performance.now();
+      setImagemFalhou(false);
+      setAvisoImagem(semOriginal ? SEM_ORIGINAL : null);
       void sendWatch(room, id);
       announceWatch(room);
       rerender();
@@ -707,6 +749,9 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
       setScreenSubscribed(id, false);
       if (watchingRef.current !== id) return;
       watchingRef.current = null;
+      esperaRef.current = null;
+      setImagemFalhou(false);
+      setAvisoImagem(null);
       void sendWatch(room, null);
       announceWatch(room);
       rerender();
@@ -785,15 +830,11 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
       rerender();
     },
     setQualidade: (ownerId, q) => {
-      qualidadeRef.current = { ...qualidadeRef.current, [ownerId]: q };
-      // Native screens: ask the sender's core for "screen-low", then switch when it appears (TrackPublished).
-      if (assistindo(ownerId) || q === 'original') pedirLeve(ownerId, q === 'leve');
-      for (const identity of [ownerId, ownerId + SCREEN_SUFFIX]) {
-        const p = room?.remoteParticipants.get(identity);
-        if (p && assistindo(ownerId)) escolherFaixa(p, true);
-      }
-      rerender();
+      if (q === 'original' && !originalAbre(ownerId)) return setAvisoImagem(SEM_ORIGINAL);
+      setAvisoImagem(null);
+      trocarQualidade(ownerId, q);
     },
+    fecharAvisoImagem: () => setAvisoImagem(null),
     assistirTodas: (on) => {
       for (const s of streams) if (!s.owner.isLocal && s.owner.id !== watchingRef.current) setScreenSubscribed(s.owner.id, on);
       rerender();
@@ -819,6 +860,7 @@ export function useLiveRoom(session: Session, roomId: string, onPresenceChange?:
     videoPaused: native.current?.paused,
     gameMinimized: native.current?.minimized,
     receptores, redeRuim: redeRuimRef.current, qualidade: qualidadeRef.current, somTela: somTelaRef.current,
+    imagemFalhou, avisoImagem,
     micOn: !!lp?.isMicrophoneEnabled,
     cameraOn: !!lp?.isCameraEnabled,
     ...actions,

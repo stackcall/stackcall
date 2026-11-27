@@ -29,16 +29,24 @@ export const podeTransmitirNoNavegador = () =>
   typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia && !ehCelular();
 
 
-const ESTREITA = '(max-width: 767px)';
-/** Phone-width layout (one column, controls at the bottom). Follows rotation and resizing. */
-export function useCompacto() {
-  const [compacto, setCompacto] = useState(() => typeof matchMedia !== 'undefined' && matchMedia(ESTREITA).matches);
+// A lying-down phone is wider than 767 px but too short for the desktop rows (36 px + stage + 164 px).
+const ESTREITA = '(max-width: 767px), (pointer: coarse) and (max-height: 500px)';
+const DEITADO = '(pointer: coarse) and (orientation: landscape) and (max-height: 500px)';
+
+function useMedia(query: string) {
+  const [sim, setSim] = useState(() => typeof matchMedia !== 'undefined' && matchMedia(query).matches);
   useEffect(() => {
     if (typeof matchMedia === 'undefined') return;
-    const mq = matchMedia(ESTREITA);
-    const mudar = () => setCompacto(mq.matches);
+    const mq = matchMedia(query);
+    const mudar = () => setSim(mq.matches);
+    mudar();
     mq.addEventListener('change', mudar);
     return () => mq.removeEventListener('change', mudar);
-  }, []);
-  return compacto;
+  }, [query]);
+  return sim;
 }
+
+/** Phone-width layout (one column, controls at the bottom). Follows rotation and resizing. */
+export const useCompacto = () => useMedia(ESTREITA);
+/** Phone on its side: the watched screen takes the whole display. */
+export const useDeitado = () => useMedia(DEITADO);
