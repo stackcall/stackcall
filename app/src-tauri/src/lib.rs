@@ -34,6 +34,50 @@ async fn remote_changelog() -> Result<String, String> {
     response.text().await.map_err(|error| error.to_string())
 }
 
+/// Red dot on the tray icon while the person streams: replaces the yellow Windows capture border.
+#[tauri::command]
+fn bandeja_no_ar(app: AppHandle, no_ar: bool) -> Result<(), String> {
+    let tray = app.tray_by_id("principal").ok_or("sem bandeja")?;
+    let base = app.default_window_icon().ok_or("sem ícone")?;
+    let icone = if no_ar {
+        com_ponto(base)
+    } else {
+        base.clone().to_owned()
+    };
+    tray.set_icon(Some(icone))
+        .map_err(|error| error.to_string())?;
+    tray.set_tooltip(Some(if no_ar {
+        "Stackcall · no ar"
+    } else {
+        "Stackcall"
+    }))
+    .map_err(|error| error.to_string())
+}
+
+/// The icon with a red dot (white ring for contrast on dark and light taskbars) in the bottom-right corner.
+fn com_ponto(base: &tauri::image::Image<'_>) -> tauri::image::Image<'static> {
+    let (w, h) = (base.width(), base.height());
+    let mut rgba = base.rgba().to_vec();
+    let raio = w.min(h) as f32 * 0.24;
+    let anel = raio + (w.min(h) as f32 * 0.06).max(1.0);
+    let (cx, cy) = (w as f32 - anel, h as f32 - anel);
+    for y in 0..h {
+        for x in 0..w {
+            let d = ((x as f32 + 0.5 - cx).powi(2) + (y as f32 + 0.5 - cy).powi(2)).sqrt();
+            let cor = if d <= raio {
+                [0xc8, 0x19, 0x1f, 0xff]
+            } else if d <= anel {
+                [0xff; 4]
+            } else {
+                continue;
+            };
+            let i = ((y * w + x) * 4) as usize;
+            rgba[i..i + 4].copy_from_slice(&cor);
+        }
+    }
+    tauri::image::Image::new_owned(rgba, w, h)
+}
+
 fn mostrar(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
@@ -251,6 +295,7 @@ pub fn run() {
             #[cfg(windows)]
             atalhos::atalhos_gravar,
             remote_changelog,
+            bandeja_no_ar,
             conta::api,
             conta::sessao_existe,
             modo_jogo::modo_jogo_atual,
@@ -288,4 +333,19 @@ pub fn run() {
                 _app.state::<atalhos::Hotkeys>().stop();
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::com_ponto;
+
+    #[test]
+    fn ponto_vermelho_no_canto_sem_mexer_no_resto() {
+        let base = tauri::image::Image::new_owned(vec![0x10; 32 * 32 * 4], 32, 32);
+        let icone = com_ponto(&base);
+        let px = |x: u32, y: u32| &icone.rgba()[((y * 32 + x) * 4) as usize..][..4];
+        assert_eq!(px(24, 24), [0xc8, 0x19, 0x1f, 0xff]);
+        assert_eq!(px(2, 2), [0x10; 4]);
+        assert_eq!((icone.width(), icone.height()), (32, 32));
+    }
 }

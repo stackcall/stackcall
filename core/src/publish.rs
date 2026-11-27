@@ -149,7 +149,7 @@ struct Conversion {
 }
 
 fn start_capture(setup: Setup) -> Result<Control> {
-    fn start<T: TryInto<GraphicsCaptureItemType> + Send + 'static>(
+    fn start<T: TryInto<GraphicsCaptureItemType> + Copy + Send + 'static>(
         target: T,
         monitor: Option<Monitor>,
         setup: Setup,
@@ -165,17 +165,30 @@ fn start_capture(setup: Setup) -> Result<Control> {
         } else {
             MinimumUpdateIntervalSettings::Default
         };
-        Capture::start_free_threaded(Settings::new(
-            target,
-            CursorCaptureSettings::Default,
-            DrawBorderSettings::Default,
-            SecondaryWindowSettings::Default,
-            interval,
-            DirtyRegionSettings::Default,
-            ColorFormat::Bgra8,
-            setup,
-        ))
-        .map_err(|err| anyhow::anyhow!("{err:?}"))
+        let settings = |border| {
+            Settings::new(
+                target,
+                CursorCaptureSettings::Default,
+                border,
+                SecondaryWindowSettings::Default,
+                interval,
+                DirtyRegionSettings::Default,
+                ColorFormat::Bgra8,
+                setup.clone(),
+            )
+        };
+        // The app shows "no ar" and a red dot in the tray; the yellow Windows border bothered streamers.
+        if GraphicsCaptureApi::is_border_settings_supported().unwrap_or(false) {
+            match Capture::start_free_threaded(settings(DrawBorderSettings::WithoutBorder)) {
+                Ok(control) => return Ok(control),
+                // Windows 10 and some builds refuse it to unpackaged apps: keep the system border.
+                Err(err) => {
+                    eprintln!("Captura sem borda recusada, usando a borda do Windows: {err:?}")
+                }
+            }
+        }
+        Capture::start_free_threaded(settings(DrawBorderSettings::Default))
+            .map_err(|err| anyhow::anyhow!("{err:?}"))
     }
 
     let start_window = |window: Window, setup| {
