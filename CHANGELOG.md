@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.7.0
+
+### Novidades
+
+- A borda amarela em volta do jogo sumiu durante a transmissão. No lugar, o ícone do Stackcall na bandeja ganha um ponto vermelho enquanto você está no ar. No Windows 10 a borda continua, porque o sistema não deixa tirar
+
+### Correções
+
+- No celular, o botão Assistir volta a funcionar e os controles da tela cabem sem cortar
+- No iPhone, a tela cheia abre o player do celular, que gira para deitado
+- Com o celular deitado, a tela assistida ocupa o display inteiro em vez de sobrepor tudo
+- Se o aparelho não abre a imagem Original, ele recebe a Leve 720p sozinho e avisa
+- Clipes guardam a imagem certa quando a qualidade da transmissão muda no meio do clipe
+
 ## v0.6.2
 
 ### Correções

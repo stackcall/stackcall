@@ -1,5 +1,45 @@
 [
   {
+    "version": "0.7.0",
+    "date": "2026-11-27",
+    "categories": [
+      {
+        "name": "Novidades",
+        "items": [
+          {
+            "message": "A borda amarela em volta do jogo sumiu durante a transmissão. No lugar, o ícone do Stackcall na bandeja ganha um ponto vermelho enquanto você está no ar. No Windows 10 a borda continua, porque o sistema não deixa tirar",
+            "breaking": false
+          }
+        ]
+      },
+      {
+        "name": "Correções",
+        "items": [
+          {
+            "message": "No celular, o botão Assistir volta a funcionar e os controles da tela cabem sem cortar",
+            "breaking": false
+          },
+          {
+            "message": "No iPhone, a tela cheia abre o player do celular, que gira para deitado",
+            "breaking": false
+          },
+          {
+            "message": "Com o celular deitado, a tela assistida ocupa o display inteiro em vez de sobrepor tudo",
+            "breaking": false
+          },
+          {
+            "message": "Se o aparelho não abre a imagem Original, ele recebe a Leve 720p sozinho e avisa",
+            "breaking": false
+          },
+          {
+            "message": "Clipes guardam a imagem certa quando a qualidade da transmissão muda no meio do clipe",
+            "breaking": false
+          }
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.6.2",
     "date": "2026-11-26",
     "categories": [
