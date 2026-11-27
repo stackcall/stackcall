@@ -73,6 +73,10 @@ export type RoomModel = {
   qualidade?: Record<string, 'original' | 'leve'>;
   /** 0.5 grid: whose screen audio plays (null = all). */
   somTela?: string | null;
+  /** The watched screen never showed a frame, even the light one: offer a retry. */
+  imagemFalhou?: boolean;
+  /** Why the quality changed on its own (codec this device cannot open, Original that never came). */
+  avisoImagem?: string | null;
 };
 
 export type RoomActions = {
@@ -91,6 +95,7 @@ export type RoomActions = {
   stopLive(): void;
   setRedeRuim?(on: boolean): void;
   setQualidade?(ownerId: string, q: 'original' | 'leve'): void;
+  fecharAvisoImagem?(): void;
   /** Grid: receive every screen in the room (true) or only the watched one (false). */
   assistirTodas?(on: boolean): void;
   setSomTela?(ownerId: string | null): void;

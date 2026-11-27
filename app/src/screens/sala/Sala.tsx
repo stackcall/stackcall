@@ -9,7 +9,7 @@ import { Avatar } from '../../components/Avatar';
 import { Faixa } from '../../components/Faixa';
 import { Icone } from '../../components/Icone';
 import { useInterfaceAtiva } from '../../lib/leveza';
-import { podeTransmitirNoNavegador, temNucleo, useCompacto } from '../../lib/ambiente';
+import { ehCelular, podeTransmitirNoNavegador, temNucleo, useCompacto, useDeitado } from '../../lib/ambiente';
 import { demoScreen } from '../../lib/config';
 import { ultimoAlvo, esperaCutucar, marcarCutucada, marcarSilenciado } from '../../lib/cutucadas';
 import { replay as nucleoReplay } from '../../lib/nucleo';
@@ -294,6 +294,7 @@ export function RoomView(props: ComSala & { model: RoomModel & RoomActions; reco
               </Faixa>
             )}
             {aviso && <Faixa tipo={aviso.erro ? 'erro' : 'aviso'} onFechar={() => setAviso(null)}>{aviso.texto}</Faixa>}
+            {model.avisoImagem && <Faixa tipo="aviso" onFechar={model.fecharAvisoImagem}>{model.avisoImagem}</Faixa>}
             {emGrade ? (
               <Grade model={model} streams={model.streams} />
             ) : stage || !vivo ? (
@@ -526,10 +527,19 @@ export function TrackVideo({ track, className, muted = true, pip = false, videoR
   return <video ref={ref} className={className} autoPlay playsInline muted={muted} disablePictureInPicture={!pip} />;
 }
 
-async function toggleFullscreen(el: HTMLElement) {
+async function toggleFullscreen(el: HTMLElement, video?: HTMLVideoElement | null) {
+  const v = video as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null | undefined;
+  // iPhone Safari has no element full screen: its own player takes the display and turns sideways.
+  if (!document.fullscreenEnabled && v?.webkitEnterFullscreen) {
+    try { v.webkitEnterFullscreen(); } catch { /* video not ready yet: the next tap works */ }
+    return;
+  }
   const on = !document.fullscreenElement;
-  if (on) await el.requestFullscreen().catch(() => undefined);
-  else await document.exitFullscreen().catch(() => undefined);
+  if (on) await el.requestFullscreen?.().catch(() => undefined);
+  else await document.exitFullscreen?.().catch(() => undefined);
+  // Android: lie the phone down with the video; browsers that refuse the lock just keep the rotation.
+  const orientacao = screen.orientation as ScreenOrientation & { lock?(o: string): Promise<void> };
+  if (on && ehCelular()) await orientacao?.lock?.('landscape').catch(() => undefined);
   // WebView2 fullscreens the element only inside the window; make the window follow.
   if (isTauri()) await getCurrentWindow().setFullscreen(on).catch(() => undefined);
 }
@@ -537,14 +547,16 @@ async function toggleFullscreen(el: HTMLElement) {
 const ZOOMS = [1, 1.25, 1.5, 2, 2.5, 3];
 
 /** Stage controls: quality, zoom, floating window, full screen. They show on hover or focus. */
-function ControlesTela({ model, stream, videoRef, alvo, zoom, setZoom, mini = false }: {
+function ControlesTela({ model, stream, videoRef, alvo, zoom, setZoom, mini = false, compacto = false }: {
   model: RoomModel & RoomActions; stream: Stream; videoRef: React.RefObject<HTMLVideoElement | null>; alvo: React.RefObject<HTMLDivElement | null>;
-  zoom: number; setZoom(z: number): void; mini?: boolean;
+  zoom: number; setZoom(z: number): void; mini?: boolean; compacto?: boolean;
 }) {
   const q = model.qualidade?.[stream.owner.id] ?? 'original';
   const local = stream.owner.isLocal;
   const s = model.stageStats;
-  const nomeQ = q === 'leve' ? 'Leve 720p' : `Original${!mini && s ? ` ${s.height}p${s.fps}` : ''}`;
+  // Phone: one short row of icons that fits 320 px; zoom stays on the desktop (wheel and buttons).
+  const curto = mini || compacto;
+  const nomeQ = q === 'leve' ? (compacto ? 'Leve' : 'Leve 720p') : `Original${!curto && s ? ` ${s.height}p${s.fps}` : ''}`;
   const pip = async () => {
     const v = videoRef.current;
     if (!v) return;
@@ -556,14 +568,14 @@ function ControlesTela({ model, stream, videoRef, alvo, zoom, setZoom, mini = fa
     <div role="toolbar" aria-label={`Controles da tela de ${stream.owner.isLocal ? 'você' : stream.owner.name}`}
       className={`absolute ${mini ? 'inset-x-2 bottom-2' : 'inset-x-3 bottom-3'} z-10 flex items-center justify-end gap-1.5 opacity-100 transition-opacity [@media(hover:hover)]:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100`}>
       {!local && model.setQualidade && (
-        <button type="button" className={`${ctrl} ${mini ? 'mr-auto' : ''}`} title="Qualidade que você recebe"
+        <button type="button" className={`${ctrl} ${curto ? 'mr-auto' : ''}`} title="Qualidade que você recebe"
           aria-label={`Você recebe: ${nomeQ}. Trocar para ${q === 'leve' ? 'Original' : 'Leve'}`}
           onClick={() => model.setQualidade!(stream.owner.id, q === 'leve' ? 'original' : 'leve')}>
-          <span className="font-mono text-[11px] text-[#b3b3ab] uppercase">{mini ? 'Recebe' : 'Você recebe'}</span><b>{nomeQ}</b>
-          {!mini && <Icone nome="dir" tamanho={14} />}
+          <span className="font-mono text-[11px] text-[#b3b3ab] uppercase">{curto ? 'Recebe' : 'Você recebe'}</span><b>{nomeQ}</b>
+          {!curto && <Icone nome="dir" tamanho={14} />}
         </button>
       )}
-      {!mini && stream.track && (
+      {!curto && stream.track && (
         <span className="inline-flex">
           <button type="button" className={ctrl} aria-label="Diminuir zoom" disabled={zoom <= 1} onClick={() => setZoom(ZOOMS[Math.max(0, ZOOMS.indexOf(zoom) - 1)])}><Icone nome="menos" tamanho={16} /></button>
           <span className={`${ctrl} min-w-[52px] border-x-0 font-mono text-[12px] font-bold`} aria-live="polite">{Math.round(zoom * 100)}%</span>
@@ -572,13 +584,17 @@ function ControlesTela({ model, stream, videoRef, alvo, zoom, setZoom, mini = fa
       )}
       {stream.track && (
         <>
-          <button type="button" className={ctrl} aria-label="Janela flutuante" title="Janela flutuante" onClick={() => void pip()}><Icone nome="pip" tamanho={16} /></button>
-          <button type="button" className={ctrl} aria-label="Tela cheia" title="Tela cheia (clique duplo)" onClick={() => alvo.current && void toggleFullscreen(alvo.current)}><Icone nome="cheia" tamanho={16} /></button>
+          {document.pictureInPictureEnabled && (
+            <button type="button" className={ctrl} aria-label="Janela flutuante" title="Janela flutuante" onClick={() => void pip()}><Icone nome="pip" tamanho={16} /></button>
+          )}
+          <button type="button" className={ctrl} aria-label="Tela cheia" title="Tela cheia (clique duplo)" onClick={() => alvo.current && void toggleFullscreen(alvo.current, videoRef.current)}><Icone nome="cheia" tamanho={16} /></button>
         </>
       )}
-      {!mini && stream.watching && !local && (
+      {!mini && stream.watching && !local && (compacto ? (
+        <button type="button" className={ctrl} aria-label="Parar de assistir" title="Parar de assistir" onClick={() => model.unwatch(stream.owner.id)}><Icone nome="fechar" tamanho={16} /></button>
+      ) : (
         <button type="button" className="btn btn-sm min-h-9" onClick={() => model.unwatch(stream.owner.id)}>Parar de assistir</button>
-      )}
+      ))}
     </div>
   );
 }
@@ -594,8 +610,9 @@ function VozPrimeiro({ model }: { model: RoomModel & RoomActions }) {
   );
 }
 
-function Palco({ model, stage, reconexao, jogo, onPick, onRetry }: {
+function Palco({ model, stage, reconexao, jogo, onPick, onRetry, compacto = false }: {
   model: RoomModel & RoomActions; stage?: Stream; reconexao: Reconexao; jogo?: string | null; onPick(id: string): void; onRetry(): void;
+  compacto?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -657,7 +674,7 @@ function Palco({ model, stage, reconexao, jogo, onPick, onRetry }: {
         <span className="ml-auto truncate font-medium normal-case">{[numeros, `${stage.watchers} assistindo`].filter(Boolean).join(' · ')}</span>
       </div>
       <div tabIndex={stage.track ? 0 : -1} aria-label={`Tela de ${nome}`} className="group relative min-h-0 flex-1 overflow-hidden bg-palco outline-none"
-        onWheel={roda} onDoubleClick={() => stage.track && ref.current && void toggleFullscreen(ref.current)}
+        onWheel={roda} onDoubleClick={() => stage.track && ref.current && void toggleFullscreen(ref.current, videoRef.current)}
         onPointerDown={(e) => { if (zoom > 1) { inicio.current = { x: e.clientX, y: e.clientY, ax: arraste.x, ay: arraste.y }; e.currentTarget.setPointerCapture?.(e.pointerId); } }}
         onPointerMove={(e) => { const i = inicio.current; if (i) setArraste({ x: i.ax + e.clientX - i.x, y: i.ay + e.clientY - i.y }); }}
         onPointerUp={() => (inicio.current = null)}>
@@ -665,12 +682,21 @@ function Palco({ model, stage, reconexao, jogo, onPick, onRetry }: {
           <div className="absolute inset-0" style={{ transform: `translate(${arraste.x}px, ${arraste.y}px) scale(${zoom})`, cursor: zoom > 1 ? 'grab' : undefined }}>
             <TrackVideo track={stage.track} videoRef={videoRef} pip className="absolute inset-0 size-full object-contain" />
           </div>
+        ) : stage.watching && !stage.owner.isLocal ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 pb-14 text-center text-sobre-palco" role="status">
+            {model.imagemFalhou ? (
+              <>
+                <span className="text-[14px]">A imagem de {nome} não abriu neste aparelho.</span>
+                <button type="button" className="btn btn-sm" onClick={() => { model.unwatch(stage.owner.id); model.watch(stage.owner.id); }}>Tentar de novo</button>
+              </>
+            ) : <span className="text-[14px]">Abrindo a imagem de {nome}…</span>}
+          </div>
         ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center">
-            <span className="font-pincel -rotate-6 text-[40px] text-lima">ao vivo!</span>
-            <span className="text-[14px] text-sobre-palco">Tela de {nome}. Assistir gasta internet só de quem assiste.</span>
+          <div className={`absolute inset-0 flex flex-col items-center justify-center text-center ${compacto ? 'gap-2 p-3' : 'gap-3 p-6'}`}>
+            <span className={`font-pincel -rotate-6 text-lima ${compacto ? 'text-[28px]' : 'text-[40px]'}`}>ao vivo!</span>
+            {!compacto && <span className="text-[14px] text-sobre-palco">Tela de {nome}. Assistir gasta internet só de quem assiste.</span>}
             {!stage.watching && (
-              <button type="button" className="btn btn-prim btn-lg" onClick={() => model.watch(stage.owner.id)}>Assistir</button>
+              <button type="button" className={`btn btn-prim ${compacto ? '' : 'btn-lg'}`} onClick={() => model.watch(stage.owner.id)}>Assistir</button>
             )}
           </div>
         )}
@@ -682,8 +708,11 @@ function Palco({ model, stage, reconexao, jogo, onPick, onRetry }: {
           </div>
         )}
         {model.redeRuim && !stage.owner.isLocal && <VozPrimeiro model={model} />}
-        <ControlesTela model={model} stream={stage} videoRef={videoRef} alvo={ref} zoom={zoom} setZoom={setZoom} />
-        <SeloLeve model={model} stream={stage} className="top-3 left-3" />
+        {/* Before Assistir there is nothing to control, and a toolbar there covered the button on phones. */}
+        {(stage.watching || stage.track) && (
+          <ControlesTela model={model} stream={stage} videoRef={videoRef} alvo={ref} zoom={zoom} setZoom={setZoom} compacto={compacto} />
+        )}
+        {!compacto && <SeloLeve model={model} stream={stage} className="top-3 left-3" />}
         <div className="absolute top-3 right-3 z-10 flex flex-wrap justify-end gap-2">
           {model.streams.length > 1 && model.streams.map((x) => (
             <button key={x.owner.id} type="button" onClick={() => onPick(x.owner.id)} aria-pressed={x === stage} className={`btn btn-sm ${x === stage ? 'bg-texto text-superficie' : ''}`}>
@@ -972,8 +1001,12 @@ function SalaCompacta({ sala, linha, model, stage, others, porId, pessoas, salas
     { id: 'conversa' as const, rotulo: 'Conversa' },
     { id: 'servidor' as const, rotulo: `Galera · ${pessoas.filter((p) => p.online).length} on` },
   ];
+  // Lying down while a screen plays: the stage covers the display, like a video player.
+  const deitado = useDeitado();
+  const telaInteira = deitado && !!stage?.track;
   return (
-    <div className="flex min-h-0 min-w-0 flex-col gap-2">
+    // Scrolls when the display is short (small phones, lying down) instead of squashing the tabs to nothing.
+    <div className="flex min-h-0 min-w-0 flex-col gap-2 overflow-y-auto">
       <div className="flex min-w-0 items-center gap-2">
         <h1 className="truncate text-[26px] leading-none">{sala}</h1>
         <span className="rotulo min-w-0 truncate text-[11px]">{linha}</span>
@@ -982,12 +1015,15 @@ function SalaCompacta({ sala, linha, model, stage, others, porId, pessoas, salas
         </button>
       </div>
       {aviso && <Faixa tipo={aviso.erro ? 'erro' : 'aviso'} onFechar={onFecharAviso}>{aviso.texto}</Faixa>}
+      {model.avisoImagem && <Faixa tipo="aviso" onFechar={model.fecharAvisoImagem}>{model.avisoImagem}</Faixa>}
       {(stage || model.state === 'error') && (
-        <div className="flex aspect-video w-full shrink-0 flex-col">
-          <Palco model={model} stage={stage} reconexao={reconexao} jogo={stage ? porId.get(stage.owner.id)?.jogo : null} onPick={() => undefined} onRetry={onRetry} />
+        <div className={telaInteira
+          ? 'fixed inset-0 z-40 flex flex-col bg-palco pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]'
+          : 'flex aspect-video w-full shrink-0 flex-col'}>
+          <Palco model={model} stage={stage} reconexao={reconexao} jogo={stage ? porId.get(stage.owner.id)?.jogo : null} onPick={() => undefined} onRetry={onRetry} compacto />
         </div>
       )}
-      <section className="janela flex min-h-0 flex-1 flex-col" aria-label="Sala">
+      <section className="janela flex min-h-[220px] flex-1 flex-col" aria-label="Sala">
         <div className="flex border-b border-texto" role="tablist" aria-label="Painéis da sala">
           {abas.map((a) => (
             <button key={a.id} type="button" role="tab" aria-selected={aba === a.id} onClick={() => setAba(a.id)}
